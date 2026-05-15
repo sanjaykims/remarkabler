@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 type Notebook = {
   id: string;
   name: string;
+  status: "processing" | "done" | "error";
+  error: string | null;
   synced_at: string | null;
   page_count: number;
   ocr_count: number;
@@ -27,13 +29,21 @@ export default function NotebooksPage() {
     load();
   }, []);
 
+  // While any notebook is still transcribing, refresh the list periodically
+  // so it updates on its own when the background OCR finishes.
+  useEffect(() => {
+    if (!notebooks.some((n) => n.status === "processing")) return;
+    const t = setInterval(load, 4000);
+    return () => clearInterval(t);
+  }, [notebooks]);
+
   async function upload(e: React.FormEvent) {
     e.preventDefault();
     const file = fileRef.current?.files?.[0];
     if (!file || uploading) return;
     setUploading(true);
     setError(null);
-    setStatus(`Transcribing "${file.name}" with Claude — this can take up to a minute…`);
+    setStatus(null);
 
     const fd = new FormData();
     fd.append("file", file);
@@ -41,12 +51,11 @@ export default function NotebooksPage() {
       const r = await fetch("/api/notebooks", { method: "POST", body: fd });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Upload failed");
-      setStatus(`Done — transcribed ${d.pageCount} page(s) of "${d.name}".`);
+      setStatus(`Uploaded "${d.name}" — transcribing in the background. It will appear below.`);
       if (fileRef.current) fileRef.current.value = "";
       await load();
     } catch (err) {
       setError((err as Error).message);
-      setStatus(null);
     } finally {
       setUploading(false);
     }
@@ -68,7 +77,7 @@ export default function NotebooksPage() {
       >
         <p className="text-sm opacity-80">
           Export a notebook as PDF on your reMarkable, then upload it here.
-          Claude transcribes every page.
+          Claude transcribes every page in the background.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -83,7 +92,7 @@ export default function NotebooksPage() {
             disabled={uploading}
             className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-1.5 text-sm disabled:opacity-50"
           >
-            {uploading ? "Transcribing…" : "Upload & transcribe"}
+            {uploading ? "Uploading…" : "Upload"}
           </button>
         </div>
         {status && <p className="text-sm opacity-80">{status}</p>}
@@ -94,8 +103,7 @@ export default function NotebooksPage() {
         <thead className="text-left opacity-70">
           <tr>
             <th className="py-2 pr-4">Name</th>
-            <th className="py-2 pr-4">Pages</th>
-            <th className="py-2 pr-4">Transcribed</th>
+            <th className="py-2 pr-4">Status</th>
             <th className="py-2 pr-4">Uploaded</th>
             <th className="py-2"></th>
           </tr>
@@ -103,16 +111,32 @@ export default function NotebooksPage() {
         <tbody>
           {notebooks.length === 0 && (
             <tr>
-              <td colSpan={5} className="py-6 text-center opacity-60">
+              <td colSpan={4} className="py-6 text-center opacity-60">
                 No notebooks yet. Upload a PDF exported from your reMarkable.
               </td>
             </tr>
           )}
           {notebooks.map((n) => (
-            <tr key={n.id} className="border-t border-stone-200 dark:border-stone-800">
-              <td className="py-2 pr-4">{n.name}</td>
-              <td className="py-2 pr-4">{n.page_count}</td>
-              <td className="py-2 pr-4">{n.ocr_count}</td>
+            <tr key={n.id} className="border-t border-stone-200 dark:border-stone-800 align-top">
+              <td className="py-2 pr-4">
+                {n.name}
+                {n.status === "error" && n.error && (
+                  <div className="text-xs text-red-600 mt-0.5">{n.error}</div>
+                )}
+              </td>
+              <td className="py-2 pr-4">
+                {n.status === "processing" && (
+                  <span className="opacity-70">Transcribing…</span>
+                )}
+                {n.status === "done" && (
+                  <span>
+                    ✓ {n.ocr_count} page{n.ocr_count === 1 ? "" : "s"}
+                  </span>
+                )}
+                {n.status === "error" && (
+                  <span className="text-red-600">Failed</span>
+                )}
+              </td>
               <td className="py-2 pr-4 opacity-70">
                 {n.synced_at ? new Date(n.synced_at).toLocaleString() : "—"}
               </td>

@@ -12,6 +12,9 @@
 - Token-access diagnostics and force-push to the repo-split CI workflow.
 
 ### Changed
+- Transcription now runs as a background job. Uploading or sharing a notebook
+  returns immediately; the notebooks list shows a live `Transcribing…` status
+  and refreshes itself when each notebook finishes.
 - Rebuilt the app around PDF upload. The original reMarkable cloud-sync code
   was written against an `rmapi-js` API that does not exist and could never
   have worked.
@@ -21,6 +24,11 @@
 - `npm start` now honors the host-provided `PORT` so the app can be hosted.
 
 ### Fixed
+- Sharing or uploading a notebook no longer freezes the screen for the whole
+  transcription. The request used to block until Claude finished (~1 minute);
+  now it returns at once and transcription runs in the background.
+- Notebooks interrupted by a server restart are flagged with an error on the
+  next start instead of being stuck on `Transcribing…` forever.
 - Share target sent the browser to the proxy-internal `localhost:8080`
   address after a successful share (`ERR_CONNECTION_REFUSED`); it now
   navigates using the real URL via a client-side redirect.

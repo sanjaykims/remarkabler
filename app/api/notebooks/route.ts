@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ingestPdf, deleteNotebook } from "@/lib/notes";
+import { createNotebook, processNotebook, deleteNotebook } from "@/lib/notes";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
 
 const MAX_BYTES = 20 * 1024 * 1024;
 
@@ -11,6 +10,7 @@ export async function GET() {
   const notebooks = db()
     .prepare(
       `SELECT n.id, n.name, n.synced_at,
+              COALESCE(n.status, 'done') AS status, n.error,
               COUNT(p.id) AS page_count,
               SUM(CASE WHEN p.ocr_text IS NOT NULL AND p.ocr_text != '' THEN 1 ELSE 0 END) AS ocr_count
        FROM notebooks n
@@ -44,15 +44,20 @@ export async function POST(req: NextRequest) {
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
+  let nb;
   try {
-    const result = await ingestPdf(file.name, bytes);
-    return NextResponse.json({ ok: true, ...result });
+    nb = createNotebook(file.name, bytes);
   } catch (err) {
     return NextResponse.json(
-      { error: `OCR failed: ${(err as Error).message}` },
+      { error: `Couldn't save the file: ${(err as Error).message}` },
       { status: 500 }
     );
   }
+
+  // Transcribe in the background; the request returns immediately.
+  void processNotebook(nb.id).catch(() => {});
+
+  return NextResponse.json({ ok: true, id: nb.id, name: nb.name, status: "processing" });
 }
 
 export async function DELETE(req: NextRequest) {

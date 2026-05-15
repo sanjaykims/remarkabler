@@ -13,6 +13,24 @@ export function db(): Database.Database {
   _db = new Database(dbPath);
   _db.pragma("journal_mode = WAL");
   _db.exec(SCHEMA);
+
+  // Migrations for columns added after the initial schema.
+  for (const col of ["status TEXT", "error TEXT"]) {
+    try {
+      _db.exec(`ALTER TABLE notebooks ADD COLUMN ${col}`);
+    } catch {
+      // column already exists
+    }
+  }
+  // Any notebook still "processing" at startup was interrupted by a restart.
+  _db
+    .prepare(
+      `UPDATE notebooks SET status='error',
+         error='Transcription was interrupted. Delete and re-add this notebook.'
+       WHERE status='processing'`
+    )
+    .run();
+
   return _db;
 }
 

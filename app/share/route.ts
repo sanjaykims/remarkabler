@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
-import { ingestPdf } from "@/lib/notes";
+import { createNotebook, processNotebook } from "@/lib/notes";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
 
 const MAX_BYTES = 20 * 1024 * 1024;
 
@@ -11,6 +10,9 @@ const MAX_BYTES = 20 * 1024 * 1024;
  * phone's share sheet, the browser POSTs the shared PDF here as multipart
  * form data (field name "file", per the share_target config in
  * public/manifest.json).
+ *
+ * The PDF is saved and the response returns immediately; transcription runs
+ * in the background so the phone is never left on a frozen screen.
  */
 export async function POST(req: NextRequest) {
   const form = await req.formData().catch(() => null);
@@ -29,16 +31,21 @@ export async function POST(req: NextRequest) {
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
+  let nb;
   try {
-    const result = await ingestPdf(file.name, bytes);
-    return page(
-      "Transcribed ✓",
-      `Added "${result.name}" — ${result.pageCount} page(s). Opening your notebooks…`,
-      true
-    );
+    nb = createNotebook(file.name, bytes);
   } catch (err) {
-    return page("Couldn't add that notebook", `Transcription failed: ${(err as Error).message}`, false);
+    return page("Couldn't add that notebook", `Couldn't save the file: ${(err as Error).message}`, false);
   }
+
+  // Transcribe in the background; respond right away.
+  void processNotebook(nb.id).catch(() => {});
+
+  return page(
+    "Added ✓",
+    `"${nb.name}" is being transcribed in the background. Opening your notebooks…`,
+    true
+  );
 }
 
 // A direct visit to /share (GET) just lands on the notebooks page.
