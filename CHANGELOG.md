@@ -12,6 +12,7 @@
 - Token-access diagnostics and force-push to the repo-split CI workflow.
 
 ### Changed
+- Chat input is multi-line: Enter starts a new line; the Send button sends.
 - Transcription now runs as a background job. Uploading or sharing a notebook
   returns immediately; the notebooks list shows a live `Transcribing…` status
   and refreshes itself when each notebook finishes.

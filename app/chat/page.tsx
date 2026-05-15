@@ -53,7 +53,7 @@ export default function ChatPage() {
             key={i}
             className={
               m.role === "user"
-                ? "ml-auto max-w-[80%] rounded-2xl bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2"
+                ? "ml-auto max-w-[80%] rounded-2xl bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 whitespace-pre-wrap"
                 : "mr-auto max-w-[80%] rounded-2xl bg-stone-100 dark:bg-stone-900 px-4 py-2 whitespace-pre-wrap"
             }
           >
@@ -63,13 +63,14 @@ export default function ChatPage() {
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={send} className="border-t border-stone-200 dark:border-stone-800 pt-3 flex gap-2">
-        <input
+      <form onSubmit={send} className="border-t border-stone-200 dark:border-stone-800 pt-3 flex gap-2 items-end">
+        <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={busy ? "Thinking…" : "Ask about your notes…"}
+          placeholder={busy ? "Thinking…" : "Ask about your notes…  (Enter for a new line)"}
           disabled={busy}
-          className="flex-1 rounded border border-stone-300 dark:border-stone-700 px-3 py-2 bg-transparent"
+          rows={2}
+          className="flex-1 rounded border border-stone-300 dark:border-stone-700 px-3 py-2 bg-transparent resize-y"
         />
         <button
           type="submit"
