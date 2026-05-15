@@ -24,6 +24,13 @@
 - `npm start` now honors the host-provided `PORT` so the app can be hosted.
 
 ### Fixed
+- Text-dense notebooks could be silently recorded with "0 pages". The
+  whole-notebook transcription overflowed the model's output limit, the
+  truncated reply failed to parse, and the empty result was wrongly marked
+  "done". Transcription now uses a truncation-resilient delimiter format
+  instead of JSON, allows a much larger response, and surfaces a clear error
+  instead of a false success. The notebook list also shows the total page
+  count.
 - Sharing or uploading a notebook no longer freezes the screen for the whole
   transcription. The request used to block until Claude finished (~1 minute);
   now it returns at once and transcription runs in the background.

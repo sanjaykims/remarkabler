@@ -130,7 +130,7 @@ export default function NotebooksPage() {
                 )}
                 {n.status === "done" && (
                   <span>
-                    ✓ {n.ocr_count} page{n.ocr_count === 1 ? "" : "s"}
+                    ✓ {n.page_count} page{n.page_count === 1 ? "" : "s"}
                   </span>
                 )}
                 {n.status === "error" && (

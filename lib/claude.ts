@@ -14,24 +14,37 @@ function client(): Anthropic {
 export type PageOcr = { pageIndex: number; text: string; summary: string };
 
 /**
- * OCR an entire notebook PDF in one Claude call. Claude can ingest PDFs
- * directly as `document` blocks and "see" each page, so no client-side
- * PDF→PNG splitting is needed.
+ * Transcribe an entire notebook PDF in one Claude call. Claude ingests the
+ * PDF directly as a `document` block.
+ *
+ * The output uses a simple `--- PAGE n ---` delimiter format rather than
+ * JSON: a delimited transcript can't be broken by an unescaped quote, and if
+ * the response is ever cut short, every complete page before the cut is
+ * still recoverable. `max_tokens` is set high so a dense notebook does not
+ * overflow; if it overflows anyway, we throw instead of silently returning
+ * nothing.
  */
 export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
   const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
 
   const resp = await client().messages.create({
     model: MODEL,
-    max_tokens: 16384,
+    max_tokens: 64000,
     system: [
       "You transcribe handwritten notebooks from a reMarkable tablet.",
-      "The input is a PDF where each page is one notebook page (possibly mixed handwriting, sketches, printed text).",
-      "Return ONLY a JSON object: { \"pages\": [ { \"pageIndex\": number, \"text\": string, \"summary\": string }, ... ] }.",
-      "- `pageIndex` is 0-based and matches the PDF page order.",
-      "- `text` is a faithful transcription preserving line breaks, bullets, checkboxes as [ ] or [x], and diagrams as bracketed descriptions like [diagram: ...].",
-      "- `summary` is one short sentence describing what the page is about.",
-      "Output the JSON only. No prose, no markdown fences.",
+      "The input is a PDF; each PDF page is one notebook page (handwriting,",
+      "sketches, or printed text).",
+      "",
+      "Transcribe EVERY page, in order. Output format, with nothing else:",
+      "",
+      "  For each page, first a line containing exactly `--- PAGE n ---`",
+      "  (n starts at 1 and increases by 1 each page), then the faithful",
+      "  transcription of that page on the following lines.",
+      "",
+      "Preserve line breaks, bullet points, and checkboxes ([ ] or [x]).",
+      "Describe diagrams in brackets, e.g. [diagram: timeline of project].",
+      "If a page has no writing at all, output exactly `(blank)` for it.",
+      "Do not add commentary, summaries, or markdown code fences.",
     ].join("\n"),
     messages: [
       {
@@ -47,23 +60,42 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
     ],
   });
 
-  const block = resp.content.find((b) => b.type === "text");
-  const raw = block && block.type === "text" ? block.text : "{}";
-  try {
-    const parsed = JSON.parse(stripFences(raw));
-    if (Array.isArray(parsed.pages)) {
-      return parsed.pages
-        .filter((p: unknown): p is Record<string, unknown> => typeof p === "object" && p !== null)
-        .map((p: Record<string, unknown>, i: number) => ({
-          pageIndex: typeof p.pageIndex === "number" ? p.pageIndex : i,
-          text: typeof p.text === "string" ? p.text : "",
-          summary: typeof p.summary === "string" ? p.summary : "",
-        }));
-    }
-  } catch {
-    // fall through
+  if (resp.stop_reason === "max_tokens") {
+    throw new Error(
+      "This notebook is too long to transcribe in one pass. Split it into smaller notebooks on the reMarkable and upload them separately."
+    );
   }
-  return [];
+
+  const block = resp.content.find((b) => b.type === "text");
+  const raw = block && block.type === "text" ? block.text : "";
+  const pages = parsePages(raw);
+
+  if (pages.length === 0) {
+    throw new Error("Claude returned no transcribable content for this PDF.");
+  }
+  return pages;
+}
+
+function parsePages(raw: string): PageOcr[] {
+  const marker = /^[ \t]*-{2,}\s*PAGE\s+\d+\s*-{2,}[ \t]*$/im;
+  const parts = raw.split(marker);
+
+  // parts[0] is whatever preceded the first marker (normally empty).
+  if (parts.length <= 1) {
+    // No page markers came back — keep the whole transcript as one page
+    // rather than losing the content.
+    const whole = raw.trim();
+    return whole ? [{ pageIndex: 0, text: whole, summary: "" }] : [];
+  }
+
+  return parts.slice(1).map((chunk, i) => {
+    const text = chunk.trim();
+    return {
+      pageIndex: i,
+      text: text.toLowerCase() === "(blank)" ? "" : text,
+      summary: "",
+    };
+  });
 }
 
 export async function chatOverNotes(opts: {
@@ -93,8 +125,4 @@ export async function chatOverNotes(opts: {
 
   const block = resp.content.find((b) => b.type === "text");
   return block && block.type === "text" ? block.text : "";
-}
-
-function stripFences(s: string): string {
-  return s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
 }
