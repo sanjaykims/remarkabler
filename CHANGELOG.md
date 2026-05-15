@@ -31,6 +31,9 @@
   instead of JSON, allows a much larger response, and surfaces a clear error
   instead of a false success. The notebook list also shows the total page
   count.
+- The transcription request is now streamed. With the larger output limit the
+  SDK had started rejecting the request outright ("streaming is required for
+  operations that may take longer than 10 minutes").
 - Sharing or uploading a notebook no longer freezes the screen for the whole
   transcription. The request used to block until Claude finished (~1 minute);
   now it returns at once and transcription runs in the background.

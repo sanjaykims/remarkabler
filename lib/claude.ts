@@ -27,9 +27,12 @@ export type PageOcr = { pageIndex: number; text: string; summary: string };
 export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
   const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
 
-  const resp = await client().messages.create({
+  // Stream the response. The SDK rejects a non-streaming request whose
+  // max_tokens is large enough that it could exceed the 10-minute timeout;
+  // streaming also keeps the connection alive for a long transcription.
+  const stream = client().messages.stream({
     model: MODEL,
-    max_tokens: 64000,
+    max_tokens: 32000,
     system: [
       "You transcribe handwritten notebooks from a reMarkable tablet.",
       "The input is a PDF; each PDF page is one notebook page (handwriting,",
@@ -59,6 +62,7 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
       },
     ],
   });
+  const resp = await stream.finalMessage();
 
   if (resp.stop_reason === "max_tokens") {
     throw new Error(
