@@ -3,6 +3,9 @@
 ## 2026-05-15
 
 ### Added
+- Voice on the Chat page: a Speak button transcribes a spoken question (via
+  the browser's speech recognition), and the answer to a spoken question is
+  read back aloud.
 - PDF upload flow — upload a notebook PDF and Claude transcribes every page.
 - Chat over all transcribed notes.
 - Installable PWA with a Web Share Target: share a PDF from the reMarkable
