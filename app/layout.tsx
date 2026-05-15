@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Feed Claude — reMarkable",
-  description: "Pull your reMarkable notes into Claude.",
+  description: "OCR your reMarkable notebooks with Claude and chat over your notes.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -16,7 +16,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/" className="font-semibold">Feed Claude</Link>
             <Link href="/notebooks" className="opacity-70 hover:opacity-100">Notebooks</Link>
             <Link href="/chat" className="opacity-70 hover:opacity-100">Chat</Link>
-            <Link href="/connect" className="opacity-70 hover:opacity-100 ml-auto">Connect</Link>
           </nav>
         </header>
         <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>

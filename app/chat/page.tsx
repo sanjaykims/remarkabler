@@ -44,7 +44,7 @@ export default function ChatPage() {
       <div className="flex-1 overflow-auto space-y-4 pb-4">
         {messages.length === 0 && (
           <p className="opacity-60 text-sm">
-            Ask anything about your synced notebooks. Try: <em>What did I write
+            Ask anything about your uploaded notebooks. Try: <em>What did I write
             about the Q2 roadmap?</em>
           </p>
         )}

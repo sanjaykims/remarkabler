@@ -1,11 +1,9 @@
 import Link from "next/link";
-import { isConnected } from "@/lib/remarkable";
 import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
 export default function Home() {
-  const connected = isConnected();
   const stats = db()
     .prepare(
       `SELECT
@@ -20,8 +18,9 @@ export default function Home() {
       <section className="space-y-2">
         <h1 className="text-2xl font-semibold">Your reMarkable, in Claude.</h1>
         <p className="opacity-70">
-          Sync notebooks from your reMarkable Paper Pro Move, OCR handwritten pages
-          with Claude vision, then chat with Claude about everything you&apos;ve written.
+          Export a notebook as PDF on your reMarkable, upload it here, and Claude
+          transcribes every handwritten page. Then chat with Claude about
+          everything you&apos;ve written.
         </p>
       </section>
 
@@ -31,18 +30,18 @@ export default function Home() {
         <Stat label="OCR'd pages" value={stats.ocr_pages} />
       </section>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4">
-        <h2 className="font-medium mb-2">Status</h2>
-        {connected ? (
-          <p className="text-sm">
-            ✓ Connected to reMarkable. <Link className="underline" href="/notebooks">Sync notebooks →</Link>
-          </p>
-        ) : (
-          <p className="text-sm">
-            Not connected.{" "}
-            <Link className="underline" href="/connect">Connect your reMarkable →</Link>
-          </p>
-        )}
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+        <h2 className="font-medium">Getting started</h2>
+        <ol className="text-sm opacity-80 space-y-1 list-decimal list-inside">
+          <li>On your reMarkable, open a notebook → menu → <em>Export</em> / <em>Save as PDF</em>.</li>
+          <li>
+            <Link className="underline" href="/notebooks">Upload that PDF →</Link>{" "}
+            Claude transcribes each page.
+          </li>
+          <li>
+            <Link className="underline" href="/chat">Chat with your notes →</Link>
+          </li>
+        </ol>
       </section>
     </div>
   );

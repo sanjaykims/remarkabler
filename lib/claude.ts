@@ -23,7 +23,7 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
 
   const resp = await client().messages.create({
     model: MODEL,
-    max_tokens: 8192,
+    max_tokens: 16384,
     system: [
       "You transcribe handwritten notebooks from a reMarkable tablet.",
       "The input is a PDF where each page is one notebook page (possibly mixed handwriting, sketches, printed text).",
@@ -54,7 +54,7 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
     if (Array.isArray(parsed.pages)) {
       return parsed.pages
         .filter((p: unknown): p is Record<string, unknown> => typeof p === "object" && p !== null)
-        .map((p, i) => ({
+        .map((p: Record<string, unknown>, i: number) => ({
           pageIndex: typeof p.pageIndex === "number" ? p.pageIndex : i,
           text: typeof p.text === "string" ? p.text : "",
           summary: typeof p.summary === "string" ? p.summary : "",

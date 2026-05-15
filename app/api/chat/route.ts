@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { buildNotesContext } from "@/lib/sync";
+import { buildNotesContext } from "@/lib/notes";
 import { chatOverNotes } from "@/lib/claude";
 
 export const runtime = "nodejs";
@@ -23,7 +23,15 @@ export async function POST(req: NextRequest) {
 
   const notesContext = buildNotesContext();
 
-  const reply = await chatOverNotes({ notesContext, history, userMessage });
+  let reply: string;
+  try {
+    reply = await chatOverNotes({ notesContext, history, userMessage });
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Chat failed: ${(err as Error).message}` },
+      { status: 500 }
+    );
+  }
 
   const insert = db().prepare(
     `INSERT INTO chat_messages(conversation_id, role, content) VALUES(?,?,?)`
