@@ -17,30 +17,33 @@ export async function POST(req: NextRequest) {
   const file = form?.get("file");
 
   if (!(file instanceof File)) {
-    return errorPage("No file was shared. Share a notebook PDF from the reMarkable app.");
+    return page("Couldn't add that notebook", "No file was shared. Share a notebook PDF from the reMarkable app.", false);
   }
   const isPdf =
     file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
   if (!isPdf) {
-    return errorPage("That wasn't a PDF. On the reMarkable, export/share the notebook as a PDF.");
+    return page("Couldn't add that notebook", "That wasn't a PDF. On the reMarkable, export/share the notebook as a PDF.", false);
   }
   if (file.size > MAX_BYTES) {
-    return errorPage("That PDF is too large (max 20 MB).");
+    return page("Couldn't add that notebook", "That PDF is too large (max 20 MB).", false);
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   try {
-    await ingestPdf(file.name, bytes);
+    const result = await ingestPdf(file.name, bytes);
+    return page(
+      "Transcribed ✓",
+      `Added "${result.name}" — ${result.pageCount} page(s). Opening your notebooks…`,
+      true
+    );
   } catch (err) {
-    return errorPage(`Transcription failed: ${(err as Error).message}`);
+    return page("Couldn't add that notebook", `Transcription failed: ${(err as Error).message}`, false);
   }
-
-  return Response.redirect(new URL("/notebooks", req.url), 303);
 }
 
 // A direct visit to /share (GET) just lands on the notebooks page.
-export async function GET(req: NextRequest) {
-  return Response.redirect(new URL("/notebooks", req.url), 303);
+export async function GET() {
+  return page("Feed Claude", "Opening your notebooks…", true);
 }
 
 function escapeHtml(s: string): string {
@@ -49,31 +52,47 @@ function escapeHtml(s: string): string {
   );
 }
 
-function errorPage(message: string): Response {
+/**
+ * Returns an HTML page that, when autoRedirect is set, sends the browser to
+ * /notebooks via client-side navigation.
+ *
+ * We deliberately avoid an HTTP redirect (Location header): Next resolves a
+ * Location against the request URL, which behind Railway's proxy is the
+ * internal "localhost:8080" address — sending the phone to a dead address.
+ * A client-side navigation resolves "/notebooks" against the browser's real
+ * URL instead.
+ */
+function page(title: string, message: string, autoRedirect: boolean): Response {
+  const head = autoRedirect
+    ? `<meta http-equiv="refresh" content="2; url=/notebooks" />
+<script>setTimeout(function(){location.href="/notebooks";},900);</script>`
+    : "";
   const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Feed Claude</title>
+${head}
 <style>
   body { font-family: system-ui, sans-serif; background: #0c0a09; color: #fafaf9;
          margin: 0; min-height: 100vh; display: flex; align-items: center;
          justify-content: center; padding: 24px; }
-  div { max-width: 420px; }
+  div { max-width: 420px; text-align: center; }
+  h1 { font-size: 1.25rem; }
   a { color: #fafaf9; }
 </style>
 </head>
 <body>
 <div>
-  <h1>Couldn't add that notebook</h1>
+  <h1>${escapeHtml(title)}</h1>
   <p>${escapeHtml(message)}</p>
-  <p><a href="/notebooks">&larr; Back to Notebooks</a></p>
+  <p><a href="/notebooks">Open your notebooks &rarr;</a></p>
 </div>
 </body>
 </html>`;
   return new Response(html, {
-    status: 400,
+    status: 200,
     headers: { "content-type": "text/html; charset=utf-8" },
   });
 }
