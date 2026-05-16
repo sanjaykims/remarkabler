@@ -22,6 +22,8 @@
   off by the UTC offset because UTC timestamps were parsed as local time.
   They are now displayed in the viewer's local timezone with the timezone
   name shown.
+- Dates now always render in English regardless of the device's language
+  setting, instead of following the browser locale (e.g. Korean).
 - Chat page no longer plays a noisy smooth-scroll animation through the whole
   history every time it opens. The saved conversation now jumps instantly to
   the latest message on load; the smooth scroll is kept only for messages
