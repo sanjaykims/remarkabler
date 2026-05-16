@@ -7,6 +7,9 @@
   the top, and each earlier reflection collapses into a tappable row showing
   its date and a short summary. All past entries are kept and still included
   in Copy/Export.
+- Earlier-reflection rows now show a brief, fully visible label (a few words
+  or a short first sentence) at a smaller font, instead of a cut-off sentence
+  ending in "…".
 
 ### Fixed
 - Chat page no longer plays a noisy smooth-scroll animation through the whole

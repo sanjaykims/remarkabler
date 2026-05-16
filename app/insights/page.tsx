@@ -4,13 +4,17 @@ import { useEffect, useState } from "react";
 
 type Insight = { id: number; content: string; created_at: string };
 
-// A short, plain-text preview of an entry for the collapsed older rows.
+// A short plain-text label for a collapsed older entry: a few words, or a
+// short first sentence — kept brief so it shows in full with nothing cut off.
 function summarize(content: string): string {
-  const text = content
-    .replace(/[#*_`>]/g, "")
+  const clean = content
+    .replace(/-{2,}[^-\n]*-{2,}/g, " ")
+    .replace(/[#*_`>-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return text.length > 70 ? text.slice(0, 70).trimEnd() + "…" : text;
+  const firstSentence = clean.split(/(?<=[.!?])\s/)[0] || clean;
+  const words = firstSentence.split(" ").filter(Boolean);
+  return words.length <= 8 ? firstSentence : words.slice(0, 8).join(" ");
 }
 
 export default function InsightsPage() {
@@ -154,10 +158,10 @@ export default function InsightsPage() {
                 className="rounded border border-stone-200 dark:border-stone-800"
               >
                 <summary className="cursor-pointer px-3 py-2 list-none flex flex-col gap-0.5">
-                  <span className="text-xs opacity-60">
+                  <span className="text-[11px] opacity-60">
                     {new Date(it.created_at).toLocaleString()}
                   </span>
-                  <span className="text-sm opacity-80">
+                  <span className="text-xs opacity-80">
                     {summarize(it.content)}
                   </span>
                 </summary>
