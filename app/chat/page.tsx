@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
+const DRAFT_KEY = "feedclaude:chat-draft";
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -19,6 +21,16 @@ export default function ChatPage() {
     fetch("/api/chat?conversationId=default")
       .then((r) => r.json())
       .then((d) => setMessages(d.messages || []));
+  }, []);
+
+  // Restore an unsent draft saved from a previous visit.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved) setInput(saved);
+    } catch {
+      // localStorage unavailable (e.g. private browsing)
+    }
   }, []);
 
   useEffect(() => {
@@ -55,7 +67,7 @@ export default function ChatPage() {
     if (!t || busy) return;
     stopSpeaking();
     setBusy(true);
-    setInput("");
+    updateInput("");
     setMessages((m) => [...m, { role: "user", content: t }]);
     try {
       const r = await fetch("/api/chat", {
@@ -74,6 +86,18 @@ export default function ChatPage() {
       ]);
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Update the input and persist it, so typing survives a reload or the
+  // app being backgrounded.
+  function updateInput(value: string) {
+    setInput(value);
+    try {
+      if (value) localStorage.setItem(DRAFT_KEY, value);
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // localStorage unavailable
     }
   }
 
@@ -108,7 +132,7 @@ export default function ChatPage() {
         if (res.isFinal) finalText += res[0].transcript;
         else interim += res[0].transcript;
       }
-      setInput((finalText + interim).trim());
+      updateInput((finalText + interim).trim());
     };
     recognition.onerror = () => {
       setListening(false);
@@ -170,7 +194,7 @@ export default function ChatPage() {
       >
         <textarea
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => updateInput(e.target.value)}
           placeholder={
             busy
               ? "Thinking…"

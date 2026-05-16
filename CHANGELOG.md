@@ -3,6 +3,8 @@
 ## 2026-05-15
 
 ### Added
+- The chat box keeps an unsent draft: typing is saved and restored if the
+  page reloads or the app is backgrounded.
 - Voice on the Chat page: a Speak button transcribes a spoken question (via
   the browser's speech recognition), and the answer to a spoken question is
   read back aloud.
