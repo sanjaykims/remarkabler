@@ -116,59 +116,48 @@ export default function NotebooksPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
 
-      <table className="w-full text-sm">
-        <thead className="text-left opacity-70">
-          <tr>
-            <th className="py-2 pr-4">Name</th>
-            <th className="py-2 pr-4">Status</th>
-            <th className="py-2 pr-4">Uploaded</th>
-            <th className="py-2"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {notebooks.length === 0 && (
-            <tr>
-              <td colSpan={4} className="py-6 text-center opacity-60">
-                No notebooks yet. Upload a PDF exported from your reMarkable.
-              </td>
-            </tr>
-          )}
+      {notebooks.length === 0 && (
+        <p className="opacity-60 text-sm">
+          No notebooks yet. Upload a PDF exported from your reMarkable.
+        </p>
+      )}
+
+      {notebooks.length > 0 && (
+        <div className="space-y-1">
           {notebooks.map((n) => (
-            <tr key={n.id} className="border-t border-stone-200 dark:border-stone-800 align-top">
-              <td className="py-2 pr-4">
-                {n.name}
+            <details
+              key={n.id}
+              className="rounded border border-stone-200 dark:border-stone-800"
+            >
+              <summary className="cursor-pointer px-3 py-2 list-none flex flex-col gap-0.5">
+                <span className="text-[11px] opacity-60">
+                  {n.status === "processing" && "Transcribing…"}
+                  {n.status === "done" &&
+                    `✓ ${n.page_count} page${n.page_count === 1 ? "" : "s"}`}
+                  {n.status === "error" && (
+                    <span className="text-red-600">Failed</span>
+                  )}
+                </span>
+                <span className="text-xs opacity-80">{n.name}</span>
+              </summary>
+              <div className="px-3 pb-3 border-t border-stone-200 dark:border-stone-800 pt-2 space-y-2">
                 {n.status === "error" && n.error && (
-                  <div className="text-xs text-red-600 mt-0.5">{n.error}</div>
+                  <p className="text-xs text-red-600">{n.error}</p>
                 )}
-              </td>
-              <td className="py-2 pr-4">
-                {n.status === "processing" && (
-                  <span className="opacity-70">Transcribing…</span>
-                )}
-                {n.status === "done" && (
-                  <span>
-                    ✓ {n.page_count} page{n.page_count === 1 ? "" : "s"}
-                  </span>
-                )}
-                {n.status === "error" && (
-                  <span className="text-red-600">Failed</span>
-                )}
-              </td>
-              <td className="py-2 pr-4 opacity-70">
-                {formatLocalTime(n.synced_at)}
-              </td>
-              <td className="py-2 text-right">
+                <p className="text-xs opacity-60">
+                  Uploaded {formatLocalTime(n.synced_at)}
+                </p>
                 <button
                   onClick={() => remove(n.id, n.name)}
                   className="text-xs opacity-60 hover:opacity-100 hover:text-red-600"
                 >
                   Delete
                 </button>
-              </td>
-            </tr>
+              </div>
+            </details>
           ))}
-        </tbody>
-      </table>
+        </div>
+      )}
     </div>
   );
 }

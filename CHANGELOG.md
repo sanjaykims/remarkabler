@@ -29,6 +29,9 @@
 - The notebook upload control now uses a custom English "Choose file" button
   and file-name text, instead of the browser's native file picker whose
   label was localized (e.g. Korean) by the device.
+- The Notebooks list is now a uniform list of collapsed rows (name + status),
+  matching the Insights page; each row expands on tap to show the upload time
+  and the delete action, instead of a wide multi-column table.
 - Chat page no longer plays a noisy smooth-scroll animation through the whole
   history every time it opens. The saved conversation now jumps instantly to
   the latest message on load; the smooth scroll is kept only for messages
