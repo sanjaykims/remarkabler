@@ -17,6 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/" className="font-semibold">Feed Claude</Link>
             <Link href="/notebooks" className="opacity-70 hover:opacity-100">Notebooks</Link>
             <Link href="/chat" className="opacity-70 hover:opacity-100">Chat</Link>
+            <Link href="/insights" className="opacity-70 hover:opacity-100">Insights</Link>
           </nav>
         </header>
         <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>

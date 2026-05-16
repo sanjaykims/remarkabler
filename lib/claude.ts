@@ -130,3 +130,51 @@ export async function chatOverNotes(opts: {
   const block = resp.content.find((b) => b.type === "text");
   return block && block.type === "text" ? block.text : "";
 }
+
+/**
+ * Reflect on the user's notes and produce a fresh set of insights about them.
+ * Prior insights are passed in so each new entry builds on the last rather
+ * than repeating — the result is a cumulative record.
+ */
+export async function generateInsights(opts: {
+  notesContext: string;
+  priorInsights: string[];
+}): Promise<string> {
+  const priorBlock = opts.priorInsights.length
+    ? [
+        "",
+        "=== YOUR PREVIOUS INSIGHTS (most recent first) ===",
+        opts.priorInsights.join("\n\n---\n\n"),
+        "=== END PREVIOUS INSIGHTS ===",
+      ].join("\n")
+    : "";
+
+  const resp = await client().messages.create({
+    model: MODEL,
+    max_tokens: 2048,
+    system: [
+      "You help a person understand themselves by reflecting on their handwritten notebooks.",
+      "Based on the notes below, write a concise, specific set of insights about this person:",
+      "recurring themes, what they value, patterns in how they think and feel, their goals",
+      "and worries, and anything notable or worth their attention.",
+      "Be warm, honest, and concrete — point to what they actually wrote.",
+      "If previous insights are provided, build on them: note what has changed, progressed,",
+      "or recurred, and do not simply repeat earlier observations.",
+      "Write a few short paragraphs or bullet points. No preamble, no sign-off.",
+      "",
+      "=== THE PERSON'S NOTES ===",
+      opts.notesContext,
+      "=== END NOTES ===",
+      priorBlock,
+    ].join("\n"),
+    messages: [
+      {
+        role: "user",
+        content: "Reflect on my notes and share what you notice about me.",
+      },
+    ],
+  });
+
+  const block = resp.content.find((b) => b.type === "text");
+  return block && block.type === "text" ? block.text : "";
+}
