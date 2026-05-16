@@ -123,7 +123,7 @@ export default function LockScreen() {
     <main className="min-h-screen flex items-center justify-center px-6">
       <div className="w-full max-w-sm space-y-5 text-center">
         <div>
-          <h1 className="text-2xl font-semibold">Feed Claude</h1>
+          <h1 className="text-2xl font-semibold">Remarkabler</h1>
           <p className="opacity-60 text-sm mt-1">
             This app is private and locked.
           </p>

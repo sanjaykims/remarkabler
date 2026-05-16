@@ -18,8 +18,8 @@ const MAX_BYTES = 20 * 1024 * 1024;
 export async function POST(req: NextRequest) {
   if (!isAuthenticated()) {
     return page(
-      "Feed Claude is locked",
-      "Open Feed Claude and unlock it first, then share the notebook again.",
+      "Remarkabler is locked",
+      "Open Remarkabler and unlock it first, then share the notebook again.",
       false
     );
   }
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
 // A direct visit to /share (GET) just lands on the notebooks page.
 export async function GET() {
-  return page("Feed Claude", "Opening your notebooks…", true);
+  return page("Remarkabler", "Opening your notebooks…", true);
 }
 
 function escapeHtml(s: string): string {
@@ -87,7 +87,7 @@ function page(title: string, message: string, autoRedirect: boolean): Response {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Feed Claude</title>
+<title>Remarkabler</title>
 ${head}
 <style>
   body { font-family: system-ui, sans-serif; background: #0c0a09; color: #fafaf9;

@@ -55,7 +55,7 @@ export default function Home() {
   return (
     <div className="space-y-6">
       <section className="space-y-1">
-        <h1 className="text-2xl font-semibold">Feed Claude</h1>
+        <h1 className="text-2xl font-semibold">Remarkabler</h1>
         <p className="opacity-70 text-sm">
           Your reMarkable notebooks, transcribed and understood by Claude.
         </p>

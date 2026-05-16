@@ -19,6 +19,8 @@
   Video is rejected with a note, since Claude cannot process video.
 
 ### Changed
+- Renamed the app from "Feed Claude" to "Remarkabler" (nav, dashboard, lock
+  screen, PWA manifest, passkey prompt, and share pages).
 - The home page is now a dashboard: at-a-glance counts, a live "transcribing"
   indicator, quick actions, the latest insight, and recent notebooks.
 - Removed the manual "Lock" button from the nav — the app now re-locks on its

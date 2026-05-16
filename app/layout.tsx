@@ -6,7 +6,7 @@ import LockScreen from "./LockScreen";
 import AutoLock from "./AutoLock";
 
 export const metadata: Metadata = {
-  title: "Feed Claude — reMarkable",
+  title: "Remarkabler",
   description: "OCR your reMarkable notebooks with Claude and chat over your notes.",
   manifest: "/manifest.json",
 };
@@ -25,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <>
             <header className="border-b border-stone-200 dark:border-stone-800">
               <nav className="mx-auto max-w-5xl px-6 py-3 flex items-center gap-6 text-sm">
-                <Link href="/" className="font-semibold">Feed Claude</Link>
+                <Link href="/" className="font-semibold">Remarkabler</Link>
                 <Link href="/notebooks" className="opacity-70 hover:opacity-100">Notebooks</Link>
                 <Link href="/chat" className="opacity-70 hover:opacity-100">Chat</Link>
                 <Link href="/insights" className="opacity-70 hover:opacity-100">Insights</Link>

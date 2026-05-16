@@ -1,6 +1,6 @@
 {
-  "name": "Feed Claude — reMarkable",
-  "short_name": "Feed Claude",
+  "name": "Remarkabler",
+  "short_name": "Remarkabler",
   "description": "Send reMarkable notebook PDFs to Claude for transcription and chat.",
   "start_url": "/notebooks",
   "display": "standalone",

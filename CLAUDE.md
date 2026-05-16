@@ -4,10 +4,10 @@ Guidance for Claude Code working on this repository.
 
 ## What this is
 
-"Feed Claude — reMarkable": a self-hosted Next.js app. The user exports a
-notebook as PDF from their reMarkable tablet, uploads it here, and Claude
-transcribes every handwritten page. They can then chat over their notes and
-generate an accumulating record of "insights" about themselves.
+"Remarkabler" (formerly "Feed Claude"): a self-hosted Next.js app. The user
+exports a notebook as PDF from their reMarkable tablet, uploads it here, and
+Claude transcribes every handwritten page. They can then chat over their notes
+and generate an accumulating record of "insights" about themselves.
 
 ## Repo & deployment
 

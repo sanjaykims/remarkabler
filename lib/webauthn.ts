@@ -10,7 +10,7 @@ import type {
 } from "@simplewebauthn/server";
 import { db } from "@/lib/db";
 
-const RP_NAME = "Feed Claude";
+const RP_NAME = "Remarkabler";
 
 type StoredCredential = {
   id: number;
