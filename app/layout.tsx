@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { isAuthenticated, isLockEnabled } from "@/lib/auth";
 import LockScreen from "./LockScreen";
-import LockButton from "./LockButton";
 import AutoLock from "./AutoLock";
 
 export const metadata: Metadata = {
@@ -30,7 +29,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/notebooks" className="opacity-70 hover:opacity-100">Notebooks</Link>
                 <Link href="/chat" className="opacity-70 hover:opacity-100">Chat</Link>
                 <Link href="/insights" className="opacity-70 hover:opacity-100">Insights</Link>
-                {isLockEnabled() && <LockButton />}
               </nav>
             </header>
             <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>

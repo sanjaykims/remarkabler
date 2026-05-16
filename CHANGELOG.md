@@ -15,6 +15,12 @@
   still feed Claude — so the conversation continues seamlessly on top of them.
 
 ### Changed
+- The home page is now a dashboard: at-a-glance counts, a live "transcribing"
+  indicator, quick actions, the latest insight, and recent notebooks.
+- Removed the manual "Lock" button from the nav — the app now re-locks on its
+  own whenever it is backgrounded, so the button was redundant.
+- New app icon: a sleeker notebook-and-spark mark on a warm gradient, replacing
+  the plain circle (also wired up as the favicon and Apple touch icon).
 - Insights page is simpler to read: the newest reflection is shown in full at
   the top, and each earlier reflection collapses into a tappable row showing
   its date and a short summary. All past entries are kept and still included
