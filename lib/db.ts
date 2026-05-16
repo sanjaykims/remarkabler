@@ -89,6 +89,15 @@ CREATE TABLE IF NOT EXISTS insights (
   content TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS credentials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  credential_id TEXT NOT NULL UNIQUE,
+  public_key TEXT NOT NULL,
+  counter INTEGER NOT NULL DEFAULT 0,
+  transports TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 export function getSetting(key: string): string | null {

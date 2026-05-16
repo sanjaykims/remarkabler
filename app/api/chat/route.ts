@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { buildNotesContext } from "@/lib/notes";
 import { chatOverNotes } from "@/lib/claude";
+import { isAuthenticated } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+const LOCKED = () =>
+  NextResponse.json({ error: "Locked" }, { status: 401 });
+
 export async function POST(req: NextRequest) {
+  if (!isAuthenticated()) return LOCKED();
   const body = await req.json().catch(() => ({}));
   const conversationId = String(body.conversationId || "default");
   const userMessage = String(body.message || "").trim();
@@ -43,6 +48,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  if (!isAuthenticated()) return LOCKED();
   const conversationId = req.nextUrl.searchParams.get("conversationId") || "default";
   const messages = db()
     .prepare(

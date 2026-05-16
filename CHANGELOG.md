@@ -2,6 +2,15 @@
 
 ## 2026-05-16
 
+### Added
+- Private lock for the whole app. When the `APP_PASSCODE` environment variable
+  is set, every page and API is gated behind a lock screen. The owner unlocks
+  with a passkey — fingerprint on Android, Face ID on iPhone — registered once
+  per device, with the passcode as the backup / device-registration key. A
+  successful unlock keeps that device open for 7 days; a "Lock" button in the
+  nav locks immediately. With `APP_PASSCODE` unset the app stays fully open,
+  so the lock is turned on simply by adding that one variable.
+
 ### Changed
 - Insights page is simpler to read: the newest reflection is shown in full at
   the top, and each earlier reflection collapses into a tappable row showing

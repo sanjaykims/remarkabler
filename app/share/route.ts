@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createNotebook, processNotebook } from "@/lib/notes";
+import { isAuthenticated } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,13 @@ const MAX_BYTES = 20 * 1024 * 1024;
  * in the background so the phone is never left on a frozen screen.
  */
 export async function POST(req: NextRequest) {
+  if (!isAuthenticated()) {
+    return page(
+      "Feed Claude is locked",
+      "Open Feed Claude and unlock it first, then share the notebook again.",
+      false
+    );
+  }
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
 

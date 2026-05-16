@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { createNotebook, processNotebook, deleteNotebook } from "@/lib/notes";
+import { isAuthenticated } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 const MAX_BYTES = 20 * 1024 * 1024;
 
+const LOCKED = () =>
+  NextResponse.json({ error: "Locked" }, { status: 401 });
+
 export async function GET() {
+  if (!isAuthenticated()) return LOCKED();
   const notebooks = db()
     .prepare(
       `SELECT n.id, n.name, n.synced_at,
@@ -23,6 +28,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isAuthenticated()) return LOCKED();
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
   if (!(file instanceof File)) {
@@ -61,6 +67,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (!isAuthenticated()) return LOCKED();
   const id = req.nextUrl.searchParams.get("id");
   if (!id) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });

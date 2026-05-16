@@ -19,6 +19,10 @@ generate an accumulating record of "insights" about themselves.
 - Railway config: env vars `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`
   (set to `claude-opus-4-7`), `DATA_DIR=/data`; a persistent volume is mounted
   at `/data` and holds the SQLite database and uploaded PDFs.
+- Optional env var `APP_PASSCODE` enables the private lock. When set, the
+  whole app (pages + APIs) is gated behind a passkey (fingerprint / Face ID)
+  or the passcode itself. When unset, the app is fully open — so the lock can
+  be turned on/off purely by adding/removing this one variable.
 - `npm run start` honors the host-provided `PORT`. `npm run build` must pass.
 
 ## Stack

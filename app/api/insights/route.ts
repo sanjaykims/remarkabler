@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { buildNotesContext, buildChatContext } from "@/lib/notes";
 import { generateInsights, generateInsightTitle } from "@/lib/claude";
+import { isAuthenticated } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
+
+const LOCKED = () =>
+  NextResponse.json({ error: "Locked" }, { status: 401 });
 
 // Give a short topic title to any older insight that predates the title
 // feature. Resilient: a failure leaves the entry untitled and is retried on
@@ -35,6 +39,7 @@ async function backfillTitles() {
 }
 
 export async function GET() {
+  if (!isAuthenticated()) return LOCKED();
   await backfillTitles();
   const insights = db()
     .prepare(`SELECT id, title, content, created_at FROM insights ORDER BY id DESC`)
@@ -43,6 +48,7 @@ export async function GET() {
 }
 
 export async function POST() {
+  if (!isAuthenticated()) return LOCKED();
   const noteCount = db()
     .prepare(
       `SELECT COUNT(*) AS c FROM pages WHERE ocr_text IS NOT NULL AND ocr_text != ''`
