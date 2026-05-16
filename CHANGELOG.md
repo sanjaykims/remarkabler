@@ -3,9 +3,10 @@
 ## 2026-05-15
 
 ### Added
-- Insights page: on demand, Claude reflects on all of your notes and records
-  what it notices about you. Each entry builds on the previous ones into a
-  cumulative record, which can be exported (download as Markdown or copy).
+- Insights page: on demand, Claude reflects on all of your notes and your
+  chat history and records what it notices about you. Each entry builds on the
+  previous ones into a cumulative record, which can be exported (download as
+  Markdown or copy).
 - The chat box keeps an unsent draft: typing is saved and restored if the
   page reloads or the app is backgrounded.
 - Voice on the Chat page: a Speak button transcribes a spoken question (via

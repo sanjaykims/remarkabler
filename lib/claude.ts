@@ -132,12 +132,13 @@ export async function chatOverNotes(opts: {
 }
 
 /**
- * Reflect on the user's notes and produce a fresh set of insights about them.
- * Prior insights are passed in so each new entry builds on the last rather
- * than repeating — the result is a cumulative record.
+ * Reflect on the user's notes and chats and produce a fresh set of insights
+ * about them. Prior insights are passed in so each new entry builds on the
+ * last rather than repeating — the result is a cumulative record.
  */
 export async function generateInsights(opts: {
   notesContext: string;
+  chatContext: string;
   priorInsights: string[];
 }): Promise<string> {
   const priorBlock = opts.priorInsights.length
@@ -149,28 +150,41 @@ export async function generateInsights(opts: {
       ].join("\n")
     : "";
 
+  const chatBlock = opts.chatContext.trim()
+    ? [
+        "",
+        "=== THE PERSON'S RECENT CHATS WITH YOU ===",
+        opts.chatContext,
+        "=== END CHATS ===",
+      ].join("\n")
+    : "";
+
   const resp = await client().messages.create({
     model: MODEL,
     max_tokens: 2048,
     system: [
-      "You help a person understand themselves by reflecting on their handwritten notebooks.",
-      "Based on the notes below, write a concise, specific set of insights about this person:",
-      "recurring themes, what they value, patterns in how they think and feel, their goals",
-      "and worries, and anything notable or worth their attention.",
-      "Be warm, honest, and concrete — point to what they actually wrote.",
-      "If previous insights are provided, build on them: note what has changed, progressed,",
-      "or recurred, and do not simply repeat earlier observations.",
+      "You help a person understand themselves by reflecting on their",
+      "handwritten notebooks and their conversations with you.",
+      "Write a concise, specific set of insights about this person:",
+      "recurring themes, what they value, patterns in how they think and feel,",
+      "their goals and worries, and anything notable or worth their attention.",
+      "Their notes are the main source. Their recent chats with you also count —",
+      "what they ask about reveals their current concerns and interests.",
+      "Be warm, honest, and concrete — point to what they actually wrote or asked.",
+      "If previous insights are provided, build on them: note what has changed,",
+      "progressed, or recurred, and do not simply repeat earlier observations.",
       "Write a few short paragraphs or bullet points. No preamble, no sign-off.",
       "",
       "=== THE PERSON'S NOTES ===",
       opts.notesContext,
       "=== END NOTES ===",
+      chatBlock,
       priorBlock,
     ].join("\n"),
     messages: [
       {
         role: "user",
-        content: "Reflect on my notes and share what you notice about me.",
+        content: "Reflect on my notes and chats and share what you notice about me.",
       },
     ],
   });

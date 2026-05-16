@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { buildNotesContext } from "@/lib/notes";
+import { buildNotesContext, buildChatContext } from "@/lib/notes";
 import { generateInsights } from "@/lib/claude";
 
 export const runtime = "nodejs";
@@ -27,6 +27,7 @@ export async function POST() {
   }
 
   const notesContext = buildNotesContext();
+  const chatContext = buildChatContext();
   const priorRows = db()
     .prepare(`SELECT content FROM insights ORDER BY id DESC LIMIT 3`)
     .all() as Array<{ content: string }>;
@@ -35,6 +36,7 @@ export async function POST() {
   try {
     content = await generateInsights({
       notesContext,
+      chatContext,
       priorInsights: priorRows.map((r) => r.content),
     });
   } catch (err) {

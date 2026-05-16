@@ -132,3 +132,25 @@ export function buildNotesContext(opts: { maxChars?: number } = {}): string {
   }
   return out || "(no notebooks have been uploaded yet)";
 }
+
+/**
+ * Build a transcript of the user's chat history with Claude, most recent
+ * messages first-bounded by `maxChars`. Used to feed the insights with what
+ * the user has actually been asking and discussing.
+ */
+export function buildChatContext(opts: { maxChars?: number } = {}): string {
+  const limit = opts.maxChars ?? 50_000;
+  const rows = db()
+    .prepare(`SELECT role, content FROM chat_messages ORDER BY id ASC`)
+    .all() as Array<{ role: string; content: string }>;
+
+  let out = "";
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    const who = r.role === "user" ? "Me" : "Claude";
+    const block = `${who}: ${r.content}\n\n`;
+    if (out.length + block.length > limit) break;
+    out = block + out;
+  }
+  return out.trim();
+}
