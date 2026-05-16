@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-05-16
+
+### Fixed
+- Chat page no longer plays a noisy smooth-scroll animation through the whole
+  history every time it opens. The saved conversation now jumps instantly to
+  the latest message on load; the smooth scroll is kept only for messages
+  sent or received during the session.
+
 ## 2026-05-15
 
 ### Added

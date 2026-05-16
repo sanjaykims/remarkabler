@@ -14,6 +14,9 @@ export default function ChatPage() {
   const [speaking, setSpeaking] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // True once the first scroll-to-bottom has happened, so loading the
+  // existing history doesn't animate a noisy smooth scroll on every visit.
+  const didInitialScroll = useRef(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
@@ -34,7 +37,15 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length === 0) return;
+    if (didInitialScroll.current) {
+      // A message was sent/received this session — animate to it.
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    } else {
+      // First load of the saved history — jump instantly, no animation.
+      didInitialScroll.current = true;
+      bottomRef.current?.scrollIntoView();
+    }
   }, [messages]);
 
   useEffect(() => {
