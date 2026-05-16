@@ -58,8 +58,7 @@ export default function ChatPage() {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    // Pick the voice language from the reply's script.
-    u.lang = /[가-힯]/.test(text) ? "ko-KR" : "en-US";
+    u.lang = "en-US";
     u.onend = () => setSpeaking(false);
     u.onerror = () => setSpeaking(false);
     setSpeaking(true);
@@ -129,7 +128,7 @@ export default function ChatPage() {
     stopSpeaking();
 
     const recognition = new SR();
-    recognition.lang = "ko-KR";
+    recognition.lang = "en-US";
     recognition.interimResults = true;
     recognition.continuous = false;
 
