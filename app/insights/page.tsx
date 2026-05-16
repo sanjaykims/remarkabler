@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatLocalTime } from "@/lib/format";
 
 type Insight = {
   id: number;
@@ -57,7 +58,7 @@ export default function InsightsPage() {
     return insights
       .map(
         (it) =>
-          `## ${new Date(it.created_at).toLocaleString()}\n\n${it.content}\n`
+          `## ${formatLocalTime(it.created_at)}\n\n${it.content}\n`
       )
       .join("\n---\n\n");
   }
@@ -146,7 +147,7 @@ export default function InsightsPage() {
               <summary className="cursor-pointer px-3 py-2 list-none flex flex-col gap-0.5">
                 <span className="text-[11px] opacity-60">
                   {i === 0 && "Latest · "}
-                  {new Date(it.created_at).toLocaleString()}
+                  {formatLocalTime(it.created_at)}
                 </span>
                 <span className="text-xs opacity-80">
                   {it.title || summarize(it.content)}

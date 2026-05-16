@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { formatLocalTime } from "@/lib/format";
 
 type Notebook = {
   id: string;
@@ -138,7 +139,7 @@ export default function NotebooksPage() {
                 )}
               </td>
               <td className="py-2 pr-4 opacity-70">
-                {n.synced_at ? new Date(n.synced_at).toLocaleString() : "—"}
+                {formatLocalTime(n.synced_at)}
               </td>
               <td className="py-2 text-right">
                 <button
