@@ -31,6 +31,8 @@
   off by the UTC offset because UTC timestamps were parsed as local time.
   They are now displayed in the viewer's local timezone with the timezone
   name shown.
+- The lock screen's passcode field showed only a numeric keypad; it now opens
+  the full keyboard so passcodes with letters and symbols can be entered.
 - Dates now always render in English regardless of the device's language
   setting, instead of following the browser locale (e.g. Korean).
 - Voice features (Speak playback and spoken-question input) now use English

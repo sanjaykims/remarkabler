@@ -115,7 +115,6 @@ export default function LockScreen() {
           <div className="space-y-3 pt-1">
             <input
               type="password"
-              inputMode="numeric"
               autoComplete="off"
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
