@@ -2,6 +2,12 @@
 
 ## 2026-05-16
 
+### Changed
+- Insights page is simpler to read: the newest reflection is shown in full at
+  the top, and each earlier reflection collapses into a tappable row showing
+  its date and a short summary. All past entries are kept and still included
+  in Copy/Export.
+
 ### Fixed
 - Chat page no longer plays a noisy smooth-scroll animation through the whole
   history every time it opens. The saved conversation now jumps instantly to

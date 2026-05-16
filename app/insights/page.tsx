@@ -4,6 +4,15 @@ import { useEffect, useState } from "react";
 
 type Insight = { id: number; content: string; created_at: string };
 
+// A short, plain-text preview of an entry for the collapsed older rows.
+function summarize(content: string): string {
+  const text = content
+    .replace(/[#*_`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > 70 ? text.slice(0, 70).trimEnd() + "…" : text;
+}
+
 export default function InsightsPage() {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -66,6 +75,9 @@ export default function InsightsPage() {
     }
   }
 
+  const latest = insights[0];
+  const older = insights.slice(1);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -99,9 +111,9 @@ export default function InsightsPage() {
 
       <p className="opacity-70 text-sm">
         Claude reads everything in your notebooks and records what it notices
-        about you. Each entry builds on the last, so this becomes a growing
-        record over time. Use <strong>Export</strong> to save it whenever you
-        like.
+        about you. Each entry builds on the last, so the newest reflection is
+        your full current record. Use <strong>Export</strong> to save it
+        whenever you like.
       </p>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -118,19 +130,45 @@ export default function InsightsPage() {
         </p>
       )}
 
-      <div className="space-y-4">
-        {insights.map((it) => (
-          <div
-            key={it.id}
-            className="rounded border border-stone-200 dark:border-stone-800 p-4"
-          >
-            <div className="text-xs opacity-60 mb-2">
-              {new Date(it.created_at).toLocaleString()}
-            </div>
-            <div className="text-sm whitespace-pre-wrap">{it.content}</div>
+      {latest && (
+        <div>
+          <div className="text-xs uppercase tracking-wide opacity-50 mb-1">
+            Latest reflection
           </div>
-        ))}
-      </div>
+          <div className="text-xs opacity-60 mb-2">
+            {new Date(latest.created_at).toLocaleString()}
+          </div>
+          <div className="text-sm whitespace-pre-wrap">{latest.content}</div>
+        </div>
+      )}
+
+      {older.length > 0 && (
+        <div className="border-t border-stone-200 dark:border-stone-800 pt-4">
+          <div className="text-xs uppercase tracking-wide opacity-50 mb-2">
+            Earlier reflections
+          </div>
+          <div className="space-y-1">
+            {older.map((it) => (
+              <details
+                key={it.id}
+                className="rounded border border-stone-200 dark:border-stone-800"
+              >
+                <summary className="cursor-pointer px-3 py-2 list-none flex flex-col gap-0.5">
+                  <span className="text-xs opacity-60">
+                    {new Date(it.created_at).toLocaleString()}
+                  </span>
+                  <span className="text-sm opacity-80">
+                    {summarize(it.content)}
+                  </span>
+                </summary>
+                <div className="px-3 pb-3 text-sm whitespace-pre-wrap border-t border-stone-200 dark:border-stone-800 pt-2">
+                  {it.content}
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
