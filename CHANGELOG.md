@@ -13,6 +13,9 @@
   words), shown on its collapsed history row. Existing entries are
   automatically backfilled with a title the first time the page loads; the
   trimmed-opening label remains only as a fallback if titling fails.
+- The Insights page is now a single uniform list of collapsed rows — the
+  latest reflection is collapsed like every other entry (marked "Latest")
+  and expands on tap, instead of being shown in full at the top.
 
 ### Fixed
 - Chat page no longer plays a noisy smooth-scroll animation through the whole

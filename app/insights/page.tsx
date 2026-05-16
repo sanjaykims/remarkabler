@@ -84,9 +84,6 @@ export default function InsightsPage() {
     }
   }
 
-  const latest = insights[0];
-  const older = insights.slice(1);
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -139,43 +136,27 @@ export default function InsightsPage() {
         </p>
       )}
 
-      {latest && (
-        <div>
-          <div className="text-xs uppercase tracking-wide opacity-50 mb-1">
-            Latest reflection
-          </div>
-          <div className="text-xs opacity-60 mb-2">
-            {new Date(latest.created_at).toLocaleString()}
-          </div>
-          <div className="text-sm whitespace-pre-wrap">{latest.content}</div>
-        </div>
-      )}
-
-      {older.length > 0 && (
-        <div className="border-t border-stone-200 dark:border-stone-800 pt-4">
-          <div className="text-xs uppercase tracking-wide opacity-50 mb-2">
-            Earlier reflections
-          </div>
-          <div className="space-y-1">
-            {older.map((it) => (
-              <details
-                key={it.id}
-                className="rounded border border-stone-200 dark:border-stone-800"
-              >
-                <summary className="cursor-pointer px-3 py-2 list-none flex flex-col gap-0.5">
-                  <span className="text-[11px] opacity-60">
-                    {new Date(it.created_at).toLocaleString()}
-                  </span>
-                  <span className="text-xs opacity-80">
-                    {it.title || summarize(it.content)}
-                  </span>
-                </summary>
-                <div className="px-3 pb-3 text-sm whitespace-pre-wrap border-t border-stone-200 dark:border-stone-800 pt-2">
-                  {it.content}
-                </div>
-              </details>
-            ))}
-          </div>
+      {insights.length > 0 && (
+        <div className="space-y-1">
+          {insights.map((it, i) => (
+            <details
+              key={it.id}
+              className="rounded border border-stone-200 dark:border-stone-800"
+            >
+              <summary className="cursor-pointer px-3 py-2 list-none flex flex-col gap-0.5">
+                <span className="text-[11px] opacity-60">
+                  {i === 0 && "Latest · "}
+                  {new Date(it.created_at).toLocaleString()}
+                </span>
+                <span className="text-xs opacity-80">
+                  {it.title || summarize(it.content)}
+                </span>
+              </summary>
+              <div className="px-3 pb-3 text-sm whitespace-pre-wrap border-t border-stone-200 dark:border-stone-800 pt-2">
+                {it.content}
+              </div>
+            </details>
+          ))}
         </div>
       )}
     </div>
