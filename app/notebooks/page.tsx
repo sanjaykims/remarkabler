@@ -18,6 +18,7 @@ export default function NotebooksPage() {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -54,6 +55,7 @@ export default function NotebooksPage() {
       if (!r.ok) throw new Error(d.error || "Upload failed");
       setStatus(`Uploaded "${d.name}" — transcribing in the background. It will appear below.`);
       if (fileRef.current) fileRef.current.value = "";
+      setFileName(null);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -83,11 +85,25 @@ export default function NotebooksPage() {
         <div className="flex flex-wrap items-center gap-2">
           <input
             ref={fileRef}
+            id="notebook-file"
             type="file"
             accept="application/pdf,.pdf"
             disabled={uploading}
-            className="text-sm"
+            onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+            className="hidden"
           />
+          <label
+            htmlFor="notebook-file"
+            className={
+              "rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-sm cursor-pointer" +
+              (uploading ? " opacity-50 pointer-events-none" : "")
+            }
+          >
+            Choose file
+          </label>
+          <span className="text-sm opacity-70">
+            {fileName ?? "No file chosen"}
+          </span>
           <button
             type="submit"
             disabled={uploading}

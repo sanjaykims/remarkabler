@@ -26,6 +26,9 @@
   setting, instead of following the browser locale (e.g. Korean).
 - Voice features (Speak playback and spoken-question input) now use English
   only, instead of switching to Korean based on the text.
+- The notebook upload control now uses a custom English "Choose file" button
+  and file-name text, instead of the browser's native file picker whose
+  label was localized (e.g. Korean) by the device.
 - Chat page no longer plays a noisy smooth-scroll animation through the whole
   history every time it opens. The saved conversation now jumps instantly to
   the latest message on load; the smooth scroll is kept only for messages
