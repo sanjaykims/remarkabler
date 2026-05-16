@@ -10,6 +10,9 @@
   successful unlock keeps that device open for 7 days; a "Lock" button in the
   nav locks immediately. With `APP_PASSCODE` unset the app stays fully open,
   so the lock is turned on simply by adding that one variable.
+- Chat page: a "Clear" button hides the conversation from the app for privacy.
+  Cleared messages are archived (kept in the database) rather than deleted, and
+  still feed Claude — so the conversation continues seamlessly on top of them.
 
 ### Changed
 - Insights page is simpler to read: the newest reflection is shown in full at

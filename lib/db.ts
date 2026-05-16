@@ -27,6 +27,13 @@ export function db(): Database.Database {
   } catch {
     // column already exists
   }
+  // Archived chat messages are hidden from the chat view but kept in the DB,
+  // and still feed Claude so a cleared conversation continues seamlessly.
+  try {
+    _db.exec(`ALTER TABLE chat_messages ADD COLUMN archived_at TEXT`);
+  } catch {
+    // column already exists
+  }
   // Any notebook still "processing" at startup was interrupted by a restart.
   _db
     .prepare(

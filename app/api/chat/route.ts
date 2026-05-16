@@ -53,8 +53,23 @@ export async function GET(req: NextRequest) {
   const messages = db()
     .prepare(
       `SELECT role, content, created_at FROM chat_messages
-       WHERE conversation_id = ? ORDER BY id ASC`
+       WHERE conversation_id = ? AND archived_at IS NULL ORDER BY id ASC`
     )
     .all(conversationId);
   return NextResponse.json({ messages });
+}
+
+// "Clear" the chat: archive every visible message. They stay in the database
+// and still feed Claude (the POST history query is unfiltered), so the
+// conversation continues — they are only removed from the chat view.
+export async function DELETE(req: NextRequest) {
+  if (!isAuthenticated()) return LOCKED();
+  const conversationId = req.nextUrl.searchParams.get("conversationId") || "default";
+  db()
+    .prepare(
+      `UPDATE chat_messages SET archived_at = CURRENT_TIMESTAMP
+       WHERE conversation_id = ? AND archived_at IS NULL`
+    )
+    .run(conversationId);
+  return NextResponse.json({ ok: true });
 }

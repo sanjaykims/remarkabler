@@ -116,6 +116,18 @@ export default function ChatPage() {
     sendMessage(input, false);
   }
 
+  // Archive the visible chat: it is hidden here but kept in the database, and
+  // Claude still continues the conversation from it.
+  async function clearChat() {
+    if (busy) return;
+    const ok = window.confirm(
+      "Hide this chat from the app? Your messages are kept and Claude still continues the conversation from them — they are only removed from view here, for privacy."
+    );
+    if (!ok) return;
+    await fetch("/api/chat?conversationId=default", { method: "DELETE" });
+    setMessages([]);
+  }
+
   function toggleMic() {
     if (listening) {
       recognitionRef.current?.stop();
@@ -162,7 +174,18 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)]">
-      <h1 className="text-2xl font-semibold mb-4">Chat with your notes</h1>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <h1 className="text-2xl font-semibold">Chat with your notes</h1>
+        {messages.length > 0 && (
+          <button
+            onClick={clearChat}
+            disabled={busy}
+            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            Clear
+          </button>
+        )}
+      </div>
 
       <div className="flex-1 overflow-auto space-y-4 pb-4">
         {messages.length === 0 && (
