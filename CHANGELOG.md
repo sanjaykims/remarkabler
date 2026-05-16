@@ -36,6 +36,10 @@
 - The lock screen now surfaces a clear "Set up this phone" button when other
   devices are already registered, so a new phone registers its own Face ID /
   fingerprint instead of being pushed into the cross-device QR-code flow.
+- The app now re-locks automatically whenever it is sent to the background:
+  the session is dropped and the screen is covered. On return, a device that
+  has unlocked before prompts for the passkey automatically (where the browser
+  allows it; otherwise the unlock button is one tap away).
 - Dates now always render in English regardless of the device's language
   setting, instead of following the browser locale (e.g. Korean).
 - Voice features (Speak playback and spoken-question input) now use English

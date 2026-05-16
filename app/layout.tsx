@@ -4,6 +4,7 @@ import Link from "next/link";
 import { isAuthenticated, isLockEnabled } from "@/lib/auth";
 import LockScreen from "./LockScreen";
 import LockButton from "./LockButton";
+import AutoLock from "./AutoLock";
 
 export const metadata: Metadata = {
   title: "Feed Claude — reMarkable",
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </nav>
             </header>
             <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
+            {isLockEnabled() && <AutoLock />}
           </>
         ) : (
           <LockScreen />

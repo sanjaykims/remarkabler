@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   startRegistration,
   startAuthentication,
 } from "@simplewebauthn/browser";
+import { setUnlocking } from "./lockState";
+
+// Set on a device once it has successfully unlocked, so the lock screen knows
+// it can prompt the passkey automatically here (and not on a brand-new phone,
+// where an automatic prompt would surface the cross-device QR flow).
+const DEVICE_KNOWN_KEY = "fc-device-known";
 
 export default function LockScreen() {
   const [registered, setRegistered] = useState<boolean | null>(null);
@@ -12,6 +18,7 @@ export default function LockScreen() {
   const [showPasscode, setShowPasscode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const autoTried = useRef(false);
 
   useEffect(() => {
     fetch("/api/auth")
@@ -31,17 +38,30 @@ export default function LockScreen() {
     return d;
   }
 
-  async function unlockBiometric() {
+  function rememberDevice() {
+    try {
+      localStorage.setItem(DEVICE_KNOWN_KEY, "1");
+    } catch {
+      // localStorage unavailable
+    }
+  }
+
+  // `silent` is used by the automatic prompt: a failure there (e.g. iOS needs
+  // a tap) should quietly fall back to the buttons, not show an error.
+  async function unlockBiometric(silent = false) {
     setBusy(true);
     setError(null);
+    setUnlocking(true);
     try {
       const options = await post({ action: "login-options" });
       const cred = await startAuthentication({ optionsJSON: options });
       await post({ action: "login-verify", response: cred });
+      rememberDevice();
       location.reload();
     } catch (e) {
-      setError(friendly(e, "Couldn't unlock with biometrics."));
+      if (!silent) setError(friendly(e, "Couldn't unlock with biometrics."));
       setBusy(false);
+      setUnlocking(false);
     }
   }
 
@@ -50,6 +70,7 @@ export default function LockScreen() {
     setError(null);
     try {
       await post({ action: "passcode", passcode });
+      rememberDevice();
       location.reload();
     } catch (e) {
       setError(friendly(e, "Wrong passcode."));
@@ -60,16 +81,43 @@ export default function LockScreen() {
   async function registerDevice() {
     setBusy(true);
     setError(null);
+    setUnlocking(true);
     try {
       const options = await post({ action: "register-options", passcode });
       const cred = await startRegistration({ optionsJSON: options });
       await post({ action: "register-verify", response: cred });
+      rememberDevice();
       location.reload();
     } catch (e) {
       setError(friendly(e, "Couldn't set up this device."));
       setBusy(false);
+      setUnlocking(false);
     }
   }
+
+  // On a device that has unlocked before, prompt for the passkey automatically
+  // once the lock screen is visible — so returning from the background goes
+  // straight to Face ID / fingerprint with no extra tap.
+  useEffect(() => {
+    if (registered !== true || autoTried.current) return;
+    let known = false;
+    try {
+      known = localStorage.getItem(DEVICE_KNOWN_KEY) === "1";
+    } catch {
+      known = false;
+    }
+    if (!known) return;
+
+    function attempt() {
+      if (autoTried.current || document.visibilityState !== "visible") return;
+      autoTried.current = true;
+      unlockBiometric(true);
+    }
+    attempt();
+    document.addEventListener("visibilitychange", attempt);
+    return () => document.removeEventListener("visibilitychange", attempt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registered]);
 
   return (
     <main className="min-h-screen flex items-center justify-center px-6">
@@ -88,7 +136,7 @@ export default function LockScreen() {
         {registered === true && (
           <>
             <button
-              onClick={unlockBiometric}
+              onClick={() => unlockBiometric(false)}
               disabled={busy}
               className="w-full rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-3 text-sm font-medium disabled:opacity-50"
             >
