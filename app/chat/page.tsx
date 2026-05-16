@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Attachment = { id: number; kind: string; filename: string };
+type Msg = {
+  role: "user" | "assistant";
+  content: string;
+  attachments?: Attachment[];
+};
 
 const DRAFT_KEY = "feedclaude:chat-draft";
 
@@ -13,7 +18,10 @@ export default function ChatPage() {
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // True once the first scroll-to-bottom has happened, so loading the
   // existing history doesn't animate a noisy smooth scroll on every visit.
   const didInitialScroll = useRef(false);
@@ -72,27 +80,111 @@ export default function ChatPage() {
     setSpeaking(false);
   }
 
+  // Validate a picked attachment before it is sent.
+  function pickFile(f: File | null) {
+    setError(null);
+    if (!f) return;
+    if (f.type.startsWith("video/")) {
+      setError("Claude can't read video. Attach a photo or a PDF instead.");
+      return;
+    }
+    const isImage = f.type.startsWith("image/");
+    const isPdf =
+      f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
+    if (!isImage && !isPdf) {
+      setError("Only photos and PDF files can be attached.");
+      return;
+    }
+    setFile(f);
+  }
+
+  // Downscale a photo in the browser so the upload stays small and within
+  // the image size Claude accepts.
+  function resizeImage(f: File): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(f);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const max = 1568;
+        let { width, height } = img;
+        if (width > max || height > max) {
+          const scale = Math.min(max / width, max / height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Couldn't process the image."));
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (b) =>
+            b ? resolve(b) : reject(new Error("Couldn't process the image.")),
+          "image/jpeg",
+          0.85
+        );
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Couldn't read that image."));
+      };
+      img.src = url;
+    });
+  }
+
   async function sendMessage(text: string, speakReply: boolean) {
     const t = text.trim();
-    if (!t || busy) return;
+    const attached = file;
+    if ((!t && !attached) || busy) return;
     stopSpeaking();
     setBusy(true);
+    setError(null);
     updateInput("");
-    setMessages((m) => [...m, { role: "user", content: t }]);
+    setFile(null);
+    setMessages((m) => [
+      ...m,
+      {
+        role: "user",
+        content:
+          t ||
+          (attached
+            ? attached.type.startsWith("image/")
+              ? "[Photo]"
+              : "[PDF]"
+            : ""),
+      },
+    ]);
     try {
-      const r = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: t, conversationId: "default" }),
-      });
-      const d = await r.json();
-      const reply = d.reply || d.error || "";
-      setMessages((m) => [...m, { role: "assistant", content: reply }]);
+      const fd = new FormData();
+      fd.append("conversationId", "default");
+      fd.append("message", t);
+      if (attached) {
+        const payload = attached.type.startsWith("image/")
+          ? await resizeImage(attached)
+          : attached;
+        fd.append("file", payload, attached.name);
+      }
+      const r = await fetch("/api/chat", { method: "POST", body: fd });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        throw new Error(d.error || "Something went wrong. Please try again.");
+      }
+      // Reload so a saved attachment shows on the message bubbles.
+      const list = await fetch("/api/chat?conversationId=default").then((x) =>
+        x.json()
+      );
+      setMessages(list.messages || []);
       if (speakReply && d.reply) speak(d.reply);
-    } catch {
+    } catch (e) {
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: "Something went wrong. Please try again." },
+        {
+          role: "assistant",
+          content:
+            (e as Error).message || "Something went wrong. Please try again.",
+        },
       ]);
     } finally {
       setBusy(false);
@@ -191,24 +283,50 @@ export default function ChatPage() {
         {messages.length === 0 && (
           <p className="opacity-60 text-sm">
             Ask anything about your uploaded notebooks. Try: <em>What did I write
-            about the Q2 roadmap?</em>
+            about the Q2 roadmap?</em> You can also attach a photo or PDF for
+            Claude to read.
             {voiceSupported && (
               <> Or tap <strong>Speak</strong> to ask out loud and hear the answer.</>
             )}
           </p>
         )}
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={
-              m.role === "user"
-                ? "ml-auto max-w-[80%] rounded-2xl bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 whitespace-pre-wrap"
-                : "mr-auto max-w-[80%] rounded-2xl bg-stone-100 dark:bg-stone-900 px-4 py-2 whitespace-pre-wrap"
-            }
-          >
-            {m.content}
-          </div>
-        ))}
+        {messages.map((m, i) => {
+          const placeholderOnly =
+            !!m.attachments?.length && /^\[(Photo|PDF)/.test(m.content);
+          return (
+            <div
+              key={i}
+              className={
+                m.role === "user"
+                  ? "ml-auto max-w-[80%] rounded-2xl bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 whitespace-pre-wrap"
+                  : "mr-auto max-w-[80%] rounded-2xl bg-stone-100 dark:bg-stone-900 px-4 py-2 whitespace-pre-wrap"
+              }
+            >
+              {m.attachments?.map((a) =>
+                a.kind === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={a.id}
+                    src={`/api/chat/attachment/${a.id}`}
+                    alt={a.filename}
+                    className="rounded-lg mb-2 max-h-64 w-auto"
+                  />
+                ) : (
+                  <a
+                    key={a.id}
+                    href={`/api/chat/attachment/${a.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block mb-2 text-sm underline break-all"
+                  >
+                    {a.filename}
+                  </a>
+                )
+              )}
+              {!placeholderOnly && m.content}
+            </div>
+          );
+        })}
         <div ref={bottomRef} />
       </div>
 
@@ -223,43 +341,76 @@ export default function ChatPage() {
 
       <form
         onSubmit={send}
-        className="border-t border-stone-200 dark:border-stone-800 pt-3 flex gap-2 items-end"
+        className="border-t border-stone-200 dark:border-stone-800 pt-3 space-y-2"
       >
-        <textarea
-          value={input}
-          onChange={(e) => updateInput(e.target.value)}
-          placeholder={
-            busy
-              ? "Thinking…"
-              : listening
-                ? "Listening…"
-                : "Ask about your notes…  (Enter for a new line)"
-          }
-          disabled={busy}
-          rows={2}
-          className="flex-1 rounded border border-stone-300 dark:border-stone-700 px-3 py-2 bg-transparent resize-y"
-        />
-        {voiceSupported && (
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        {file && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="truncate opacity-80">Attached: {file.name}</span>
+            <button
+              type="button"
+              onClick={() => setFile(null)}
+              className="shrink-0 opacity-60 hover:opacity-100 underline"
+            >
+              Remove
+            </button>
+          </div>
+        )}
+        <div className="flex gap-2 items-end">
+          <textarea
+            value={input}
+            onChange={(e) => updateInput(e.target.value)}
+            placeholder={
+              busy
+                ? "Thinking…"
+                : listening
+                  ? "Listening…"
+                  : "Ask about your notes…  (Enter for a new line)"
+            }
+            disabled={busy}
+            rows={2}
+            className="flex-1 rounded border border-stone-300 dark:border-stone-700 px-3 py-2 bg-transparent resize-y"
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf,.pdf"
+            className="hidden"
+            onChange={(e) => {
+              pickFile(e.target.files?.[0] || null);
+              e.target.value = "";
+            }}
+          />
           <button
             type="button"
-            onClick={toggleMic}
+            onClick={() => fileInputRef.current?.click()}
             disabled={busy}
-            className={
-              listening
-                ? "rounded bg-red-600 text-white px-3 py-2 text-sm"
-                : "rounded border border-stone-300 dark:border-stone-700 px-3 py-2 text-sm disabled:opacity-50"
-            }
+            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-2 text-sm disabled:opacity-50"
           >
-            {listening ? "Listening…" : "Speak"}
+            Attach
           </button>
-        )}
-        <button
-          type="submit"
-          disabled={busy || !input.trim()}
-          className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
-        >
-          Send
-        </button>
+          {voiceSupported && (
+            <button
+              type="button"
+              onClick={toggleMic}
+              disabled={busy}
+              className={
+                listening
+                  ? "rounded bg-red-600 text-white px-3 py-2 text-sm"
+                  : "rounded border border-stone-300 dark:border-stone-700 px-3 py-2 text-sm disabled:opacity-50"
+              }
+            >
+              {listening ? "Listening…" : "Speak"}
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={busy || (!input.trim() && !file)}
+            className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+          >
+            Send
+          </button>
+        </div>
       </form>
     </div>
   );

@@ -106,7 +106,44 @@ export async function chatOverNotes(opts: {
   notesContext: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   userMessage: string;
+  attachment?: { kind: "image" | "document"; mediaType: string; dataBase64: string };
 }): Promise<string> {
+  const messages: Anthropic.MessageParam[] = opts.history.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  if (opts.attachment) {
+    const a = opts.attachment;
+    const fileBlock = (
+      a.kind === "image"
+        ? {
+            type: "image",
+            source: { type: "base64", media_type: a.mediaType, data: a.dataBase64 },
+          }
+        : {
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: a.dataBase64,
+            },
+          }
+    ) as Anthropic.ContentBlockParam;
+    messages.push({
+      role: "user",
+      content: [
+        fileBlock,
+        {
+          type: "text",
+          text: opts.userMessage || "Please look at this attachment.",
+        },
+      ],
+    });
+  } else {
+    messages.push({ role: "user", content: opts.userMessage });
+  }
+
   const resp = await client().messages.create({
     model: MODEL,
     max_tokens: 4096,
@@ -114,6 +151,7 @@ export async function chatOverNotes(opts: {
       "You are the user's personal notes assistant.",
       "You have access to the user's reMarkable notebooks below, transcribed from handwriting.",
       "Answer questions, summarize, draft follow-ups, or extract todos based on this material.",
+      "The user may also attach a photo or PDF directly to a message — read it and use it.",
       "When citing a note, reference it by notebook name and page number.",
       "If the notes don't contain enough information to answer, say so plainly.",
       "",
@@ -121,10 +159,7 @@ export async function chatOverNotes(opts: {
       opts.notesContext,
       "=== END NOTES ===",
     ].join("\n"),
-    messages: [
-      ...opts.history.map((m) => ({ role: m.role, content: m.content })),
-      { role: "user" as const, content: opts.userMessage },
-    ],
+    messages,
   });
 
   const block = resp.content.find((b) => b.type === "text");

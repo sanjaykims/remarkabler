@@ -13,6 +13,10 @@
 - Chat page: a "Clear" button hides the conversation from the app for privacy.
   Cleared messages are archived (kept in the database) rather than deleted, and
   still feed Claude — so the conversation continues seamlessly on top of them.
+- Chat attachments: an "Attach" button lets you send a photo or a PDF with a
+  message for Claude to read. Photos are downscaled in the browser before
+  upload; files are stored on the data volume and shown in the conversation.
+  Video is rejected with a note, since Claude cannot process video.
 
 ### Changed
 - The home page is now a dashboard: at-a-glance counts, a live "transcribing"

@@ -5,6 +5,8 @@ import fs from "fs";
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
+export { DATA_DIR };
+
 let _db: Database.Database | null = null;
 
 export function db(): Database.Database {
@@ -103,6 +105,16 @@ CREATE TABLE IF NOT EXISTS credentials (
   public_key TEXT NOT NULL,
   counter INTEGER NOT NULL DEFAULT 0,
   transports TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS chat_attachments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  path TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 `;
