@@ -22,6 +22,11 @@ export function db(): Database.Database {
       // column already exists
     }
   }
+  try {
+    _db.exec(`ALTER TABLE insights ADD COLUMN title TEXT`);
+  } catch {
+    // column already exists
+  }
   // Any notebook still "processing" at startup was interrupted by a restart.
   _db
     .prepare(

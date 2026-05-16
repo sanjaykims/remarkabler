@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 
-type Insight = { id: number; content: string; created_at: string };
+type Insight = {
+  id: number;
+  title?: string | null;
+  content: string;
+  created_at: string;
+};
 
 // A short plain-text label for a collapsed older entry: a few words, or a
 // short first sentence — kept brief so it shows in full with nothing cut off.
@@ -162,7 +167,7 @@ export default function InsightsPage() {
                     {new Date(it.created_at).toLocaleString()}
                   </span>
                   <span className="text-xs opacity-80">
-                    {summarize(it.content)}
+                    {it.title || summarize(it.content)}
                   </span>
                 </summary>
                 <div className="px-3 pb-3 text-sm whitespace-pre-wrap border-t border-stone-200 dark:border-stone-800 pt-2">

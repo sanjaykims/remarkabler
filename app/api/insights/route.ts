@@ -1,14 +1,43 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { buildNotesContext, buildChatContext } from "@/lib/notes";
-import { generateInsights } from "@/lib/claude";
+import { generateInsights, generateInsightTitle } from "@/lib/claude";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
+// Give a short topic title to any older insight that predates the title
+// feature. Resilient: a failure leaves the entry untitled and is retried on
+// the next load, and never breaks the listing.
+async function backfillTitles() {
+  let untitled: Array<{ id: number; content: string }>;
+  try {
+    untitled = db()
+      .prepare(`SELECT id, content FROM insights WHERE title IS NULL OR title = ''`)
+      .all() as Array<{ id: number; content: string }>;
+  } catch {
+    return;
+  }
+  if (untitled.length === 0) return;
+
+  await Promise.allSettled(
+    untitled.map(async (row) => {
+      try {
+        const title = await generateInsightTitle(row.content);
+        if (title) {
+          db().prepare(`UPDATE insights SET title = ? WHERE id = ?`).run(title, row.id);
+        }
+      } catch {
+        // leave untitled; a later load will retry
+      }
+    })
+  );
+}
+
 export async function GET() {
+  await backfillTitles();
   const insights = db()
-    .prepare(`SELECT id, content, created_at FROM insights ORDER BY id DESC`)
+    .prepare(`SELECT id, title, content, created_at FROM insights ORDER BY id DESC`)
     .all();
   return NextResponse.json({ insights });
 }
@@ -53,11 +82,18 @@ export async function POST() {
     );
   }
 
+  let title = "";
+  try {
+    title = await generateInsightTitle(content.trim());
+  } catch {
+    // a title is optional — save the entry without one rather than failing
+  }
+
   const info = db()
-    .prepare(`INSERT INTO insights(content) VALUES(?)`)
-    .run(content.trim());
+    .prepare(`INSERT INTO insights(content, title) VALUES(?, ?)`)
+    .run(content.trim(), title || null);
   const insight = db()
-    .prepare(`SELECT id, content, created_at FROM insights WHERE id = ?`)
+    .prepare(`SELECT id, title, content, created_at FROM insights WHERE id = ?`)
     .get(info.lastInsertRowid);
 
   return NextResponse.json({ ok: true, insight });

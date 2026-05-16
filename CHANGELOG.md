@@ -7,9 +7,12 @@
   the top, and each earlier reflection collapses into a tappable row showing
   its date and a short summary. All past entries are kept and still included
   in Copy/Export.
-- Earlier-reflection rows now show a brief, fully visible label (a few words
-  or a short first sentence) at a smaller font, instead of a cut-off sentence
-  ending in "…".
+- Earlier-reflection rows now show a brief, fully visible label at a smaller
+  font, instead of a cut-off sentence ending in "…".
+- Each insight now gets a genuine short topic title written by Claude (2–5
+  words), shown on its collapsed history row. Existing entries are
+  automatically backfilled with a title the first time the page loads; the
+  trimmed-opening label remains only as a fallback if titling fails.
 
 ### Fixed
 - Chat page no longer plays a noisy smooth-scroll animation through the whole

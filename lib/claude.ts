@@ -132,6 +132,29 @@ export async function chatOverNotes(opts: {
 }
 
 /**
+ * Produce a very short topic title for a single insight entry. Used to label
+ * collapsed entries in the Insights history so they read as topics rather
+ * than a trimmed opening sentence.
+ */
+export async function generateInsightTitle(content: string): Promise<string> {
+  const resp = await client().messages.create({
+    model: MODEL,
+    max_tokens: 32,
+    system: [
+      "You write an extremely short topic title for a personal reflection note.",
+      "Reply with 2 to 5 plain words naming the main theme — no punctuation,",
+      "no quotes, no preamble, no trailing period.",
+      'Example replies: "Work overwhelm and focus", "Progress on the notes".',
+    ].join("\n"),
+    messages: [{ role: "user", content: content.slice(0, 4000) }],
+  });
+
+  const block = resp.content.find((b) => b.type === "text");
+  const text = block && block.type === "text" ? block.text : "";
+  return text.trim().replace(/^["']+|["'.]+$/g, "").slice(0, 80);
+}
+
+/**
  * Reflect on the user's notes and chats and produce a fresh set of insights
  * about them. Prior insights are passed in so each new entry builds on the
  * last rather than repeating — the result is a cumulative record.
