@@ -341,11 +341,11 @@ export default function ChatPage() {
 
       <form
         onSubmit={send}
-        className="border-t border-stone-200 dark:border-stone-800 pt-3 space-y-2"
+        className="rounded-2xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 px-3 py-2.5 space-y-2 focus-within:ring-1 focus-within:ring-stone-400 dark:focus-within:ring-stone-500"
       >
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {error && <p className="text-xs text-red-600 px-1">{error}</p>}
         {file && (
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 text-xs px-1">
             <span className="truncate opacity-80">Attached: {file.name}</span>
             <button
               type="button"
@@ -356,21 +356,21 @@ export default function ChatPage() {
             </button>
           </div>
         )}
-        <div className="flex gap-2 items-end">
-          <textarea
-            value={input}
-            onChange={(e) => updateInput(e.target.value)}
-            placeholder={
-              busy
-                ? "Thinking…"
-                : listening
-                  ? "Listening…"
-                  : "Ask about your notes…  (Enter for a new line)"
-            }
-            disabled={busy}
-            rows={2}
-            className="flex-1 rounded border border-stone-300 dark:border-stone-700 px-3 py-2 bg-transparent resize-y"
-          />
+        <textarea
+          value={input}
+          onChange={(e) => updateInput(e.target.value)}
+          placeholder={
+            busy
+              ? "Thinking…"
+              : listening
+                ? "Listening…"
+                : "Ask anything about your notes…"
+          }
+          disabled={busy}
+          rows={2}
+          className="w-full bg-transparent resize-none outline-none px-1 text-sm placeholder:opacity-50"
+        />
+        <div className="flex items-center justify-between">
           <input
             ref={fileInputRef}
             type="file"
@@ -385,31 +385,44 @@ export default function ChatPage() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={busy}
-            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-2 text-sm disabled:opacity-50"
+            aria-label="Attach a photo or PDF"
+            className="w-9 h-9 rounded-full border border-stone-300 dark:border-stone-700 flex items-center justify-center disabled:opacity-50"
           >
-            Attach
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
           </button>
-          {voiceSupported && (
+          <div className="flex items-center gap-2">
+            {voiceSupported && (
+              <button
+                type="button"
+                onClick={toggleMic}
+                disabled={busy}
+                aria-label={listening ? "Stop listening" : "Speak"}
+                className={
+                  "w-9 h-9 rounded-full flex items-center justify-center " +
+                  (listening
+                    ? "bg-red-600 text-white"
+                    : "border border-stone-300 dark:border-stone-700 disabled:opacity-50")
+                }
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="3" width="6" height="11" rx="3" />
+                  <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+                </svg>
+              </button>
+            )}
             <button
-              type="button"
-              onClick={toggleMic}
-              disabled={busy}
-              className={
-                listening
-                  ? "rounded bg-red-600 text-white px-3 py-2 text-sm"
-                  : "rounded border border-stone-300 dark:border-stone-700 px-3 py-2 text-sm disabled:opacity-50"
-              }
+              type="submit"
+              disabled={busy || (!input.trim() && !file)}
+              aria-label="Send"
+              className="w-9 h-9 rounded-full bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 flex items-center justify-center disabled:opacity-40"
             >
-              {listening ? "Listening…" : "Speak"}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 19V5M5 12l7-7 7 7" />
+              </svg>
             </button>
-          )}
-          <button
-            type="submit"
-            disabled={busy || (!input.trim() && !file)}
-            className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
-          >
-            Send
-          </button>
+          </div>
         </div>
       </form>
     </div>

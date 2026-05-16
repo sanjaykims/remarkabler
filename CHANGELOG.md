@@ -25,6 +25,8 @@
   own whenever it is backgrounded, so the button was redundant.
 - New app icon: a sleeker notebook-and-spark mark on a warm gradient, replacing
   the plain circle (also wired up as the favicon and Apple touch icon).
+- Redesigned the chat input as a single sleek rounded bar with circular icon
+  buttons (attach, mic, send), replacing the cramped row of boxy buttons.
 - Insights page is simpler to read: the newest reflection is shown in full at
   the top, and each earlier reflection collapses into a tappable row showing
   its date and a short summary. All past entries are kept and still included
