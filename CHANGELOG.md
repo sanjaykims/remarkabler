@@ -33,6 +33,9 @@
   name shown.
 - The lock screen's passcode field showed only a numeric keypad; it now opens
   the full keyboard so passcodes with letters and symbols can be entered.
+- The lock screen now surfaces a clear "Set up this phone" button when other
+  devices are already registered, so a new phone registers its own Face ID /
+  fingerprint instead of being pushed into the cross-device QR-code flow.
 - Dates now always render in English regardless of the device's language
   setting, instead of following the browser locale (e.g. Korean).
 - Voice features (Speak playback and spoken-question input) now use English

@@ -94,12 +94,20 @@ export default function LockScreen() {
             >
               {busy ? "Please wait…" : "Unlock with fingerprint / Face ID"}
             </button>
-            <button
-              onClick={() => setShowPasscode((v) => !v)}
-              className="text-xs opacity-60 hover:opacity-100 underline"
-            >
-              Use backup passcode instead
-            </button>
+            <div className="pt-1">
+              <p className="text-xs opacity-60 mb-2">
+                New phone, or unlock didn&rsquo;t work? Set this phone up first
+                so it opens with its own fingerprint / Face ID. (If you see a
+                QR code, it&rsquo;s because this phone isn&rsquo;t set up yet.)
+              </p>
+              <button
+                onClick={() => setShowPasscode((v) => !v)}
+                disabled={busy}
+                className="w-full rounded border border-stone-300 dark:border-stone-700 px-4 py-2 text-sm disabled:opacity-50"
+              >
+                Set up this phone
+              </button>
+            </div>
           </>
         )}
 
