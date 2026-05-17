@@ -19,6 +19,10 @@
   Video is rejected with a note, since Claude cannot process video.
 
 ### Changed
+- Chat now runs on Claude Sonnet (cheaper than Opus) and caches the notes
+  context it sends on every message, so follow-up questions re-read the notes
+  at a fraction of the cost. OCR and insights still use the Opus model; the
+  chat model can be overridden with the `CHAT_MODEL` environment variable.
 - Renamed the app from "Feed Claude" to "Remarkabler" (nav, dashboard, lock
   screen, PWA manifest, passkey prompt, and share pages).
 - The home page is now a dashboard: at-a-glance counts, a live "transcribing"

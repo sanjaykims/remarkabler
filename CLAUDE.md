@@ -18,7 +18,9 @@ and generate an accumulating record of "insights" about themselves.
 - Deployed on **Railway**, which auto-deploys on every push to `main`.
 - Railway config: env vars `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`
   (set to `claude-opus-4-7`), `DATA_DIR=/data`; a persistent volume is mounted
-  at `/data` and holds the SQLite database and uploaded PDFs.
+  at `/data` and holds the SQLite database and uploaded PDFs. Optional
+  `CHAT_MODEL` overrides the model used for chat only (defaults to
+  `claude-sonnet-4-6`); OCR and insights stay on `CLAUDE_MODEL`.
 - Optional env var `APP_PASSCODE` enables the private lock. When set, the
   whole app (pages + APIs) is gated behind a passkey (fingerprint / Face ID)
   or the passcode itself. When unset, the app is fully open — so the lock can

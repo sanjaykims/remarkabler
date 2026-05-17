@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
+// Chat is the high-volume, cost-sensitive path — default it to Sonnet (cheaper
+// than Opus). OCR and insights stay on the configured CLAUDE_MODEL.
+const CHAT_MODEL = process.env.CHAT_MODEL || "claude-sonnet-4-6";
 
 let _client: Anthropic | null = null;
 function client(): Anthropic {
@@ -145,20 +148,28 @@ export async function chatOverNotes(opts: {
   }
 
   const resp = await client().messages.create({
-    model: MODEL,
+    model: CHAT_MODEL,
     max_tokens: 4096,
     system: [
-      "You are the user's personal notes assistant.",
-      "You have access to the user's reMarkable notebooks below, transcribed from handwriting.",
-      "Answer questions, summarize, draft follow-ups, or extract todos based on this material.",
-      "The user may also attach a photo or PDF directly to a message — read it and use it.",
-      "When citing a note, reference it by notebook name and page number.",
-      "If the notes don't contain enough information to answer, say so plainly.",
-      "",
-      "=== USER NOTES ===",
-      opts.notesContext,
-      "=== END NOTES ===",
-    ].join("\n"),
+      {
+        type: "text",
+        text: [
+          "You are the user's personal notes assistant.",
+          "You have access to the user's reMarkable notebooks below, transcribed from handwriting.",
+          "Answer questions, summarize, draft follow-ups, or extract todos based on this material.",
+          "The user may also attach a photo or PDF directly to a message — read it and use it.",
+          "When citing a note, reference it by notebook name and page number.",
+          "If the notes don't contain enough information to answer, say so plainly.",
+          "",
+          "=== USER NOTES ===",
+          opts.notesContext,
+          "=== END NOTES ===",
+        ].join("\n"),
+        // The notes context is identical across messages in a session, so
+        // cache it — each follow-up re-reads it at a fraction of the cost.
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages,
   });
 
