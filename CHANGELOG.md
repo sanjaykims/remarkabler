@@ -48,6 +48,10 @@
   and expands on tap, instead of being shown in full at the top.
 
 ### Fixed
+- Uploading a PDF on Android failed for the same reason attachments did: the
+  file picker backgrounds the app and tripped the auto-lock, and the unlock
+  reload discarded the chosen file. The auto-lock is now suppressed while the
+  Notebooks file picker is open.
 - Attaching a file no longer loses the attachment on Android. Opening the file
   picker backgrounds the app, which triggered the auto-lock; unlocking then
   reloaded the page and discarded the picked file. The auto-lock is now

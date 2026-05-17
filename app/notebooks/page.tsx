@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
+import { setPickingFile } from "../lockState";
 
 type Notebook = {
   id: string;
@@ -64,6 +65,19 @@ export default function NotebooksPage() {
     }
   }
 
+  // Open the file picker. It backgrounds the app on Android, so suppress the
+  // auto-lock until the picker closes — otherwise the unlock reload discards
+  // the chosen PDF before it can be uploaded.
+  function openFilePicker() {
+    setPickingFile(true);
+    const done = () => {
+      window.removeEventListener("focus", done);
+      setTimeout(() => setPickingFile(false), 300);
+    };
+    window.addEventListener("focus", done);
+    fileRef.current?.click();
+  }
+
   async function remove(id: string, name: string) {
     if (!window.confirm(`Delete "${name}" and its transcription?`)) return;
     await fetch(`/api/notebooks?id=${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -85,22 +99,20 @@ export default function NotebooksPage() {
         <div className="flex flex-wrap items-center gap-2">
           <input
             ref={fileRef}
-            id="notebook-file"
             type="file"
             accept="application/pdf,.pdf"
             disabled={uploading}
             onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
             className="hidden"
           />
-          <label
-            htmlFor="notebook-file"
-            className={
-              "rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-sm cursor-pointer" +
-              (uploading ? " opacity-50 pointer-events-none" : "")
-            }
+          <button
+            type="button"
+            onClick={openFilePicker}
+            disabled={uploading}
+            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-sm disabled:opacity-50"
           >
             Choose file
-          </label>
+          </button>
           <span className="text-sm opacity-70">
             {fileName ?? "No file chosen"}
           </span>
