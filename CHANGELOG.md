@@ -48,6 +48,10 @@
   and expands on tap, instead of being shown in full at the top.
 
 ### Fixed
+- Attaching a file no longer loses the attachment on Android. Opening the file
+  picker backgrounds the app, which triggered the auto-lock; unlocking then
+  reloaded the page and discarded the picked file. The auto-lock is now
+  suppressed while the file picker is open.
 - Times shown in the app (notebook upload time, insight generation time) were
   off by the UTC offset because UTC timestamps were parsed as local time.
   They are now displayed in the viewer's local timezone with the timezone

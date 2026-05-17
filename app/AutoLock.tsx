@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import LockScreen from "./LockScreen";
-import { isUnlocking } from "./lockState";
+import { isUnlocking, isPickingFile } from "./lockState";
 
 /**
  * Locks the app whenever it is sent to the background. The moment the page is
@@ -15,8 +15,8 @@ export default function AutoLock() {
   useEffect(() => {
     function onVisibility() {
       if (document.visibilityState !== "hidden") return;
-      // Don't re-lock while a passkey prompt is mid-flight.
-      if (isUnlocking()) return;
+      // Don't re-lock while a passkey prompt or the file picker is open.
+      if (isUnlocking() || isPickingFile()) return;
       setLocked(true);
       // keepalive lets the logout finish even as the page is being hidden.
       fetch("/api/auth", {

@@ -10,3 +10,15 @@ export function setUnlocking(v: boolean) {
 export function isUnlocking(): boolean {
   return unlocking;
 }
+
+// Likewise, opening the file picker backgrounds the app on Android; that is
+// not a real "left the app" event, so it must not trigger the lock.
+let pickingFile = false;
+
+export function setPickingFile(v: boolean) {
+  pickingFile = v;
+}
+
+export function isPickingFile(): boolean {
+  return pickingFile;
+}

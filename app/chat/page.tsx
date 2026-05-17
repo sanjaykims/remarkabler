@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { setPickingFile } from "../lockState";
 
 type Attachment = { id: number; kind: string; filename: string };
 type Msg = {
@@ -78,6 +79,19 @@ export default function ChatPage() {
       window.speechSynthesis.cancel();
     }
     setSpeaking(false);
+  }
+
+  // Open the file picker. Opening it backgrounds the app on Android, so
+  // suppress the auto-lock until the picker closes and the app regains focus
+  // — otherwise the unlock reload would discard the file just picked.
+  function openFilePicker() {
+    setPickingFile(true);
+    const done = () => {
+      window.removeEventListener("focus", done);
+      setTimeout(() => setPickingFile(false), 300);
+    };
+    window.addEventListener("focus", done);
+    fileInputRef.current?.click();
   }
 
   // Validate a picked attachment before it is sent.
@@ -383,7 +397,7 @@ export default function ChatPage() {
           />
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={openFilePicker}
             disabled={busy}
             aria-label="Attach a photo or PDF"
             className="w-9 h-9 rounded-full border border-stone-300 dark:border-stone-700 flex items-center justify-center disabled:opacity-50"
