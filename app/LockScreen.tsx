@@ -6,6 +6,7 @@ import {
   startAuthentication,
 } from "@simplewebauthn/browser";
 import { setUnlocking } from "./lockState";
+import { track } from "./analytics";
 
 // Set on a device once it has successfully unlocked, so the lock screen knows
 // it can prompt the passkey automatically here (and not on a brand-new phone,
@@ -57,6 +58,7 @@ export default function LockScreen() {
       const cred = await startAuthentication({ optionsJSON: options });
       await post({ action: "login-verify", response: cred });
       rememberDevice();
+      track("unlock_success", { method: "biometric" });
       location.reload();
     } catch (e) {
       if (!silent) setError(friendly(e, "Couldn't unlock with biometrics."));
@@ -71,6 +73,7 @@ export default function LockScreen() {
     try {
       await post({ action: "passcode", passcode });
       rememberDevice();
+      track("unlock_success", { method: "passcode" });
       location.reload();
     } catch (e) {
       setError(friendly(e, "Wrong passcode."));
@@ -87,6 +90,7 @@ export default function LockScreen() {
       const cred = await startRegistration({ optionsJSON: options });
       await post({ action: "register-verify", response: cred });
       rememberDevice();
+      track("device_registered");
       location.reload();
     } catch (e) {
       setError(friendly(e, "Couldn't set up this device."));

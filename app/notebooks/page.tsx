@@ -61,6 +61,7 @@ export default function NotebooksPage() {
       setFileName(null);
       await load();
     } catch (err) {
+      track("notebook_upload_failed");
       setError((err as Error).message);
     } finally {
       setUploading(false);
@@ -83,6 +84,7 @@ export default function NotebooksPage() {
   async function remove(id: string, name: string) {
     if (!window.confirm(`Delete "${name}" and its transcription?`)) return;
     await fetch(`/api/notebooks?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    track("notebook_deleted");
     await load();
   }
 

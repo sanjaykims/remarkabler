@@ -66,6 +66,7 @@ export default function InsightsPage() {
   }
 
   function download() {
+    track("insights_exported");
     const blob = new Blob([exportText()], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -80,6 +81,7 @@ export default function InsightsPage() {
   async function copy() {
     try {
       await navigator.clipboard.writeText(exportText());
+      track("insights_copied");
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {

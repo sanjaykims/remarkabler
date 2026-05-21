@@ -111,6 +111,7 @@ export default function ChatPage() {
       return;
     }
     setFile(f);
+    track("chat_attachment_added", { kind: isImage ? "image" : "pdf" });
   }
 
   // Downscale a photo in the browser so the upload stays small and within
@@ -233,6 +234,7 @@ export default function ChatPage() {
     );
     if (!ok) return;
     await fetch("/api/chat?conversationId=default", { method: "DELETE" });
+    track("chat_cleared");
     setMessages([]);
   }
 
@@ -277,6 +279,7 @@ export default function ChatPage() {
 
     recognitionRef.current = recognition;
     setListening(true);
+    track("chat_voice_started");
     recognition.start();
   }
 
