@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { setPickingFile } from "../lockState";
+import { track } from "../analytics";
 
 type Attachment = { id: number; kind: string; filename: string };
 type Msg = {
@@ -185,6 +186,7 @@ export default function ChatPage() {
       if (!r.ok) {
         throw new Error(d.error || "Something went wrong. Please try again.");
       }
+      track("chat_message_sent", { hadAttachment: !!attached });
       // Reload so a saved attachment shows on the message bubbles.
       const list = await fetch("/api/chat?conversationId=default").then((x) =>
         x.json()

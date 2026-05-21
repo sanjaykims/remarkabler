@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
 import { setPickingFile } from "../lockState";
+import { track } from "../analytics";
 
 type Notebook = {
   id: string;
@@ -54,6 +55,7 @@ export default function NotebooksPage() {
       const r = await fetch("/api/notebooks", { method: "POST", body: fd });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Upload failed");
+      track("notebook_uploaded");
       setStatus(`Uploaded "${d.name}" — transcribing in the background. It will appear below.`);
       if (fileRef.current) fileRef.current.value = "";
       setFileName(null);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { isAuthenticated, isLockEnabled } from "@/lib/auth";
 import LockScreen from "./LockScreen";
 import AutoLock from "./AutoLock";
+import PostHogProvider from "./PostHogProvider";
 
 export const metadata: Metadata = {
   title: "Remarkabler",
@@ -21,22 +22,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        {authed ? (
-          <>
-            <header className="border-b border-stone-200 dark:border-stone-800">
-              <nav className="mx-auto max-w-5xl px-6 py-3 flex items-center gap-6 text-sm">
-                <Link href="/" className="font-semibold">Remarkabler</Link>
-                <Link href="/notebooks" className="opacity-70 hover:opacity-100">Notebooks</Link>
-                <Link href="/chat" className="opacity-70 hover:opacity-100">Chat</Link>
-                <Link href="/insights" className="opacity-70 hover:opacity-100">Insights</Link>
-              </nav>
-            </header>
-            <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
-            {isLockEnabled() && <AutoLock />}
-          </>
-        ) : (
-          <LockScreen />
-        )}
+        <PostHogProvider>
+          {authed ? (
+            <>
+              <header className="border-b border-stone-200 dark:border-stone-800">
+                <nav className="mx-auto max-w-5xl px-6 py-3 flex items-center gap-6 text-sm">
+                  <Link href="/" className="font-semibold">Remarkabler</Link>
+                  <Link href="/notebooks" className="opacity-70 hover:opacity-100">Notebooks</Link>
+                  <Link href="/chat" className="opacity-70 hover:opacity-100">Chat</Link>
+                  <Link href="/insights" className="opacity-70 hover:opacity-100">Insights</Link>
+                </nav>
+              </header>
+              <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
+              {isLockEnabled() && <AutoLock />}
+            </>
+          ) : (
+            <LockScreen />
+          )}
+        </PostHogProvider>
       </body>
     </html>
   );

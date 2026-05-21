@@ -25,6 +25,13 @@ and generate an accumulating record of "insights" about themselves.
   whole app (pages + APIs) is gated behind a passkey (fingerprint / Face ID)
   or the passcode itself. When unset, the app is fully open — so the lock can
   be turned on/off purely by adding/removing this one variable.
+- Optional analytics: set `NEXT_PUBLIC_POSTHOG_KEY` (and optionally
+  `NEXT_PUBLIC_POSTHOG_HOST`, default `https://us.i.posthog.com`) to enable
+  PostHog. It only sends anonymous page views + a few explicit events
+  (`notebook_uploaded`, `chat_message_sent`, `insight_generated`); autocapture
+  and session recording are disabled so no note content is ever sent. These
+  are `NEXT_PUBLIC_*` vars, so they are inlined at build time — set them in
+  Railway before the build (changing them triggers a rebuild).
 - `npm run start` honors the host-provided `PORT`. `npm run build` must pass.
 
 ## Stack

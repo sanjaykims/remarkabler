@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
+import { track } from "../analytics";
 
 type Insight = {
   id: number;
@@ -46,6 +47,7 @@ export default function InsightsPage() {
       const r = await fetch("/api/insights", { method: "POST" });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Failed to generate insights");
+      track("insight_generated");
       await load();
     } catch (err) {
       setError((err as Error).message);

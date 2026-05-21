@@ -3,6 +3,10 @@
 ## 2026-05-16
 
 ### Added
+- Optional PostHog analytics, off until `NEXT_PUBLIC_POSTHOG_KEY` is set. Sends
+  only anonymous page views and explicit events (`notebook_uploaded`,
+  `chat_message_sent`, `insight_generated`); autocapture and session recording
+  are disabled so no note content, chat text, or screen contents are sent.
 - Private lock for the whole app. When the `APP_PASSCODE` environment variable
   is set, every page and API is gated behind a lock screen. The owner unlocks
   with a passkey — fingerprint on Android, Face ID on iPhone — registered once
