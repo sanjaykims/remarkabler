@@ -48,6 +48,11 @@
   and expands on tap, instead of being shown in full at the top.
 
 ### Fixed
+- Sharing a PDF from the reMarkable app to Remarkabler no longer fails with a
+  "locked" page. The share target is write-only (it accepts a PDF and starts
+  transcription, returning no notes), so it is no longer gated by the lock —
+  which previously rejected every share because the app auto-locks on
+  background. Reading (notebooks list, chat, insights) stays locked.
 - Uploading a PDF on Android failed for the same reason attachments did: the
   file picker backgrounds the app and tripped the auto-lock, and the unlock
   reload discarded the chosen file. The auto-lock is now suppressed while the

@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { createNotebook, processNotebook } from "@/lib/notes";
-import { isAuthenticated } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -14,15 +13,14 @@ const MAX_BYTES = 20 * 1024 * 1024;
  *
  * The PDF is saved and the response returns immediately; transcription runs
  * in the background so the phone is never left on a frozen screen.
+ *
+ * This endpoint is intentionally NOT gated by the app lock: it is write-only
+ * (it accepts a PDF and starts transcription, returning none of the user's
+ * notes), and the lock clears the session whenever the app is backgrounded —
+ * so requiring auth here would reject every share from the reMarkable app and
+ * lose the file. Reading (notebooks list, chat, insights) stays locked.
  */
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) {
-    return page(
-      "Remarkabler is locked",
-      "Open Remarkabler and unlock it first, then share the notebook again.",
-      false
-    );
-  }
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
 
@@ -51,7 +49,7 @@ export async function POST(req: NextRequest) {
 
   return page(
     "Added ✓",
-    `"${nb.name}" is being transcribed in the background. Opening your notebooks…`,
+    `"${nb.name}" is transcribing in the background. Open Remarkabler (unlock as usual) to see it.`,
     true
   );
 }
