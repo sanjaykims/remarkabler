@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { recordUsage } from "@/lib/usage";
 
 const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 // Chat is the high-volume, cost-sensitive path — default it to Sonnet (cheaper
@@ -66,6 +67,7 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
     ],
   });
   const resp = await stream.finalMessage();
+  recordUsage("ocr", MODEL, resp.usage);
 
   if (resp.stop_reason === "max_tokens") {
     throw new Error(
@@ -172,6 +174,7 @@ export async function chatOverNotes(opts: {
     ],
     messages,
   });
+  recordUsage("chat", CHAT_MODEL, resp.usage);
 
   const block = resp.content.find((b) => b.type === "text");
   return block && block.type === "text" ? block.text : "";
@@ -194,6 +197,7 @@ export async function generateInsightTitle(content: string): Promise<string> {
     ].join("\n"),
     messages: [{ role: "user", content: content.slice(0, 4000) }],
   });
+  recordUsage("insight_title", MODEL, resp.usage);
 
   const block = resp.content.find((b) => b.type === "text");
   const text = block && block.type === "text" ? block.text : "";
@@ -257,6 +261,7 @@ export async function generateInsights(opts: {
       },
     ],
   });
+  recordUsage("insights", MODEL, resp.usage);
 
   const block = resp.content.find((b) => b.type === "text");
   return block && block.type === "text" ? block.text : "";

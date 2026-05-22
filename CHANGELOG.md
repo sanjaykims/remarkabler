@@ -3,6 +3,12 @@
 ## 2026-05-16
 
 ### Added
+- Cost page (a "Cost" tab): a month calendar of estimated Claude API spend
+  with this-month and all-time totals. Each call's token usage and cost is
+  recorded; tap any day to see the breakdown by feature (transcription, chat,
+  insights). Costs are estimated from token counts at list prices (the
+  Anthropic console invoice is the source of truth) and only count usage since
+  this was added.
 - Optional PostHog analytics, off until `NEXT_PUBLIC_POSTHOG_KEY` is set. Sends
   only anonymous page views and explicit events; autocapture and session
   recording are disabled so no note content, chat text, or screen contents are

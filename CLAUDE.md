@@ -43,14 +43,19 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 ## Architecture
 
 - `lib/db.ts` — SQLite connection, schema, migrations. Tables: `settings`,
-  `notebooks`, `pages`, `pages_fts`, `chat_messages`, `insights`.
+  `notebooks`, `pages`, `pages_fts`, `chat_messages`, `insights`,
+  `credentials`, `chat_attachments`, `api_usage`.
 - `lib/claude.ts` — Anthropic API calls: `ocrNotebookPdf`, `chatOverNotes`,
-  `generateInsights`.
+  `generateInsights`, `generateInsightTitle`. Each records token usage + an
+  estimated cost via `recordUsage` from `lib/usage.ts`.
+- `lib/usage.ts` — `recordUsage` (per-call cost from list prices) plus
+  `monthlyUsage` / `dailyUsage` / `totalUsage` aggregation (timezone-aware).
 - `lib/notes.ts` — `createNotebook` (fast: save PDF + DB row), `processNotebook`
   (background OCR), `deleteNotebook`, `buildNotesContext`, `buildChatContext`.
 - `app/api/notebooks` — upload (POST) / list (GET) / delete; `app/api/chat`;
-  `app/api/insights`.
-- `app/notebooks`, `app/chat`, `app/insights` — UI pages.
+  `app/api/insights`; `app/api/usage` (cost aggregation).
+- `app/notebooks`, `app/chat`, `app/insights`, `app/usage` (cost calendar) — UI
+  pages.
 - `app/share/route.ts` — PWA Web Share Target; `public/manifest.json` — PWA
   manifest.
 
