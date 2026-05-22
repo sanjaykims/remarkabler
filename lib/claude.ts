@@ -5,6 +5,9 @@ const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 // Chat is the high-volume, cost-sensitive path — default it to Sonnet (cheaper
 // than Opus). OCR and insights stay on the configured CLAUDE_MODEL.
 const CHAT_MODEL = process.env.CHAT_MODEL || "claude-sonnet-4-6";
+// If the chat model is overloaded, fall back to this one for that message so
+// chat never gets stuck on a busy model (e.g. Haiku → Sonnet).
+const CHAT_FALLBACK_MODEL = process.env.CHAT_FALLBACK_MODEL || "claude-sonnet-4-6";
 
 let _client: Anthropic | null = null;
 function client(): Anthropic {
@@ -236,34 +239,46 @@ export async function chatOverNotes(opts: {
     messages.push({ role: "user", content: userText });
   }
 
-  const resp = await client().messages.create({
-    model: CHAT_MODEL,
-    max_tokens: 4096,
-    system: [
-      {
-        type: "text",
-        text: [
-          "You are this person's personal companion — you know them through",
-          "their diary. Below is your accumulated understanding of who they are,",
-          "built up over time; treat it as your memory of them.",
-          "When they ask you something, think it through in light of everything",
-          "you understand about them, and answer with your honest, thoughtful",
-          "opinion — not a bare summary of their notes.",
-          "You may also be given specific diary excerpts relevant to the",
-          "question — use them for concrete detail and quotes.",
-          "Be warm, direct, and specific. If you genuinely don't know, say so.",
-          "",
-          "=== YOUR UNDERSTANDING OF THEM ===",
-          opts.profile.trim() ||
-            "(No profile yet — rely on the excerpts provided and answer with care.)",
-          "=== END UNDERSTANDING ===",
-        ].join("\n"),
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages,
-  });
-  recordUsage("chat", CHAT_MODEL, resp.usage);
+  const system: Anthropic.TextBlockParam[] = [
+    {
+      type: "text",
+      text: [
+        "You are this person's personal companion — you know them through",
+        "their diary. Below is your accumulated understanding of who they are,",
+        "built up over time; treat it as your memory of them.",
+        "When they ask you something, think it through in light of everything",
+        "you understand about them, and answer with your honest, thoughtful",
+        "opinion — not a bare summary of their notes.",
+        "You may also be given specific diary excerpts relevant to the",
+        "question — use them for concrete detail and quotes.",
+        "Be warm, direct, and specific. If you genuinely don't know, say so.",
+        "",
+        "=== YOUR UNDERSTANDING OF THEM ===",
+        opts.profile.trim() ||
+          "(No profile yet — rely on the excerpts provided and answer with care.)",
+        "=== END UNDERSTANDING ===",
+      ].join("\n"),
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+
+  let usedModel = CHAT_MODEL;
+  let resp;
+  try {
+    resp = await client().messages.create({ model: CHAT_MODEL, max_tokens: 4096, system, messages });
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    const overloaded =
+      status === 429 || status === 529 || (typeof status === "number" && status >= 500);
+    if (overloaded && CHAT_FALLBACK_MODEL && CHAT_FALLBACK_MODEL !== CHAT_MODEL) {
+      // The chat model is busy — answer this one on the fallback model.
+      usedModel = CHAT_FALLBACK_MODEL;
+      resp = await client().messages.create({ model: CHAT_FALLBACK_MODEL, max_tokens: 4096, system, messages });
+    } else {
+      throw err;
+    }
+  }
+  recordUsage("chat", usedModel, resp.usage);
 
   const block = resp.content.find((b) => b.type === "text");
   return block && block.type === "text" ? block.text : "";

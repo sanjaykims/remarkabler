@@ -73,6 +73,9 @@
   retried automatically with backoff, and if one still surfaces the chat shows
   a calm "Claude is temporarily busy — try again" message instead of a raw
   error dump.
+- If the chat model is overloaded, chat automatically falls back to a second
+  model (`CHAT_FALLBACK_MODEL`, default Sonnet) for that message — so a busy
+  Haiku no longer blocks a reply.
 - Sharing a PDF from the reMarkable app to Remarkabler no longer fails with a
   "locked" page. The share target is write-only (it accepts a PDF and starts
   transcription, returning no notes), so it is no longer gated by the lock —

@@ -72,8 +72,10 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   excerpts — NOT the full notes context. Sending all notes per message is what
   made one chat cost ~$0.11; do not revert to that. The profile is built/kept
   by `buildSelfModel`/`updateSelfModel` on `CLAUDE_MODEL` (Opus); chat stays on
-  `CHAT_MODEL` (Sonnet). Insights deliberately still uses the full corpus
-  (it's an occasional, on-demand reflection).
+  `CHAT_MODEL` (Sonnet by default). If the chat model is overloaded, chat
+  falls back to `CHAT_FALLBACK_MODEL` (default `claude-sonnet-4-6`) for that
+  message. Insights deliberately still uses the full corpus (it's an
+  occasional, on-demand reflection).
 - **Transcription runs in the background.** `createNotebook` returns
   immediately; `processNotebook` is fired un-awaited and sets the notebook
   `status` (`processing`/`done`/`error`). Never make upload or share wait for
