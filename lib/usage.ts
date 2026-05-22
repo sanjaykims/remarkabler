@@ -25,6 +25,14 @@ const PRICES: Record<string, Prices> = {
 // under-report a real cost.
 const FALLBACK: Prices = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 };
 
+// Match an exact model id, or a dated/variant suffix (e.g.
+// "claude-haiku-4-5-20251001" → "claude-haiku-4-5"), else Opus fallback.
+function priceFor(model: string): Prices {
+  if (PRICES[model]) return PRICES[model];
+  const key = Object.keys(PRICES).find((k) => model.startsWith(k));
+  return key ? PRICES[key] : FALLBACK;
+}
+
 type UsageLike = {
   input_tokens?: number | null;
   output_tokens?: number | null;
@@ -40,7 +48,7 @@ export function recordUsage(
 ) {
   if (!usage) return;
   try {
-    const p = PRICES[model] || FALLBACK;
+    const p = priceFor(model);
     const input = usage.input_tokens ?? 0;
     const output = usage.output_tokens ?? 0;
     const cacheWrite = usage.cache_creation_input_tokens ?? 0;
