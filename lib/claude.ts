@@ -11,7 +11,9 @@ function client(): Anthropic {
   if (_client) return _client;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
-  _client = new Anthropic({ apiKey });
+  // Retry transient overloads (429 / 5xx / 529) with exponential backoff
+  // instead of failing the user's request on the first hiccup.
+  _client = new Anthropic({ apiKey, maxRetries: 4 });
   return _client;
 }
 

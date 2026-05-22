@@ -106,10 +106,14 @@ export async function POST(req: NextRequest) {
   try {
     reply = await chatOverNotes({ profile, relevantNotes, history, userMessage, attachment });
   } catch (err) {
-    return NextResponse.json(
-      { error: `Chat failed: ${(err as Error).message}` },
-      { status: 500 }
-    );
+    const status = (err as { status?: number }).status;
+    let message = "Chat hit a snag. Please try again.";
+    if (status === 529 || status === 503) {
+      message = "Claude is temporarily busy. Please try again in a moment.";
+    } else if (status === 429) {
+      message = "A lot of requests just now — wait a few seconds and try again.";
+    }
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 
   // The stored content stays non-empty even for an attachment-only message,

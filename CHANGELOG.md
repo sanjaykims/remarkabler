@@ -69,6 +69,10 @@
   and expands on tap, instead of being shown in full at the top.
 
 ### Fixed
+- Transient Anthropic overload/rate-limit errors (e.g. HTTP 529) are now
+  retried automatically with backoff, and if one still surfaces the chat shows
+  a calm "Claude is temporarily busy — try again" message instead of a raw
+  error dump.
 - Sharing a PDF from the reMarkable app to Remarkabler no longer fails with a
   "locked" page. The share target is write-only (it accepts a PDF and starts
   transcription, returning no notes), so it is no longer gated by the lock —
