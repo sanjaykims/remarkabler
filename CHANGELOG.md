@@ -3,6 +3,9 @@
 ## 2026-05-16
 
 ### Added
+- Memory tab: view what Remarkabler understands about you, edit/correct it, and
+  rebuild it from all your notes on demand. (The profile still updates itself in
+  the background when you feed a diary.)
 - Evolving memory ("profile of you"). Claude now keeps an accumulating
   understanding of the person, built from their diary: it's revised in the
   background each time a notebook finishes transcribing (and seeded once from

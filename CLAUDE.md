@@ -52,7 +52,9 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - `lib/usage.ts` — `recordUsage` (per-call cost from list prices) plus
   `monthlyUsage` / `dailyUsage` / `totalUsage` aggregation (timezone-aware).
 - `lib/profile.ts` — the evolving "profile of you" (`profile` table, versioned):
-  `getCurrentProfile`, `hasProfile`, `saveProfile`.
+  `getCurrentProfile`, `getCurrentProfileRow`, `hasProfile`, `saveProfile`.
+  Surfaced/edited via `app/memory` + `app/api/memory` (view, save edits,
+  rebuild from all notes).
 - `lib/notes.ts` — `createNotebook` (fast: save PDF + DB row), `processNotebook`
   (background OCR, then folds the entry into the profile via
   `build`/`updateSelfModel`), `deleteNotebook`, `buildNotesContext`,

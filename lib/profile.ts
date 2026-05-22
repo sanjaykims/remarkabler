@@ -12,6 +12,15 @@ export function getCurrentProfile(): string | null {
   return row?.content ?? null;
 }
 
+export function getCurrentProfileRow():
+  | { content: string; created_at: string }
+  | null {
+  const row = db()
+    .prepare(`SELECT content, created_at FROM profile ORDER BY id DESC LIMIT 1`)
+    .get() as { content: string; created_at: string } | undefined;
+  return row ?? null;
+}
+
 export function hasProfile(): boolean {
   const row = db()
     .prepare(`SELECT COUNT(*) AS c FROM profile`)
