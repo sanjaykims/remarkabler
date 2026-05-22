@@ -44,14 +44,19 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 
 - `lib/db.ts` — SQLite connection, schema, migrations. Tables: `settings`,
   `notebooks`, `pages`, `pages_fts`, `chat_messages`, `insights`,
-  `credentials`, `chat_attachments`, `api_usage`.
+  `credentials`, `chat_attachments`, `api_usage`, `profile`.
 - `lib/claude.ts` — Anthropic API calls: `ocrNotebookPdf`, `chatOverNotes`,
-  `generateInsights`, `generateInsightTitle`. Each records token usage + an
+  `generateInsights`, `generateInsightTitle`, and the evolving-memory pair
+  `buildSelfModel` / `updateSelfModel`. Each records token usage + an
   estimated cost via `recordUsage` from `lib/usage.ts`.
 - `lib/usage.ts` — `recordUsage` (per-call cost from list prices) plus
   `monthlyUsage` / `dailyUsage` / `totalUsage` aggregation (timezone-aware).
+- `lib/profile.ts` — the evolving "profile of you" (`profile` table, versioned):
+  `getCurrentProfile`, `hasProfile`, `saveProfile`.
 - `lib/notes.ts` — `createNotebook` (fast: save PDF + DB row), `processNotebook`
-  (background OCR), `deleteNotebook`, `buildNotesContext`, `buildChatContext`.
+  (background OCR, then folds the entry into the profile via
+  `build`/`updateSelfModel`), `deleteNotebook`, `buildNotesContext`,
+  `buildChatContext`, `retrieveRelevantNotes` (FTS), `ensureProfileSeed`.
 - `app/api/notebooks` — upload (POST) / list (GET) / delete; `app/api/chat`;
   `app/api/insights`; `app/api/usage` (cost aggregation).
 - `app/notebooks`, `app/chat`, `app/insights`, `app/usage` (cost calendar) — UI
@@ -61,6 +66,14 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 
 ## Hard-won rules — do not regress these
 
+- **Chat reasons over the profile, not the whole corpus.** `chatOverNotes`
+  takes the compact `profile` (Claude's accumulated understanding, updated in
+  the background when a diary is fed) plus a few `retrieveRelevantNotes` FTS
+  excerpts — NOT the full notes context. Sending all notes per message is what
+  made one chat cost ~$0.11; do not revert to that. The profile is built/kept
+  by `buildSelfModel`/`updateSelfModel` on `CLAUDE_MODEL` (Opus); chat stays on
+  `CHAT_MODEL` (Sonnet). Insights deliberately still uses the full corpus
+  (it's an occasional, on-demand reflection).
 - **Transcription runs in the background.** `createNotebook` returns
   immediately; `processNotebook` is fired un-awaited and sets the notebook
   `status` (`processing`/`done`/`error`). Never make upload or share wait for

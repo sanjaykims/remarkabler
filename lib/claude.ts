@@ -107,8 +107,90 @@ function parsePages(raw: string): PageOcr[] {
   });
 }
 
-export async function chatOverNotes(opts: {
+// Shared guidance for building/maintaining the evolving profile of the person.
+const PROFILE_FORMAT = [
+  "Write it as a concise living document of about 400–700 words, in the third",
+  "person ('They…'), with short section headers covering: who they are and what",
+  "they value; recurring patterns in how they think, feel, and react;",
+  "their emotional landscape; important relationships; goals and worries;",
+  "their current state right now; and open threads worth following up.",
+  "Be specific and grounded in what they actually wrote — not generic.",
+  "No preamble, no sign-off, no markdown code fences.",
+].join("\n");
+
+/** Build the first profile of the person from their full notes corpus. */
+export async function buildSelfModel(opts: {
   notesContext: string;
+}): Promise<string> {
+  const resp = await client().messages.create({
+    model: MODEL,
+    max_tokens: 2048,
+    system: [
+      "You are building a private, evolving profile of a person from their",
+      "personal diary, so that an assistant can understand them deeply without",
+      "re-reading everything each time.",
+      PROFILE_FORMAT,
+    ].join("\n"),
+    messages: [
+      {
+        role: "user",
+        content: [
+          "Here is my diary so far. Build your understanding of me.",
+          "",
+          "=== MY DIARY ===",
+          opts.notesContext,
+          "=== END DIARY ===",
+        ].join("\n"),
+      },
+    ],
+  });
+  recordUsage("memory", MODEL, resp.usage);
+  const block = resp.content.find((b) => b.type === "text");
+  return block && block.type === "text" ? block.text : "";
+}
+
+/** Revise the existing profile to incorporate one new diary entry. */
+export async function updateSelfModel(opts: {
+  currentProfile: string;
+  newContent: string;
+}): Promise<string> {
+  const resp = await client().messages.create({
+    model: MODEL,
+    max_tokens: 2048,
+    system: [
+      "You maintain a private, evolving profile of a person, built from their",
+      "diary over time. You will be given your current profile and one new",
+      "diary entry. Return the FULL updated profile: integrate what is new,",
+      "note what has changed, progressed, or recurred, gently revise impressions",
+      "that no longer fit, and consolidate so it stays sharp — do not simply",
+      "append. Keep it about the same length.",
+      PROFILE_FORMAT,
+    ].join("\n"),
+    messages: [
+      {
+        role: "user",
+        content: [
+          "=== YOUR CURRENT UNDERSTANDING OF ME ===",
+          opts.currentProfile,
+          "=== END ===",
+          "",
+          "=== MY NEW DIARY ENTRY ===",
+          opts.newContent,
+          "=== END ===",
+          "",
+          "Return the full, revised understanding of me.",
+        ].join("\n"),
+      },
+    ],
+  });
+  recordUsage("memory", MODEL, resp.usage);
+  const block = resp.content.find((b) => b.type === "text");
+  return block && block.type === "text" ? block.text : "";
+}
+
+export async function chatOverNotes(opts: {
+  profile: string;
+  relevantNotes: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   userMessage: string;
   attachment?: { kind: "image" | "document"; mediaType: string; dataBase64: string };
@@ -117,6 +199,15 @@ export async function chatOverNotes(opts: {
     role: m.role,
     content: m.content,
   }));
+
+  // Relevant diary excerpts (and any attachment) ride with the user's turn so
+  // the cached system block (instructions + profile) stays identical across a
+  // session — follow-up questions re-read it at cache rates.
+  const excerpts = opts.relevantNotes.trim()
+    ? `Relevant diary excerpts for this question:\n${opts.relevantNotes}\n\n`
+    : "";
+  const userText =
+    excerpts + (opts.userMessage || "Please look at this attachment.");
 
   if (opts.attachment) {
     const a = opts.attachment;
@@ -137,16 +228,10 @@ export async function chatOverNotes(opts: {
     ) as Anthropic.ContentBlockParam;
     messages.push({
       role: "user",
-      content: [
-        fileBlock,
-        {
-          type: "text",
-          text: opts.userMessage || "Please look at this attachment.",
-        },
-      ],
+      content: [fileBlock, { type: "text", text: userText }],
     });
   } else {
-    messages.push({ role: "user", content: opts.userMessage });
+    messages.push({ role: "user", content: userText });
   }
 
   const resp = await client().messages.create({
@@ -156,19 +241,21 @@ export async function chatOverNotes(opts: {
       {
         type: "text",
         text: [
-          "You are the user's personal notes assistant.",
-          "You have access to the user's reMarkable notebooks below, transcribed from handwriting.",
-          "Answer questions, summarize, draft follow-ups, or extract todos based on this material.",
-          "The user may also attach a photo or PDF directly to a message — read it and use it.",
-          "When citing a note, reference it by notebook name and page number.",
-          "If the notes don't contain enough information to answer, say so plainly.",
+          "You are this person's personal companion — you know them through",
+          "their diary. Below is your accumulated understanding of who they are,",
+          "built up over time; treat it as your memory of them.",
+          "When they ask you something, think it through in light of everything",
+          "you understand about them, and answer with your honest, thoughtful",
+          "opinion — not a bare summary of their notes.",
+          "You may also be given specific diary excerpts relevant to the",
+          "question — use them for concrete detail and quotes.",
+          "Be warm, direct, and specific. If you genuinely don't know, say so.",
           "",
-          "=== USER NOTES ===",
-          opts.notesContext,
-          "=== END NOTES ===",
+          "=== YOUR UNDERSTANDING OF THEM ===",
+          opts.profile.trim() ||
+            "(No profile yet — rely on the excerpts provided and answer with care.)",
+          "=== END UNDERSTANDING ===",
         ].join("\n"),
-        // The notes context is identical across messages in a session, so
-        // cache it — each follow-up re-reads it at a fraction of the cost.
         cache_control: { type: "ephemeral" },
       },
     ],

@@ -17,6 +17,7 @@ const FEATURE_LABEL: Record<string, string> = {
   chat: "Chat",
   insights: "Insights",
   insight_title: "Insight titles",
+  memory: "Memory",
 };
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 

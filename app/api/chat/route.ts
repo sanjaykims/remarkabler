@@ -3,7 +3,12 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { db, DATA_DIR } from "@/lib/db";
-import { buildNotesContext } from "@/lib/notes";
+import {
+  buildNotesContext,
+  retrieveRelevantNotes,
+  ensureProfileSeed,
+} from "@/lib/notes";
+import { getCurrentProfile } from "@/lib/profile";
 import { chatOverNotes } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
 
@@ -79,18 +84,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Empty message" }, { status: 400 });
   }
 
-  const history = db()
-    .prepare(
-      `SELECT role, content FROM chat_messages
-       WHERE conversation_id = ? ORDER BY id ASC LIMIT 50`
-    )
-    .all(conversationId) as Array<{ role: "user" | "assistant"; content: string }>;
+  const history = (
+    db()
+      .prepare(
+        `SELECT role, content FROM chat_messages
+         WHERE conversation_id = ? ORDER BY id DESC LIMIT 12`
+      )
+      .all(conversationId) as Array<{ role: "user" | "assistant"; content: string }>
+  ).reverse();
 
-  const notesContext = buildNotesContext();
+  // Reason over the accumulated profile + a few relevant excerpts, instead of
+  // the whole notes corpus. If the profile hasn't been built yet, seed it in
+  // the background and fall back to a capped notes context for this message.
+  ensureProfileSeed();
+  const profile = getCurrentProfile() || "";
+  const relevantNotes = profile
+    ? retrieveRelevantNotes(userMessage)
+    : buildNotesContext({ maxChars: 30000 });
 
   let reply: string;
   try {
-    reply = await chatOverNotes({ notesContext, history, userMessage, attachment });
+    reply = await chatOverNotes({ profile, relevantNotes, history, userMessage, attachment });
   } catch (err) {
     return NextResponse.json(
       { error: `Chat failed: ${(err as Error).message}` },

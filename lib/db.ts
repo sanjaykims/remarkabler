@@ -131,6 +131,13 @@ CREATE TABLE IF NOT EXISTS api_usage (
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage(created_at);
+
+CREATE TABLE IF NOT EXISTS profile (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  content TEXT NOT NULL,
+  source TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 export function getSetting(key: string): string | null {

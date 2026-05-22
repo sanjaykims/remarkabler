@@ -2,7 +2,8 @@ import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { ocrNotebookPdf } from "./claude";
+import { ocrNotebookPdf, buildSelfModel, updateSelfModel } from "./claude";
+import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
 
 const FILES_DIR = path.join(
   process.env.DATA_DIR || path.join(process.cwd(), "data"),
@@ -78,6 +79,24 @@ export async function processNotebook(id: string): Promise<void> {
     db()
       .prepare(`UPDATE notebooks SET status='done', error=NULL WHERE id = ?`)
       .run(id);
+
+    // Fold this notebook into the evolving profile of the person. Best-effort
+    // and already in the background, so a failure never affects the upload.
+    try {
+      const entryText = pages
+        .map((p) => p.text)
+        .filter(Boolean)
+        .join("\n\n");
+      if (entryText.trim()) {
+        const current = getCurrentProfile();
+        const updated = current
+          ? await updateSelfModel({ currentProfile: current, newContent: entryText })
+          : await buildSelfModel({ notesContext: buildNotesContext() });
+        saveProfile(updated, current ? "update" : "seed");
+      }
+    } catch {
+      // profile update is best-effort
+    }
   } catch (err) {
     try {
       db()
@@ -131,6 +150,80 @@ export function buildNotesContext(opts: { maxChars?: number } = {}): string {
     out += `\n[...truncated to ${limit} chars; switch to retrieval over pages_fts for full coverage]\n`;
   }
   return out || "(no notebooks have been uploaded yet)";
+}
+
+// Turn a free-text question into a safe FTS5 query: keep word-ish tokens,
+// quote each (so punctuation can't be read as an operator), OR them together.
+function ftsQuery(message: string): string {
+  const terms = message
+    .toLowerCase()
+    .replace(/["'()*:^{}[\]~+\-.,!?]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 2)
+    .slice(0, 24);
+  if (terms.length === 0) return "";
+  return terms.map((t) => `"${t}"`).join(" OR ");
+}
+
+/**
+ * Find the diary pages most relevant to a question via the `pages_fts`
+ * full-text index, for grounding the chat in specific entries. Best-effort:
+ * returns "" if nothing matches or the query can't be built.
+ */
+export function retrieveRelevantNotes(query: string, limit = 8): string {
+  const q = ftsQuery(query);
+  if (!q) return "";
+  let rows: Array<{ notebook_name: string; ocr_text: string; page_id: string }>;
+  try {
+    rows = db()
+      .prepare(
+        `SELECT notebook_name, ocr_text, page_id FROM pages_fts
+         WHERE pages_fts MATCH ? ORDER BY rank LIMIT ?`
+      )
+      .all(q, limit) as Array<{
+      notebook_name: string;
+      ocr_text: string;
+      page_id: string;
+    }>;
+  } catch {
+    return "";
+  }
+  if (rows.length === 0) return "";
+  const out = rows
+    .map((r) => {
+      const pageNum = Number(r.page_id.split(":")[1] || 0) + 1;
+      return `## ${r.notebook_name} — page ${pageNum}\n${r.ocr_text}`;
+    })
+    .join("\n\n");
+  return out.length > 12000 ? out.slice(0, 12000) : out;
+}
+
+let seedingProfile = false;
+
+/**
+ * If there is no profile yet but notes exist (e.g. notes predate this
+ * feature), build the first profile in the background. Returns immediately;
+ * chat falls back to a capped notes context until the profile is ready.
+ */
+export function ensureProfileSeed(): void {
+  if (seedingProfile || hasProfile()) return;
+  const notes = db()
+    .prepare(
+      `SELECT COUNT(*) AS c FROM pages WHERE ocr_text IS NOT NULL AND ocr_text != ''`
+    )
+    .get() as { c: number };
+  if (notes.c === 0) return;
+  seedingProfile = true;
+  (async () => {
+    try {
+      const profile = await buildSelfModel({ notesContext: buildNotesContext() });
+      saveProfile(profile, "seed");
+    } catch {
+      // best-effort; will retry on the next chat
+    } finally {
+      seedingProfile = false;
+    }
+  })();
 }
 
 /**

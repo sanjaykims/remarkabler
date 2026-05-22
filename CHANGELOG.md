@@ -3,6 +3,15 @@
 ## 2026-05-16
 
 ### Added
+- Evolving memory ("profile of you"). Claude now keeps an accumulating
+  understanding of the person, built from their diary: it's revised in the
+  background each time a notebook finishes transcribing (and seeded once from
+  existing notes), using the Opus model. Chat now reasons over that compact
+  profile plus a few FTS-retrieved excerpts relevant to the question — instead
+  of re-sending the entire notes corpus every message. This makes chat answer
+  from accumulated understanding and cuts the per-question cost by ~10x. The
+  profile updates show as a "Memory" line in the Cost page. Insights still uses
+  the full corpus (it's an occasional, on-demand reflection).
 - Cost page (a "Cost" tab): a month calendar of estimated Claude API spend
   with this-month and all-time totals. Each call's token usage and cost is
   recorded; tap any day to see the breakdown by feature (transcription, chat,
