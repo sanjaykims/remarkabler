@@ -43,6 +43,8 @@
   Video is rejected with a note, since Claude cannot process video.
 
 ### Changed
+- The top nav stays on a single row (smaller text, tighter spacing, scrolls
+  rather than wrapping) now that there are more tabs.
 - Chat now runs on Claude Sonnet (cheaper than Opus) and caches the notes
   context it sends on every message, so follow-up questions re-read the notes
   at a fraction of the cost. OCR and insights still use the Opus model; the
