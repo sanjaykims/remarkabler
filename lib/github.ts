@@ -7,14 +7,15 @@ const TEXT_EXT = [".md", ".markdown", ".mdx", ".txt"];
 const MAX_FILES = 100;
 const MAX_FILE_BYTES = 200_000;
 
-export type RepoConfig = { repo: string; branch: string; token: string };
+export type RepoConfig = { repo: string; branch: string | null; token: string };
 
 /** Read the configured discipline repo, or null if not set up. */
 export function disciplineConfig(): RepoConfig | null {
   const repo = process.env.DISCIPLINE_REPO;
   const token = process.env.DISCIPLINE_GITHUB_TOKEN;
   if (!repo || !token) return null;
-  return { repo, branch: process.env.DISCIPLINE_BRANCH || "main", token };
+  // Branch is optional — if unset we detect the repo's default branch.
+  return { repo, branch: process.env.DISCIPLINE_BRANCH || null, token };
 }
 
 export function disciplineRepoName(): string | null {
@@ -35,14 +36,37 @@ export async function fetchRepoTextFiles(
   cfg: RepoConfig
 ): Promise<Array<{ path: string; content: string }>> {
   const h = headers(cfg.token);
+
+  // Verify access and discover the default branch. For a private repo GitHub
+  // returns 404 (not 403) when the token can't see it, so distinguish causes.
+  const repoRes = await fetch(`${API}/repos/${cfg.repo}`, { headers: h });
+  if (repoRes.status === 401) {
+    throw new Error(
+      "GitHub rejected the token (401). Regenerate DISCIPLINE_GITHUB_TOKEN and update it in Railway."
+    );
+  }
+  if (repoRes.status === 404) {
+    throw new Error(
+      `Can't see ${cfg.repo}. For a private repo, GitHub returns 404 when the fine-grained token doesn't include this repository or lacks Contents access. In the token's settings, add the repo under "Repository access" and grant Contents → Read-only. Also confirm DISCIPLINE_REPO is exactly "owner/name" (case-sensitive).`
+    );
+  }
+  if (!repoRes.ok) {
+    throw new Error(`GitHub error reading ${cfg.repo} (${repoRes.status}).`);
+  }
+  const meta = (await repoRes.json()) as { default_branch?: string };
+  const branch = cfg.branch || meta.default_branch || "main";
+
   const treeRes = await fetch(
-    `${API}/repos/${cfg.repo}/git/trees/${encodeURIComponent(cfg.branch)}?recursive=1`,
+    `${API}/repos/${cfg.repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
     { headers: h }
   );
-  if (!treeRes.ok) {
+  if (treeRes.status === 404) {
     throw new Error(
-      `Couldn't read ${cfg.repo} @ ${cfg.branch} (GitHub returned ${treeRes.status}). Check the repo name, branch, and that the token has read access.`
+      `Branch "${branch}" not found, or the repo has no files yet. If your branch isn't "${branch}", set DISCIPLINE_BRANCH in Railway.`
     );
+  }
+  if (!treeRes.ok) {
+    throw new Error(`Couldn't read ${cfg.repo} @ ${branch} (GitHub returned ${treeRes.status}).`);
   }
   const tree = (await treeRes.json()) as {
     tree?: Array<{ path: string; type: string; size?: number }>;
@@ -60,7 +84,7 @@ export async function fetchRepoTextFiles(
   for (const b of blobs) {
     const encodedPath = b.path.split("/").map(encodeURIComponent).join("/");
     const r = await fetch(
-      `${API}/repos/${cfg.repo}/contents/${encodedPath}?ref=${encodeURIComponent(cfg.branch)}`,
+      `${API}/repos/${cfg.repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`,
       { headers: h }
     );
     if (!r.ok) continue;
