@@ -3,6 +3,11 @@
 ## 2026-05-16
 
 ### Added
+- Full daily route via Google Timeline upload: export your timeline from Google
+  Maps and tap "Upload location timeline" on the Memory tab. The app parses each
+  stop (place + arrival/leave times + how long you stayed), de-duplicates across
+  uploads, and feeds your recent route to chat. Handles the common Google export
+  formats; an unrecognized file reports its structure so the format can be added.
 - Location logging: a "Log my location" button on the Memory tab records where
   you are (reverse-geocoded to a place name) with the local time. Your recent
   places are fed into chat so Claude knows where you've been. One point per tap

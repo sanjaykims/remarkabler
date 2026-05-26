@@ -10,6 +10,7 @@ import {
 } from "@/lib/notes";
 import { getCurrentProfile } from "@/lib/profile";
 import { recentLocationsContext } from "@/lib/location";
+import { recentRouteContext } from "@/lib/timeline";
 import { chatOverNotes } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
 
@@ -103,7 +104,9 @@ export async function POST(req: NextRequest) {
     ? retrieveRelevantNotes(userMessage)
     : buildNotesContext({ maxChars: 30000 });
 
-  const recentLocations = recentLocationsContext();
+  // Prefer the full daily route (Google Timeline import) if present; otherwise
+  // fall back to the one-tap location log.
+  const recentLocations = recentRouteContext() || recentLocationsContext();
 
   let reply: string;
   try {

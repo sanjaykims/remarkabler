@@ -147,6 +147,18 @@ CREATE TABLE IF NOT EXISTS locations (
   local_time TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS route_stops (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  place TEXT,
+  lat REAL,
+  lng REAL,
+  start_time TEXT,
+  end_time TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_route_stops_key ON route_stops(start_time, place);
 `;
 
 export function getSetting(key: string): string | null {

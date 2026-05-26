@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
+import { setPickingFile } from "../lockState";
 
 export default function MemoryPage() {
   const [content, setContent] = useState("");
@@ -26,6 +27,9 @@ export default function MemoryPage() {
   const [locs, setLocs] = useState<Array<{ place: string; local_time: string }>>([]);
   const [locBusy, setLocBusy] = useState(false);
   const [locMsg, setLocMsg] = useState<string | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const timelineRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     setLoading(true);
@@ -76,6 +80,36 @@ export default function MemoryPage() {
         timeout: 15000,
       });
     });
+  }
+
+  function openTimelinePicker() {
+    setPickingFile(true);
+    const done = () => {
+      window.removeEventListener("focus", done);
+      setTimeout(() => setPickingFile(false), 300);
+    };
+    window.addEventListener("focus", done);
+    timelineRef.current?.click();
+  }
+
+  async function importTimeline(file: File | null) {
+    if (!file) return;
+    setImportBusy(true);
+    setImportMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch("/api/location/import", { method: "POST", body: fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Import failed");
+      setImportMsg(
+        `Imported ${d.added} new stop${d.added === 1 ? "" : "s"} (${d.total} total) into your route.`
+      );
+    } catch (e) {
+      setImportMsg((e as Error).message);
+    } finally {
+      setImportBusy(false);
+    }
   }
 
   async function logLocation() {
@@ -310,6 +344,33 @@ export default function MemoryPage() {
             </ul>
           </details>
         )}
+
+        <div className="pt-3 mt-1 border-t border-stone-200 dark:border-stone-800 space-y-2">
+          <p className="text-xs opacity-70">
+            Full daily route: in Google Maps, open your Timeline → Settings →{" "}
+            <em>Export Timeline data</em>, then upload that file here. I read each
+            place with its arrival/leave time and how long you stayed, and feed
+            it to chat.
+          </p>
+          <input
+            ref={timelineRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              importTimeline(e.target.files?.[0] || null);
+              e.target.value = "";
+            }}
+          />
+          <button
+            onClick={openTimelinePicker}
+            disabled={importBusy}
+            className="rounded border border-stone-300 dark:border-stone-700 px-4 py-2 text-sm disabled:opacity-50"
+          >
+            {importBusy ? "Importing…" : "Upload location timeline"}
+          </button>
+          {importMsg && <p className="text-sm opacity-70">{importMsg}</p>}
+        </div>
       </section>
     </div>
   );
