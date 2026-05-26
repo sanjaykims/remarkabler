@@ -49,7 +49,7 @@ export async function POST() {
   }
   if (files.length === 0) {
     return NextResponse.json(
-      { error: "No text files (.md, .markdown, .txt) found in that repo/branch." },
+      { error: "No readable text files found in that repo/branch (only binary files, dotfiles, or it's empty)." },
       { status: 400 }
     );
   }

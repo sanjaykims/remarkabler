@@ -3,7 +3,14 @@
 // the token is never stored in the app database or sent to the client.
 
 const API = "https://api.github.com";
-const TEXT_EXT = [".md", ".markdown", ".mdx", ".txt"];
+// Accept any text file regardless of extension; only skip known-binary types
+// and dotfiles. Content is also checked for null bytes before inclusion.
+const BINARY_EXT = [
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg", ".pdf",
+  ".zip", ".gz", ".tar", ".7z", ".rar", ".mp3", ".mp4", ".mov", ".avi",
+  ".wav", ".m4a", ".woff", ".woff2", ".ttf", ".otf", ".eot", ".exe", ".bin",
+  ".dll", ".so", ".dylib", ".db", ".sqlite", ".lock", ".pyc", ".class",
+];
 const MAX_FILES = 100;
 const MAX_FILE_BYTES = 200_000;
 
@@ -72,12 +79,14 @@ export async function fetchRepoTextFiles(
     tree?: Array<{ path: string; type: string; size?: number }>;
   };
   const blobs = (tree.tree || [])
-    .filter(
-      (t) =>
-        t.type === "blob" &&
-        TEXT_EXT.some((e) => t.path.toLowerCase().endsWith(e)) &&
-        (t.size ?? 0) <= MAX_FILE_BYTES
-    )
+    .filter((t) => {
+      if (t.type !== "blob" || (t.size ?? 0) > MAX_FILE_BYTES) return false;
+      const lower = t.path.toLowerCase();
+      if (BINARY_EXT.some((e) => lower.endsWith(e))) return false;
+      const base = t.path.split("/").pop() || "";
+      if (base.startsWith(".")) return false; // skip .gitignore, etc.
+      return true;
+    })
     .slice(0, MAX_FILES);
 
   const files: Array<{ path: string; content: string }> = [];
@@ -90,7 +99,9 @@ export async function fetchRepoTextFiles(
     if (!r.ok) continue;
     const j = (await r.json()) as { content?: string; encoding?: string };
     if (j.content && j.encoding === "base64") {
-      const text = Buffer.from(j.content, "base64").toString("utf-8");
+      const buf = Buffer.from(j.content, "base64");
+      if (buf.includes(0)) continue; // looks binary — skip
+      const text = buf.toString("utf-8");
       if (text.trim()) files.push({ path: b.path, content: text });
     }
   }
