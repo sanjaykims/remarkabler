@@ -300,3 +300,15 @@ export function disciplineStatus(): { files: number; lastSynced: string | null }
     | undefined;
   return { files: row?.files ?? 0, lastSynced: row?.synced_at ?? null };
 }
+
+/** The file paths pulled from the discipline repo (for showing what synced). */
+export function disciplineFiles(): string[] {
+  const rows = db()
+    .prepare(
+      `SELECT ocr_text FROM pages WHERE notebook_id = ? ORDER BY page_index`
+    )
+    .all(DISCIPLINE_ID) as Array<{ ocr_text: string }>;
+  return rows
+    .map((r) => ((r.ocr_text || "").split("\n")[0] || "").replace(/^#\s*/, "").trim())
+    .filter(Boolean);
+}

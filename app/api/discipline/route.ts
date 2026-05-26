@@ -8,6 +8,7 @@ import {
 import {
   replaceDisciplineNotebook,
   disciplineStatus,
+  disciplineFiles,
   buildNotesContext,
 } from "@/lib/notes";
 import { getCurrentProfile, saveProfile } from "@/lib/profile";
@@ -24,6 +25,7 @@ export async function GET() {
     configured: !!disciplineConfig(),
     repo: disciplineRepoName(),
     ...disciplineStatus(),
+    fileList: disciplineFiles(),
   });
 }
 

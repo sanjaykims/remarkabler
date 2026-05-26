@@ -18,6 +18,7 @@ export default function MemoryPage() {
     repo: string | null;
     files: number;
     lastSynced: string | null;
+    fileList?: string[];
   } | null>(null);
   const [discBusy, setDiscBusy] = useState(false);
   const [discMsg, setDiscMsg] = useState<string | null>(null);
@@ -192,6 +193,18 @@ export default function MemoryPage() {
             >
               {discBusy ? "Syncing…" : "Sync now"}
             </button>
+            {disc.fileList && disc.fileList.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer opacity-70">
+                  Show files ({disc.fileList.length})
+                </summary>
+                <ul className="mt-1 space-y-0.5 opacity-80">
+                  {disc.fileList.map((f, i) => (
+                    <li key={i} className="truncate">{f}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </>
         ) : (
           <p className="text-xs opacity-70">
