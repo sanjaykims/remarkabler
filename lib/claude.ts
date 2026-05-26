@@ -196,6 +196,7 @@ export async function updateSelfModel(opts: {
 export async function chatOverNotes(opts: {
   profile: string;
   relevantNotes: string;
+  recentLocations?: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   userMessage: string;
   attachment?: { kind: "image" | "document"; mediaType: string; dataBase64: string };
@@ -257,6 +258,14 @@ export async function chatOverNotes(opts: {
         opts.profile.trim() ||
           "(No profile yet — rely on the excerpts provided and answer with care.)",
         "=== END UNDERSTANDING ===",
+        ...(opts.recentLocations?.trim()
+          ? [
+              "",
+              "=== WHERE THEY'VE BEEN RECENTLY (places they logged) ===",
+              opts.recentLocations,
+              "=== END LOCATIONS ===",
+            ]
+          : []),
       ].join("\n"),
       cache_control: { type: "ephemeral" },
     },

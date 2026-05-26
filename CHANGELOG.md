@@ -3,6 +3,10 @@
 ## 2026-05-16
 
 ### Added
+- Location logging: a "Log my location" button on the Memory tab records where
+  you are (reverse-geocoded to a place name) with the local time. Your recent
+  places are fed into chat so Claude knows where you've been. One point per tap
+  — the app can't track in the background; it only logs when you tap.
 - Connect a private GitHub repo as a "discipline" source. Configure it with the
   `DISCIPLINE_REPO` / `DISCIPLINE_GITHUB_TOKEN` env vars; the Memory tab's "Sync
   now" pulls the repo's text files (.md/.txt) into a notebook and folds them

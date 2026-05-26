@@ -138,6 +138,15 @@ CREATE TABLE IF NOT EXISTS profile (
   source TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS locations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lat REAL,
+  lng REAL,
+  place TEXT,
+  local_time TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 export function getSetting(key: string): string | null {

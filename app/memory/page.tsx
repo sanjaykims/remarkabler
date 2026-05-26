@@ -23,6 +23,10 @@ export default function MemoryPage() {
   const [discBusy, setDiscBusy] = useState(false);
   const [discMsg, setDiscMsg] = useState<string | null>(null);
 
+  const [locs, setLocs] = useState<Array<{ place: string; local_time: string }>>([]);
+  const [locBusy, setLocBusy] = useState(false);
+  const [locMsg, setLocMsg] = useState<string | null>(null);
+
   async function load() {
     setLoading(true);
     try {
@@ -46,10 +50,70 @@ export default function MemoryPage() {
     }
   }
 
+  async function loadLocs() {
+    try {
+      const d = await fetch("/api/location").then((r) => r.json());
+      setLocs(d.locations || []);
+    } catch {
+      setLocs([]);
+    }
+  }
+
   useEffect(() => {
     load();
     loadDisc();
+    loadLocs();
   }, []);
+
+  function getPosition(): Promise<GeolocationPosition> {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Location isn't available on this device."));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 15000,
+      });
+    });
+  }
+
+  async function logLocation() {
+    setLocBusy(true);
+    setLocMsg(null);
+    try {
+      const pos = await getPosition();
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      let place = "";
+      try {
+        const g = await fetch(
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
+        ).then((r) => r.json());
+        place = [g.locality || g.city, g.principalSubdivision, g.countryName]
+          .filter(Boolean)
+          .join(", ");
+      } catch {
+        // no place name — coords still saved
+      }
+      const r = await fetch("/api/location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat, lng, place, localTime: new Date().toLocaleString() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Couldn't save location");
+      setLocMsg(place ? `Logged: ${place}` : "Location logged.");
+      await loadLocs();
+    } catch (e) {
+      setLocMsg(
+        (e as Error).message ||
+          "Couldn't get your location. Allow location access and try again."
+      );
+    } finally {
+      setLocBusy(false);
+    }
+  }
 
   async function syncDiscipline() {
     setDiscBusy(true);
@@ -214,6 +278,38 @@ export default function MemoryPage() {
           </p>
         )}
         {discMsg && <p className="text-sm opacity-70">{discMsg}</p>}
+      </section>
+
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+        <h2 className="font-medium">Location</h2>
+        <p className="text-xs opacity-70">
+          Tap to log where you are now (with the time). Each tap saves one
+          place — tap once a day, or at each spot you want remembered. Your
+          recent places are fed to chat. The app can&rsquo;t track you in the
+          background, so nothing is recorded unless you tap.
+        </p>
+        <button
+          onClick={logLocation}
+          disabled={locBusy}
+          className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+        >
+          {locBusy ? "Getting location…" : "Log my location"}
+        </button>
+        {locMsg && <p className="text-sm opacity-70">{locMsg}</p>}
+        {locs.length > 0 && (
+          <details className="text-xs">
+            <summary className="cursor-pointer opacity-70">
+              Recent places ({locs.length})
+            </summary>
+            <ul className="mt-1 space-y-0.5 opacity-80">
+              {locs.map((l, i) => (
+                <li key={i} className="truncate">
+                  {l.place || "(unnamed)"} — {l.local_time}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </section>
     </div>
   );

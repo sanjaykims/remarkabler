@@ -9,6 +9,7 @@ import {
   ensureProfileSeed,
 } from "@/lib/notes";
 import { getCurrentProfile } from "@/lib/profile";
+import { recentLocationsContext } from "@/lib/location";
 import { chatOverNotes } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
 
@@ -102,9 +103,11 @@ export async function POST(req: NextRequest) {
     ? retrieveRelevantNotes(userMessage)
     : buildNotesContext({ maxChars: 30000 });
 
+  const recentLocations = recentLocationsContext();
+
   let reply: string;
   try {
-    reply = await chatOverNotes({ profile, relevantNotes, history, userMessage, attachment });
+    reply = await chatOverNotes({ profile, relevantNotes, recentLocations, history, userMessage, attachment });
   } catch (err) {
     const status = (err as { status?: number }).status;
     let message = "Chat hit a snag. Please try again.";
