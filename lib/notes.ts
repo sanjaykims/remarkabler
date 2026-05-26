@@ -199,7 +199,6 @@ export function retrieveRelevantNotes(query: string, limit = 8): string {
 }
 
 let seedingProfile = false;
-
 /**
  * If there is no profile yet but notes exist (e.g. notes predate this
  * feature), build the first profile in the background. Returns immediately;
@@ -246,4 +245,58 @@ export function buildChatContext(opts: { maxChars?: number } = {}): string {
     out = block + out;
   }
   return out.trim();
+}
+
+// The synced GitHub "discipline" repo is stored as a single notebook so it
+// flows through chat, retrieval, and the profile like any other notes.
+export const DISCIPLINE_ID = "github-discipline";
+
+/** Replace the discipline notebook with the freshly fetched repo files.
+ *  Returns the concatenated text for folding into the profile. */
+export function replaceDisciplineNotebook(
+  files: Array<{ path: string; content: string }>
+): string {
+  db().prepare(`DELETE FROM pages_fts WHERE notebook_id = ?`).run(DISCIPLINE_ID);
+  db().prepare(`DELETE FROM pages WHERE notebook_id = ?`).run(DISCIPLINE_ID);
+  db().prepare(`DELETE FROM notebooks WHERE id = ?`).run(DISCIPLINE_ID);
+  if (files.length === 0) return "";
+
+  const name = "Discipline (GitHub)";
+  db()
+    .prepare(
+      `INSERT INTO notebooks(id,name,parent,last_modified,hash,synced_at,status)
+       VALUES(?,?,NULL,NULL,NULL,datetime('now'),'done')`
+    )
+    .run(DISCIPLINE_ID, name);
+
+  const insertPage = db().prepare(
+    `INSERT INTO pages(id,notebook_id,page_index,image_path,ocr_text,ocr_summary,ocr_model,ocr_at)
+     VALUES(?,?,?,?,?,?,?,?)`
+  );
+  const insertFts = db().prepare(
+    `INSERT INTO pages_fts(ocr_text,ocr_summary,notebook_name,page_id,notebook_id)
+     VALUES(?,?,?,?,?)`
+  );
+  const now = new Date().toISOString();
+  files.forEach((f, i) => {
+    const pageId = `${DISCIPLINE_ID}:${i}`;
+    const text = `# ${f.path}\n${f.content}`;
+    insertPage.run(pageId, DISCIPLINE_ID, i, null, text, "", "github", now);
+    insertFts.run(text, "", name, pageId, DISCIPLINE_ID);
+  });
+
+  return files.map((f) => `## ${f.path}\n${f.content}`).join("\n\n");
+}
+
+export function disciplineStatus(): { files: number; lastSynced: string | null } {
+  const row = db()
+    .prepare(
+      `SELECT synced_at,
+              (SELECT COUNT(*) FROM pages WHERE notebook_id = ?) AS files
+       FROM notebooks WHERE id = ?`
+    )
+    .get(DISCIPLINE_ID, DISCIPLINE_ID) as
+    | { synced_at: string | null; files: number }
+    | undefined;
+  return { files: row?.files ?? 0, lastSynced: row?.synced_at ?? null };
 }

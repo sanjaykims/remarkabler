@@ -13,6 +13,15 @@ export default function MemoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
 
+  const [disc, setDisc] = useState<{
+    configured: boolean;
+    repo: string | null;
+    files: number;
+    lastSynced: string | null;
+  } | null>(null);
+  const [discBusy, setDiscBusy] = useState(false);
+  const [discMsg, setDiscMsg] = useState<string | null>(null);
+
   async function load() {
     setLoading(true);
     try {
@@ -28,9 +37,34 @@ export default function MemoryPage() {
     }
   }
 
+  async function loadDisc() {
+    try {
+      setDisc(await fetch("/api/discipline").then((r) => r.json()));
+    } catch {
+      setDisc(null);
+    }
+  }
+
   useEffect(() => {
     load();
+    loadDisc();
   }, []);
+
+  async function syncDiscipline() {
+    setDiscBusy(true);
+    setDiscMsg(null);
+    try {
+      const r = await fetch("/api/discipline", { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Sync failed");
+      setDiscMsg(`Synced ${d.files} file${d.files === 1 ? "" : "s"} into your memory.`);
+      await Promise.all([loadDisc(), load()]);
+    } catch (e) {
+      setDiscMsg((e as Error).message);
+    } finally {
+      setDiscBusy(false);
+    }
+  }
 
   async function save() {
     setBusy("save");
@@ -140,6 +174,34 @@ export default function MemoryPage() {
           {error && <p className="text-sm text-red-600">{error}</p>}
         </>
       )}
+
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+        <h2 className="font-medium">Discipline (GitHub)</h2>
+        {disc?.configured ? (
+          <>
+            <p className="text-xs opacity-70">
+              Connected to <span className="font-medium">{disc.repo}</span>.
+              {disc.files > 0
+                ? ` ${disc.files} file${disc.files === 1 ? "" : "s"} in your memory${disc.lastSynced ? `, synced ${formatLocalTime(disc.lastSynced)}` : ""}.`
+                : " Not synced yet."}
+            </p>
+            <button
+              onClick={syncDiscipline}
+              disabled={discBusy}
+              className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {discBusy ? "Syncing…" : "Sync now"}
+            </button>
+          </>
+        ) : (
+          <p className="text-xs opacity-70">
+            To connect a GitHub repo of discipline notes, set{" "}
+            <code>DISCIPLINE_REPO</code> and <code>DISCIPLINE_GITHUB_TOKEN</code>{" "}
+            in Railway, then redeploy. A “Sync now” button will appear here.
+          </p>
+        )}
+        {discMsg && <p className="text-sm opacity-70">{discMsg}</p>}
+      </section>
     </div>
   );
 }

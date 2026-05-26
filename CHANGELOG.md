@@ -3,6 +3,11 @@
 ## 2026-05-16
 
 ### Added
+- Connect a private GitHub repo as a "discipline" source. Configure it with the
+  `DISCIPLINE_REPO` / `DISCIPLINE_GITHUB_TOKEN` env vars; the Memory tab's "Sync
+  now" pulls the repo's text files (.md/.txt) into a notebook and folds them
+  into your Memory, re-syncable on demand. (New `lib/github.ts`,
+  `app/api/discipline`.)
 - Memory tab: view what Remarkabler understands about you, edit/correct it, and
   rebuild it from all your notes on demand. (The profile still updates itself in
   the background when you feed a diary.)

@@ -32,6 +32,11 @@ and generate an accumulating record of "insights" about themselves.
   and session recording are disabled so no note content is ever sent. These
   are `NEXT_PUBLIC_*` vars, so they are inlined at build time — set them in
   Railway before the build (changing them triggers a rebuild).
+- Optional GitHub "discipline" source: set `DISCIPLINE_REPO` (`owner/name`),
+  `DISCIPLINE_GITHUB_TOKEN` (a fine-grained read-only PAT), and optionally
+  `DISCIPLINE_BRANCH` (default `main`). The Memory page's "Sync now" pulls the
+  repo's text files into a notebook and folds them into the profile. Requires
+  the Railway network policy to allow outbound calls to `api.github.com`.
 - `npm run start` honors the host-provided `PORT`. `npm run build` must pass.
 
 ## Stack
