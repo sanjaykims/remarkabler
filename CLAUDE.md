@@ -32,6 +32,12 @@ and generate an accumulating record of "insights" about themselves.
   and session recording are disabled so no note content is ever sent. These
   are `NEXT_PUBLIC_*` vars, so they are inlined at build time — set them in
   Railway before the build (changing them triggers a rebuild).
+- Optional automatic location (OwnTracks): set `OWNTRACKS_TOKEN` to enable the
+  `/api/owntracks` ingestion endpoint (the phone app posts there with
+  `?token=`). Points are clustered into stays (place + dwell), reverse-geocoded
+  via Nominatim (cached in `geocode_cache`), and fed to chat. `LOCATION_TZ_OFFSET`
+  (minutes, default 540 = Seoul) sets the display timezone. Needs outbound to
+  `nominatim.openstreetmap.org` for place names (falls back to coordinates).
 - Optional GitHub "discipline" source: set `DISCIPLINE_REPO` (`owner/name`),
   `DISCIPLINE_GITHUB_TOKEN` (a fine-grained read-only PAT), and optionally
   `DISCIPLINE_BRANCH` (default `main`). The Memory page's "Sync now" pulls the

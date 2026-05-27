@@ -159,6 +159,22 @@ CREATE TABLE IF NOT EXISTS route_stops (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_route_stops_key ON route_stops(start_time, place);
+
+CREATE TABLE IF NOT EXISTS location_points (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lat REAL NOT NULL,
+  lng REAL NOT NULL,
+  tst INTEGER NOT NULL,
+  acc REAL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_location_points_tst ON location_points(tst);
+
+CREATE TABLE IF NOT EXISTS geocode_cache (
+  key TEXT PRIMARY KEY,
+  place TEXT NOT NULL
+);
 `;
 
 export function getSetting(key: string): string | null {

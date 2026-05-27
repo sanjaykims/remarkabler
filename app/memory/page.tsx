@@ -30,6 +30,13 @@ export default function MemoryPage() {
   const [importBusy, setImportBusy] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const timelineRef = useRef<HTMLInputElement>(null);
+  const [ot, setOt] = useState<{
+    configured: boolean;
+    points: number;
+    lastTst: number | null;
+  } | null>(null);
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   async function load() {
     setLoading(true);
@@ -63,10 +70,19 @@ export default function MemoryPage() {
     }
   }
 
+  async function loadOt() {
+    try {
+      setOt(await fetch("/api/owntracks").then((r) => r.json()));
+    } catch {
+      setOt(null);
+    }
+  }
+
   useEffect(() => {
     load();
     loadDisc();
     loadLocs();
+    loadOt();
   }, []);
 
   function getPosition(): Promise<GeolocationPosition> {
@@ -371,6 +387,35 @@ export default function MemoryPage() {
           </button>
           {importMsg && <p className="text-sm opacity-70">{importMsg}</p>}
         </div>
+      </section>
+
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+        <h2 className="font-medium">Auto route (OwnTracks)</h2>
+        {ot?.configured ? (
+          <>
+            <p className="text-xs opacity-70">
+              Connected. {ot.points} location point{ot.points === 1 ? "" : "s"}{" "}
+              received
+              {ot.lastTst
+                ? `, last ${new Date(ot.lastTst * 1000).toLocaleString()}`
+                : " — none yet (open OwnTracks and wait for it to send)"}
+              . Your route (places + how long you stayed) is fed to chat
+              automatically — no taps.
+            </p>
+            <p className="text-xs opacity-70 break-all">
+              OwnTracks URL:{" "}
+              <code>{origin}/api/owntracks?token=YOUR_TOKEN</code>
+            </p>
+          </>
+        ) : (
+          <p className="text-xs opacity-70 break-words">
+            Fully automatic background route. One-time setup: (1) set{" "}
+            <code>OWNTRACKS_TOKEN</code> to a secret in Railway; (2) install the
+            free OwnTracks app, set Mode to “HTTP”, and point its URL at{" "}
+            <code>{origin}/api/owntracks?token=YOUR_TOKEN</code>. After that it
+            sends your location all day, with nothing to tap.
+          </p>
+        )}
       </section>
     </div>
   );

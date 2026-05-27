@@ -3,6 +3,11 @@
 ## 2026-05-16
 
 ### Added
+- Automatic daily route via OwnTracks: set `OWNTRACKS_TOKEN` and point the free
+  OwnTracks app at `/api/owntracks?token=…`. The app ingests location points in
+  the background, clusters them into stays (place + arrival/leave + dwell),
+  names them via reverse geocoding, and feeds the recent route to chat — no
+  taps, no exports. Status + setup live on the Memory tab.
 - Full daily route via Google Timeline upload: export your timeline from Google
   Maps and tap "Upload location timeline" on the Memory tab. The app parses each
   stop (place + arrival/leave times + how long you stayed), de-duplicates across

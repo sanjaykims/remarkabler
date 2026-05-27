@@ -11,6 +11,7 @@ import {
 import { getCurrentProfile } from "@/lib/profile";
 import { recentLocationsContext } from "@/lib/location";
 import { recentRouteContext } from "@/lib/timeline";
+import { owntracksRouteContext } from "@/lib/owntracks";
 import { chatOverNotes } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
 
@@ -104,9 +105,12 @@ export async function POST(req: NextRequest) {
     ? retrieveRelevantNotes(userMessage)
     : buildNotesContext({ maxChars: 30000 });
 
-  // Prefer the full daily route (Google Timeline import) if present; otherwise
-  // fall back to the one-tap location log.
-  const recentLocations = recentRouteContext() || recentLocationsContext();
+  // Prefer the Google Timeline import, then the automatic OwnTracks route,
+  // then the one-tap location log.
+  const recentLocations =
+    recentRouteContext() ||
+    (await owntracksRouteContext()) ||
+    recentLocationsContext();
 
   let reply: string;
   try {
