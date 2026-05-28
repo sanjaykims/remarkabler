@@ -71,7 +71,7 @@ export default function InsightsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "feed-claude-insights.md";
+    a.download = "remarkabler-insights.md";
     document.body.appendChild(a);
     a.click();
     a.remove();

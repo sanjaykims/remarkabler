@@ -1,4 +1,4 @@
-# Feed Claude — reMarkable
+# Remarkabler
 
 A self-hosted Next.js app that:
 

@@ -11,7 +11,7 @@ type Msg = {
   attachments?: Attachment[];
 };
 
-const DRAFT_KEY = "feedclaude:chat-draft";
+const DRAFT_KEY = "remarkabler:chat-draft";
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Msg[]>([]);
