@@ -9,6 +9,7 @@ type Msg = {
   role: "user" | "assistant";
   content: string;
   attachments?: Attachment[];
+  model?: string | null;
 };
 
 const DRAFT_KEY = "remarkabler:chat-draft";
@@ -343,6 +344,11 @@ export default function ChatPage() {
                 )
               )}
               {!placeholderOnly && m.content}
+              {m.role === "assistant" && m.model && /haiku/i.test(m.model) && (
+                <span className="block mt-1.5 text-[10px] uppercase tracking-wide opacity-50">
+                  via Haiku — main model was busy
+                </span>
+              )}
             </div>
           );
         })}

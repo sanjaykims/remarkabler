@@ -1,9 +1,12 @@
 import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
-import { db } from "./db";
+import { db, getSetting, setSetting } from "./db";
 import { ocrNotebookPdf, buildSelfModel, updateSelfModel } from "./claude";
 import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
+import { owntracksRouteContext } from "./owntracks";
+import { recentRouteContext } from "./timeline";
+import { recentLocationsContext } from "./location";
 
 const FILES_DIR = path.join(
   process.env.DATA_DIR || path.join(process.cwd(), "data"),
@@ -221,6 +224,57 @@ export function ensureProfileSeed(): void {
       // best-effort; will retry on the next chat
     } finally {
       seedingProfile = false;
+    }
+  })();
+}
+
+let distillingLocation = false;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Once a week, fold where the person has been into the evolving profile —
+ * patterns and routines, NOT raw stops (which would just be noise). Best-effort
+ * and fired un-awaited from chat, like ensureProfileSeed. Uses the Opus model
+ * via updateSelfModel. Requires an existing profile (seeded from notebooks);
+ * the weekly timestamp is set after each attempt so it never runs per-message.
+ */
+export function maybeDistillLocation(): void {
+  if (distillingLocation) return;
+  const last = getSetting("location_distill_at");
+  if (last && Date.now() - Date.parse(last) < WEEK_MS) return;
+  const profile = getCurrentProfile();
+  if (!profile) return; // nothing to fold into yet
+
+  distillingLocation = true;
+  (async () => {
+    try {
+      const week =
+        (await owntracksRouteContext(7)) ||
+        recentRouteContext() ||
+        recentLocationsContext();
+      if (week.trim()) {
+        const framed = [
+          "Below is a summary of where I went over roughly the past week — my",
+          "location route (places, times, and how long I stayed). Integrate only",
+          "the meaningful patterns into your understanding of me: my routines,",
+          "where I spend most of my time, and any notable change from before.",
+          "Ignore one-off, incidental stops. Keep the profile compact.",
+          "",
+          week,
+        ].join("\n");
+        const updated = await updateSelfModel({
+          currentProfile: profile,
+          newContent: framed,
+        });
+        saveProfile(updated, "location-distill");
+      }
+      // Mark the weekly cadence even when there's no route, so we don't
+      // recompute the (geocoding-heavy) week summary on every chat.
+      setSetting("location_distill_at", new Date().toISOString());
+    } catch {
+      // best-effort
+    } finally {
+      distillingLocation = false;
     }
   })();
 }

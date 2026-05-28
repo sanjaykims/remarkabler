@@ -36,6 +36,13 @@ export function db(): Database.Database {
   } catch {
     // column already exists
   }
+  // The model that produced each assistant reply, so the chat can flag when a
+  // cheaper fallback model (e.g. Haiku) answered instead of the main one.
+  try {
+    _db.exec(`ALTER TABLE chat_messages ADD COLUMN model TEXT`);
+  } catch {
+    // column already exists
+  }
   // Any notebook still "processing" at startup was interrupted by a restart.
   _db
     .prepare(

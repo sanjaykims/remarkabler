@@ -200,7 +200,7 @@ export async function chatOverNotes(opts: {
   history: Array<{ role: "user" | "assistant"; content: string }>;
   userMessage: string;
   attachment?: { kind: "image" | "document"; mediaType: string; dataBase64: string };
-}): Promise<string> {
+}): Promise<{ reply: string; model: string }> {
   const messages: Anthropic.MessageParam[] = opts.history.map((m) => ({
     role: m.role,
     content: m.content,
@@ -290,7 +290,8 @@ export async function chatOverNotes(opts: {
   recordUsage("chat", usedModel, resp.usage);
 
   const block = resp.content.find((b) => b.type === "text");
-  return block && block.type === "text" ? block.text : "";
+  const reply = block && block.type === "text" ? block.text : "";
+  return { reply, model: usedModel };
 }
 
 /**

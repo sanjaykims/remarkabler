@@ -7,6 +7,7 @@ import {
   buildNotesContext,
   retrieveRelevantNotes,
   ensureProfileSeed,
+  maybeDistillLocation,
 } from "@/lib/notes";
 import { getCurrentProfile } from "@/lib/profile";
 import { recentLocationsContext } from "@/lib/location";
@@ -100,6 +101,8 @@ export async function POST(req: NextRequest) {
   // the whole notes corpus. If the profile hasn't been built yet, seed it in
   // the background and fall back to a capped notes context for this message.
   ensureProfileSeed();
+  // Once a week, quietly fold the recent location route into the profile.
+  maybeDistillLocation();
   const profile = getCurrentProfile() || "";
   const relevantNotes = profile
     ? retrieveRelevantNotes(userMessage)
@@ -113,8 +116,11 @@ export async function POST(req: NextRequest) {
     recentLocationsContext();
 
   let reply: string;
+  let replyModel: string;
   try {
-    reply = await chatOverNotes({ profile, relevantNotes, recentLocations, history, userMessage, attachment });
+    const result = await chatOverNotes({ profile, relevantNotes, recentLocations, history, userMessage, attachment });
+    reply = result.reply;
+    replyModel = result.model;
   } catch (err) {
     const status = (err as { status?: number }).status;
     let message = "Chat hit a snag. Please try again.";
@@ -148,9 +154,13 @@ export async function POST(req: NextRequest) {
       )
       .run(userRow.lastInsertRowid, saved.kind, saved.filename, saved.mime, saved.stored);
   }
-  insertMsg.run(conversationId, "assistant", reply);
+  db()
+    .prepare(
+      `INSERT INTO chat_messages(conversation_id, role, content, model) VALUES(?,?,?,?)`
+    )
+    .run(conversationId, "assistant", reply, replyModel);
 
-  return NextResponse.json({ reply });
+  return NextResponse.json({ reply, model: replyModel });
 }
 
 export async function GET(req: NextRequest) {
@@ -160,7 +170,7 @@ export async function GET(req: NextRequest) {
 
   const rows = db()
     .prepare(
-      `SELECT id, role, content, created_at FROM chat_messages
+      `SELECT id, role, content, created_at, model FROM chat_messages
        WHERE conversation_id = ? AND archived_at IS NULL ORDER BY id ASC`
     )
     .all(conversationId) as Array<{
@@ -168,6 +178,7 @@ export async function GET(req: NextRequest) {
     role: string;
     content: string;
     created_at: string;
+    model: string | null;
   }>;
 
   const attachments = db()
@@ -188,6 +199,7 @@ export async function GET(req: NextRequest) {
     role: r.role,
     content: r.content,
     created_at: r.created_at,
+    model: r.model,
     attachments: attachments
       .filter((a) => a.message_id === r.id)
       .map((a) => ({ id: a.id, kind: a.kind, filename: a.filename })),
