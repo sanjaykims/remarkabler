@@ -164,7 +164,7 @@ export function buildNotesContext(opts: { maxChars?: number } = {}): string {
 // "5/28" or "5/28th" needs to be turned into "05" + "28" for the search
 // to actually find that entry — that's what this preprocessor does. Also
 // strips ordinal suffixes ("28th" → "28").
-function normaliseDates(msg: string): string {
+export function normaliseDates(msg: string): string {
   let out = msg.replace(/(\d)(st|nd|rd|th)\b/gi, "$1");
   // YYYY-M-D or YYYY/M/D → "YYYY MM DD"  (handled first so the M-D rule
   // below doesn't pick up a substring of it)
