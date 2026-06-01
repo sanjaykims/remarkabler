@@ -30,40 +30,46 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   if (!isAuthenticated()) return LOCKED();
   const form = await req.formData().catch(() => null);
-  const file = form?.get("file");
-  if (!(file instanceof File)) {
+  const files = form
+    ? form
+        .getAll("file")
+        .filter((f): f is File => f instanceof File && f.size > 0)
+    : [];
+  if (files.length === 0) {
     return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
   }
-  const isPdf =
-    file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-  if (!isPdf) {
+
+  const added: Array<{ id: string; name: string }> = [];
+  const skipped: string[] = [];
+  for (const file of files) {
+    const isPdf =
+      file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      skipped.push(`${file.name || "file"} (not a PDF)`);
+      continue;
+    }
+    if (file.size > MAX_BYTES) {
+      skipped.push(`${file.name || "file"} (too large — max 20 MB)`);
+      continue;
+    }
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const nb = createNotebook(file.name, bytes);
+      void processNotebook(nb.id).catch(() => {});
+      added.push({ id: nb.id, name: nb.name });
+    } catch (err) {
+      skipped.push(`${file.name || "file"} (${(err as Error).message})`);
+    }
+  }
+
+  if (added.length === 0) {
     return NextResponse.json(
-      { error: "Please upload a PDF file (export your notebook as PDF on the reMarkable)." },
+      { error: skipped.join("; ") || "Nothing uploaded." },
       { status: 400 }
     );
   }
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json(
-      { error: "PDF is too large (max 20 MB)." },
-      { status: 400 }
-    );
-  }
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let nb;
-  try {
-    nb = createNotebook(file.name, bytes);
-  } catch (err) {
-    return NextResponse.json(
-      { error: `Couldn't save the file: ${(err as Error).message}` },
-      { status: 500 }
-    );
-  }
-
-  // Transcribe in the background; the request returns immediately.
-  void processNotebook(nb.id).catch(() => {});
-
-  return NextResponse.json({ ok: true, id: nb.id, name: nb.name, status: "processing" });
+  return NextResponse.json({ ok: true, added: added.length, skipped, items: added });
 }
 
 export async function DELETE(req: NextRequest) {

@@ -43,20 +43,28 @@ export default function NotebooksPage() {
 
   async function upload(e: React.FormEvent) {
     e.preventDefault();
-    const file = fileRef.current?.files?.[0];
-    if (!file || uploading) return;
+    const fs = fileRef.current?.files;
+    if (!fs || fs.length === 0 || uploading) return;
     setUploading(true);
     setError(null);
     setStatus(null);
 
     const fd = new FormData();
-    fd.append("file", file);
+    for (const f of Array.from(fs)) fd.append("file", f);
     try {
       const r = await fetch("/api/notebooks", { method: "POST", body: fd });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Upload failed");
-      track("notebook_uploaded");
-      setStatus(`Uploaded "${d.name}" — transcribing in the background. It will appear below.`);
+      const n: number = d.added ?? 1;
+      track("notebook_uploaded", { count: n });
+      let msg =
+        n === 1
+          ? `Uploaded — transcribing in the background. It will appear below.`
+          : `Uploaded ${n} notebooks — transcribing in the background. They'll appear below.`;
+      if (Array.isArray(d.skipped) && d.skipped.length) {
+        msg += ` Skipped: ${d.skipped.join("; ")}.`;
+      }
+      setStatus(msg);
       if (fileRef.current) fileRef.current.value = "";
       setFileName(null);
       await load();
@@ -105,8 +113,14 @@ export default function NotebooksPage() {
             ref={fileRef}
             type="file"
             accept="application/pdf,.pdf"
+            multiple
             disabled={uploading}
-            onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+            onChange={(e) => {
+              const fs = e.target.files;
+              if (!fs || fs.length === 0) setFileName(null);
+              else if (fs.length === 1) setFileName(fs[0].name);
+              else setFileName(`${fs.length} files chosen`);
+            }}
             className="hidden"
           />
           <button
