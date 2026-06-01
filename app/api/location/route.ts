@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
-import { addLocation, listRecentLocations } from "@/lib/location";
+import { addLocation, listRecentLocations, isLocationEnabled } from "@/lib/location";
 
 export const runtime = "nodejs";
 
@@ -13,6 +13,12 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   if (!isAuthenticated()) return LOCKED();
+  if (!isLocationEnabled()) {
+    return NextResponse.json(
+      { error: "Location sharing is turned off in Remarkabler." },
+      { status: 403 }
+    );
+  }
   const body = await req.json().catch(() => ({}));
   const lat = Number(body.lat);
   const lng = Number(body.lng);

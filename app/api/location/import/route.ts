@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { parseTimeline, saveStops, routeStopCount } from "@/lib/timeline";
+import { isLocationEnabled } from "@/lib/location";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -10,6 +11,12 @@ const MAX_BYTES = 50 * 1024 * 1024;
 export async function POST(req: NextRequest) {
   if (!isAuthenticated()) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
+  }
+  if (!isLocationEnabled()) {
+    return NextResponse.json(
+      { error: "Location sharing is turned off in Remarkabler." },
+      { status: 403 }
+    );
   }
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
