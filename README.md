@@ -16,15 +16,6 @@ send to Claude to answer you.
 > [`USER_GUIDE.md`](./USER_GUIDE.md). For a visual overview of the system,
 > see [`remarkabler-architecture.pdf`](./remarkabler-architecture.pdf).
 
-## What it looks like
-
-| | |
-|:-:|:-:|
-| **Chat** — answers from accumulated memory<br>![Chat](docs/screenshots/chat.png) | **Memory** — Claude's evolving profile of you<br>![Memory](docs/screenshots/memory.png) |
-| **Notebooks** — PDFs from your reMarkable, transcribed in the background<br>![Notebooks](docs/screenshots/notebooks.png) | **Cost** — every Claude call, by day<br>![Cost](docs/screenshots/cost.png) |
-
-> Need to capture these? See [`docs/screenshots/README.md`](./docs/screenshots/README.md) for the quick checklist.
-
 ## How it works
 
 ```
