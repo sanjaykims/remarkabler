@@ -1,119 +1,138 @@
 # Remarkabler
 
-A self-hosted, private **AI companion that grows with you.** You write by hand
-on your reMarkable, export a notebook as PDF, and upload it here; Claude
-transcribes every page and folds what it learns into an evolving "profile of
-you." You can then chat with something that actually remembers your life,
-generate cumulative insights, and — optionally — let it know where you've been.
+> **Your private AI companion that grows with you.** Write by hand on your
+> reMarkable; chat with something that actually remembers your life.
 
-Everything lives in your own database; the only data that leaves is what you
+A self-hosted Next.js app that transcribes your handwritten notebooks with
+Claude vision, builds an **evolving "profile of you"** from your diary, and
+lets you chat with something that reasons over its accumulated understanding
+of who you are — not just keyword-matches your notes. Optional automatic
+location route, GitHub-notes sync, and an honest day-by-day cost calendar.
+
+Everything lives in your own database. The only data that leaves is what you
 send to Claude to answer you.
 
-> **Looking for how to *use* the app?** See [`USER_GUIDE.md`](./USER_GUIDE.md)
-> — a friendly, non-technical manual. This README is for running and
-> developing it.
+> **Looking for the end-user manual (non-technical)?** See
+> [`USER_GUIDE.md`](./USER_GUIDE.md). For a visual overview of the system,
+> see [`remarkabler-architecture.pdf`](./remarkabler-architecture.pdf).
+
+## What it looks like
+
+| | |
+|:-:|:-:|
+| **Chat** — answers from accumulated memory<br>![Chat](docs/screenshots/chat.png) | **Memory** — Claude's evolving profile of you<br>![Memory](docs/screenshots/memory.png) |
+| **Notebooks** — PDFs from your reMarkable, transcribed in the background<br>![Notebooks](docs/screenshots/notebooks.png) | **Cost** — every Claude call, by day<br>![Cost](docs/screenshots/cost.png) |
+
+> Need to capture these? See [`docs/screenshots/README.md`](./docs/screenshots/README.md) for the quick checklist.
 
 ## How it works
 
 ```
-reMarkable PDF → upload → Claude OCR (background) → per-page text + FTS
+reMarkable PDF → upload → Claude OCR (background) → per-page text
                                                   ↘ updates the "profile of you"
 chat → reasons over the compact profile + a few relevant note excerpts
        (+ your recent location route) → personal answers
 ```
 
-Chat deliberately reasons over the **compact profile plus a few retrieved
-excerpts**, not the entire notes corpus — that keeps each message roughly 10×
-cheaper. Insights still reflects over everything, on demand.
+Chat deliberately reasons over a **compact profile plus a few retrieved
+excerpts**, not your entire note corpus — that keeps each message roughly 10×
+cheaper. Insights reflects over everything on demand. Once a week, the app
+quietly distills your location patterns into the same evolving profile.
 
-## Stack
+## Quick start
 
-Next.js 14 (App Router, TypeScript) · better-sqlite3 · `@anthropic-ai/sdk` ·
-Tailwind CSS · WebAuthn passkeys (`@simplewebauthn`) · installable PWA with a
-Web Share Target. All data (the SQLite `app.db` plus uploaded PDFs and chat
-attachments) lives under `DATA_DIR` (defaults to `./data`).
+You'll need an [Anthropic API key](https://console.anthropic.com).
 
-## Setup (local dev)
-
+**Local:**
 ```bash
-cp .env.local.example .env.local   # add your ANTHROPIC_API_KEY
+cp .env.local.example .env.local   # paste your ANTHROPIC_API_KEY
 npm install
 npm run dev
 ```
-
 Open <http://localhost:3001>.
+
+**Hosted (Railway):**
+1. Fork this repo.
+2. Connect it to a new Railway project.
+3. Attach a persistent volume and set `DATA_DIR` to its mount path (e.g. `/data`).
+4. Set the env vars below. Only `ANTHROPIC_API_KEY` is required to start.
+5. Push to `main` — Railway auto-deploys.
 
 ## Configuration
 
-Behavior is controlled by environment variables. Only `ANTHROPIC_API_KEY` is
-required; every optional feature stays **off until its variable is set**.
+Only `ANTHROPIC_API_KEY` is required. Every optional feature stays **off until
+its variable is set** — so you can flip the lock, location, GitHub sync, and
+analytics on simply by adding one variable each.
 
 | Variable | Purpose |
 |---|---|
 | `ANTHROPIC_API_KEY` | **Required.** Claude API key. |
-| `CLAUDE_MODEL` | Model for OCR / insights / memory (an Opus model). |
-| `CHAT_MODEL` | Model for everyday chat (defaults to `claude-sonnet-4-6`). |
-| `CHAT_FALLBACK_MODEL` | Used for one message if the chat model is overloaded (default `claude-sonnet-4-6`). |
+| `CLAUDE_MODEL` | Model for OCR / insights / memory (e.g. `claude-opus-4-7`). |
+| `CHAT_MODEL` | Model for everyday chat (e.g. `claude-sonnet-4-6`). |
+| `CHAT_FALLBACK_MODEL` | Used if the chat model is briefly overloaded (e.g. `claude-haiku-4-5`). |
 | `DATA_DIR` | Where `app.db` + PDFs live (mount a persistent volume here). |
-| `APP_PASSCODE` | Set to enable the private lock (passkey + passcode). Unset = app is fully open. |
-| `OWNTRACKS_TOKEN` | Set to enable automatic location ingestion at `/api/owntracks`. |
+| `APP_PASSCODE` | Set to enable the private lock (passkey + passcode backup). Unset = app is open. |
+| `OWNTRACKS_TOKEN` | Set to enable the automatic daily location route at `/api/owntracks`. |
 | `LOCATION_TZ_OFFSET` | Minutes from UTC for displayed local times (default `540` = Seoul). |
-| `DISCIPLINE_REPO` / `DISCIPLINE_GITHUB_TOKEN` / `DISCIPLINE_BRANCH` | Connect a private GitHub notes repo (default branch auto-detected). |
-| `NEXT_PUBLIC_POSTHOG_KEY` / `NEXT_PUBLIC_POSTHOG_HOST` | Optional anonymous analytics (no note content is ever sent; `NEXT_PUBLIC_*` are inlined at build time). |
+| `DISCIPLINE_REPO` / `DISCIPLINE_GITHUB_TOKEN` / `DISCIPLINE_BRANCH` | Optional GitHub notes repo to fold in. |
+| `NEXT_PUBLIC_POSTHOG_KEY` / `NEXT_PUBLIC_POSTHOG_HOST` | Optional anonymous analytics (no note content is ever sent). |
+
+## Honest cost
+
+There's no subscription — you pay Anthropic per token. The in-app **Cost** tab
+records every call, with a month calendar and tap-into-a-day breakdown by
+feature (transcription, chat, insights, memory).
+
+Rough monthly figures for **heavy daily use** (a short diary notebook a day,
+~15 chat messages a day):
+
+- ~**$10–15/month** with chat on Haiku.
+- ~**$15–25/month** with chat on Sonnet (a noticeably more thoughtful companion).
+
+Levers: OCR scales with notebook length; chat scales with how much you use it;
+Opus is the expensive engine, Haiku is the cheap one.
 
 ## Architecture
 
-- `lib/db.ts` — SQLite connection, schema, migrations. Tables: `settings`,
-  `notebooks`, `pages`, `pages_fts`, `chat_messages`, `chat_attachments`,
-  `insights`, `profile`, `credentials`, `api_usage`, `locations`,
-  `route_stops`, `location_points`, `geocode_cache`.
-- `lib/claude.ts` — Anthropic calls: `ocrNotebookPdf`, `chatOverNotes`,
-  `generateInsights`, `generateInsightTitle`, and the evolving-memory pair
-  `buildSelfModel` / `updateSelfModel`. Each records token usage + cost.
-- `lib/notes.ts` — `createNotebook` (fast: save PDF + row), `processNotebook`
-  (background OCR, then folds the entry into the profile), `deleteNotebook`,
-  `retrieveRelevantNotes` (FTS), `ensureProfileSeed`, plus the GitHub
-  "discipline" sync helpers.
-- `lib/profile.ts` — the versioned "profile of you" (read / save / rebuild).
-- `lib/usage.ts` — `recordUsage` plus monthly / daily / total cost aggregation.
-- `lib/owntracks.ts`, `lib/timeline.ts`, `lib/location.ts` — automatic route
-  (OwnTracks), Google Timeline import, and the one-tap location log.
-- `lib/auth.ts`, `lib/webauthn.ts` — session cookie + passkey registration/verify.
-- `lib/github.ts` — fetch text files from the discipline repo.
-- `app/api/*` — `notebooks`, `chat` (+ `chat/attachment/[id]`), `insights`,
-  `memory`, `usage`, `owntracks`, `location` (+ `location/import`),
-  `discipline`, `auth`.
-- `app/notebooks`, `app/chat`, `app/insights`, `app/memory`, `app/usage`, and
-  the `app/page.tsx` dashboard — the UI.
-- `app/share/route.ts` — PWA Web Share Target; `public/manifest.json` — manifest.
+- `lib/db.ts` — SQLite + FTS5 + migrations.
+- `lib/claude.ts` — OCR, chat, insights, evolving-memory calls; all record token usage + cost.
+- `lib/notes.ts` — notebook ingestion, background OCR, FTS retrieval, weekly location distill, the GitHub "discipline" sync.
+- `lib/profile.ts` — the versioned "profile of you".
+- `lib/usage.ts` — per-call cost + monthly / daily aggregation.
+- `lib/owntracks.ts` · `lib/timeline.ts` · `lib/location.ts` — three location sources.
+- `lib/auth.ts` · `lib/webauthn.ts` — session cookie + passkey lock.
+- `lib/github.ts` — fetch text files from the optional discipline repo.
+- `app/api/*` — routes for each feature.
+- `app/*` — the pages: Dashboard, Notebooks, Chat, Insights, Memory, Cost.
 
 A two-page visual overview lives in
 [`remarkabler-architecture.pdf`](./remarkabler-architecture.pdf).
 
 ## Deployment
 
-Runs on **Railway**, which auto-deploys on every push to `main`. It needs a
-**persistent disk** for the SQLite database and PDFs, so it can't run on a
-serverless platform with an ephemeral filesystem.
+Runs on **Railway**, which auto-deploys on push to `main`. The app needs a
+persistent disk for SQLite and PDFs, so it can't run on a serverless platform
+with an ephemeral filesystem.
 
-- Set `ANTHROPIC_API_KEY` (and any optional variables) in the host environment.
-- Attach a persistent volume and point `DATA_DIR` at its mount path (e.g.
-  `/data`).
+- Attach a persistent volume; point `DATA_DIR` at its mount path (e.g. `/data`).
 - `npm run start` respects the host-provided `PORT`.
-- Automatic location and GitHub sync need the host's network policy to allow
-  outbound calls to `nominatim.openstreetmap.org` and `api.github.com`.
+- Automatic location and GitHub sync need outbound access to
+  `nominatim.openstreetmap.org` and `api.github.com`.
 
 ## Design notes (don't regress these)
 
-- **Chat reasons over the profile, not the whole corpus** — sending all notes
-  per message is what made one chat cost ~$0.11.
-- **Transcription runs in the background** — `createNotebook` returns
-  immediately; `processNotebook` is fired un-awaited and sets the notebook
-  `status`. Never make upload or share wait for OCR.
-- **OCR streams the response** and uses a `--- PAGE n ---` delimiter format
-  (not JSON) so it survives truncation.
-- **Behind Railway's proxy, `req.url` reports the internal `localhost:8080`** —
-  never build redirects or absolute URLs from it; redirect client-side.
-- **No automatic reMarkable cloud sync** — there's no reliable JavaScript
-  renderer for the raw `.rm` handwriting format, so the app relies on manual
-  PDF export by design.
+- **Chat reasons over the profile, not the whole corpus** — full-corpus chat made one message cost ~$0.11.
+- **Transcription runs in the background** — upload returns immediately; OCR sets the notebook `status`. Never block upload on OCR.
+- **OCR streams the response** and uses a `--- PAGE n ---` delimiter format (not JSON) so it survives truncation.
+- **Behind Railway's proxy, `req.url` reports the internal `localhost:8080`** — never build redirects or absolute URLs from it; redirect client-side.
+- **No automatic reMarkable cloud sync** — there's no reliable JavaScript renderer for the `.rm` format, so the app uses manual PDF export by design.
+
+## Status
+
+Built and used in production by one person (the author) — actively
+maintained, but treat it as a **personal beta** if you're forking it. The
+core flows (upload → OCR → memory → chat → insights) are stable.
+
+## License
+
+[MIT](./LICENSE). Use it, fork it, modify it, ship your own version.
