@@ -654,6 +654,24 @@ export default function MemoryPage() {
           <p className="text-xs opacity-60">Loading…</p>
         )}
       </section>
+
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+        <h2 className="font-medium">Export — book draft</h2>
+        <p className="text-xs opacity-70">
+          Download everything as one Markdown file: your profile, every diary
+          entry (chronological), every chat with Claude (including cleared
+          ones — they're never deleted, only hidden), and all insights.
+          Perfect raw material for turning into a printed book or further
+          editing.
+        </p>
+        <a
+          href="/api/export"
+          download
+          className="inline-block rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm"
+        >
+          Download book draft (Markdown)
+        </a>
+      </section>
     </div>
   );
 }
