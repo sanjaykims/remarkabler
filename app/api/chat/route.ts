@@ -3,7 +3,12 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { db, DATA_DIR } from "@/lib/db";
-import { ensureProfileSeed, maybeDistillLocation, maybeGenerateWeeklyInsight } from "@/lib/notes";
+import {
+  ensureProfileSeed,
+  maybeDistillLocation,
+  maybeGenerateWeeklyInsight,
+  maybeBackfillEmbeddings,
+} from "@/lib/notes";
 import { getCurrentProfile } from "@/lib/profile";
 import { recentLocationsContext, isLocationEnabled } from "@/lib/location";
 import { recentRouteContext } from "@/lib/timeline";
@@ -156,6 +161,9 @@ export async function POST(req: NextRequest) {
   maybeDistillLocation();
   // Once a week, quietly write a fresh reflection (Opus).
   maybeGenerateWeeklyInsight();
+  // Bring older pages' semantic embeddings online (no-op once everything
+  // has an embedding, or when VOYAGE_API_KEY isn't set).
+  maybeBackfillEmbeddings();
   const profile = getCurrentProfile() || "";
 
   // Prefer the Google Timeline import, then the automatic OwnTracks route,
