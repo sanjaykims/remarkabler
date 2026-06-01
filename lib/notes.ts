@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
 import { db, getSetting, setSetting } from "./db";
-import { ocrNotebookPdf, buildSelfModel, updateSelfModel } from "./claude";
+import { ocrNotebookPdf, buildSelfModel, updateSelfModel, generateInsights, generateInsightTitle } from "./claude";
 import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
 import { owntracksRouteContext } from "./owntracks";
 import { recentRouteContext } from "./timeline";
@@ -255,6 +255,7 @@ export function ensureProfileSeed(): void {
 
 let distillingLocation = false;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+let generatingWeeklyInsight = false;
 
 /**
  * Once a week, fold where the person has been into the evolving profile —
@@ -301,6 +302,64 @@ export function maybeDistillLocation(): void {
       // best-effort
     } finally {
       distillingLocation = false;
+    }
+  })();
+}
+
+/**
+ * Once a week, write a fresh on-demand insight in the background so the
+ * Insights record grows on its own rather than only when the user remembers
+ * to tap. Best-effort, fired un-awaited from chat. Resets whenever the user
+ * manually generates one (we use the latest insight's timestamp as the
+ * cadence anchor — no separate flag needed).
+ */
+export function maybeGenerateWeeklyInsight(): void {
+  if (generatingWeeklyInsight) return;
+  try {
+    const last = db()
+      .prepare(`SELECT created_at FROM insights ORDER BY id DESC LIMIT 1`)
+      .get() as { created_at: string } | undefined;
+    if (last) {
+      const lastAt = Date.parse(last.created_at.replace(" ", "T") + "Z");
+      if (Date.now() - lastAt < WEEK_MS) return;
+    }
+  } catch {
+    return;
+  }
+  const noteCount = db()
+    .prepare(
+      `SELECT COUNT(*) AS c FROM pages WHERE ocr_text IS NOT NULL AND ocr_text != ''`
+    )
+    .get() as { c: number };
+  if (noteCount.c === 0) return;
+
+  generatingWeeklyInsight = true;
+  (async () => {
+    try {
+      const notesContext = buildNotesContext();
+      const chatContext = buildChatContext();
+      const priorRows = db()
+        .prepare(`SELECT content FROM insights ORDER BY id DESC LIMIT 3`)
+        .all() as Array<{ content: string }>;
+      const content = await generateInsights({
+        notesContext,
+        chatContext,
+        priorInsights: priorRows.map((r) => r.content),
+      });
+      if (!content.trim()) return;
+      let title = "";
+      try {
+        title = await generateInsightTitle(content.trim());
+      } catch {
+        // a title is optional
+      }
+      db()
+        .prepare(`INSERT INTO insights(content, title) VALUES(?, ?)`)
+        .run(content.trim(), title || null);
+    } catch {
+      // best-effort
+    } finally {
+      generatingWeeklyInsight = false;
     }
   })();
 }
