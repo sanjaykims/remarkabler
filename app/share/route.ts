@@ -22,27 +22,68 @@ const MAX_BYTES = 20 * 1024 * 1024;
  */
 export async function POST(req: NextRequest) {
   const form = await req.formData().catch(() => null);
-  const files = form
-    ? form
-        .getAll("file")
-        .filter((f): f is File => f instanceof File && f.size > 0)
-    : [];
 
-  if (files.length === 0) {
-    return page(
-      "Couldn't add that notebook",
-      "No file was shared. Share a notebook PDF from the reMarkable app.",
-      false
+  // Walk every entry, not just "file". The reMarkable mobile app's plain
+  // Share sometimes posts a link/title/text without an actual PDF, in which
+  // case the manifest's PDF filter strips the file content from the
+  // multipart body and we see no file at all. Capturing the rest lets us
+  // surface what was received instead of a generic "no file" message.
+  const usableFiles: File[] = [];
+  const emptyFiles: Array<{ field: string; name: string; type: string; size: number }> = [];
+  const textEntries: Array<{ field: string; value: string }> = [];
+
+  if (form) {
+    for (const [key, value] of form.entries()) {
+      if (value instanceof File) {
+        if (value.size > 0) usableFiles.push(value);
+        else
+          emptyFiles.push({
+            field: key,
+            name: value.name || "(no name)",
+            type: value.type || "(no type)",
+            size: value.size,
+          });
+      } else {
+        const str = String(value);
+        textEntries.push({
+          field: key,
+          value: str.length > 200 ? str.slice(0, 200) + "…" : str,
+        });
+      }
+    }
+  }
+
+  if (usableFiles.length === 0) {
+    const parts: string[] = ["No PDF came through in that share."];
+    if (emptyFiles.length > 0) {
+      parts.push("", "Empty / zero-byte file fields received:");
+      for (const f of emptyFiles) {
+        parts.push(
+          `• ${f.field}: "${f.name}" — ${f.type || "no MIME"}, ${f.size} bytes`
+        );
+      }
+    }
+    if (textEntries.length > 0) {
+      parts.push("", "Other fields the share sent:");
+      for (const t of textEntries) parts.push(`• ${t.field}: ${t.value}`);
+    }
+    if (emptyFiles.length === 0 && textEntries.length === 0) {
+      parts.push("", "The share request reached Remarkabler but was empty.");
+    }
+    parts.push(
+      "",
+      "From the reMarkable mobile app: open the notebook → menu → Export as PDF, then share the exported PDF here. The plain Share button on a notebook tends to share a link or the original file format, not a PDF — Remarkabler can only read PDFs."
     );
+    return page("Couldn't add that notebook", parts.join("\n"), false);
   }
 
   const added: string[] = [];
   const skipped: string[] = [];
-  for (const file of files) {
+  for (const file of usableFiles) {
     const isPdf =
       file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
     if (!isPdf) {
-      skipped.push(`${file.name || "file"} (not a PDF)`);
+      skipped.push(`${file.name || "file"} (not a PDF — ${file.type || "no MIME"})`);
       continue;
     }
     if (file.size > MAX_BYTES) {
@@ -69,13 +110,13 @@ export async function POST(req: NextRequest) {
   }
 
   const title = added.length === 1 ? "Added ✓" : `Added ${added.length} ✓`;
-  const parts =
+  const partsOk =
     added.length === 1
       ? [`"${added[0]}" is transcribing in the background.`]
       : [`${added.length} notebooks are transcribing in the background.`];
-  if (skipped.length) parts.push(`Skipped: ${skipped.join("; ")}.`);
-  parts.push("Open Remarkabler (unlock as usual) to see them.");
-  return page(title, parts.join(" "), true);
+  if (skipped.length) partsOk.push(`Skipped: ${skipped.join("; ")}.`);
+  partsOk.push("Open Remarkabler (unlock as usual) to see them.");
+  return page(title, partsOk.join(" "), true);
 }
 
 // A direct visit to /share (GET) just lands on the notebooks page.
@@ -115,15 +156,17 @@ ${head}
   body { font-family: system-ui, sans-serif; background: #0c0a09; color: #fafaf9;
          margin: 0; min-height: 100vh; display: flex; align-items: center;
          justify-content: center; padding: 24px; }
-  div { max-width: 420px; text-align: center; }
+  div.wrap { max-width: 520px; text-align: center; }
   h1 { font-size: 1.25rem; }
+  p.msg { white-space: pre-wrap; text-align: left; font-size: 0.95rem;
+          line-height: 1.45; opacity: 0.92; }
   a { color: #fafaf9; }
 </style>
 </head>
 <body>
-<div>
+<div class="wrap">
   <h1>${escapeHtml(title)}</h1>
-  <p>${escapeHtml(message)}</p>
+  <p class="msg">${escapeHtml(message)}</p>
   <p><a href="/notebooks">Open your notebooks &rarr;</a></p>
 </div>
 </body>
