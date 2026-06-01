@@ -96,7 +96,9 @@ export default function ChatPage() {
     fileInputRef.current?.click();
   }
 
-  // Validate a picked attachment before it is sent.
+  // Validate a picked attachment before it is sent. Some Android file
+  // managers hand us a File with an empty MIME, so we also accept by
+  // extension as a fallback.
   function pickFile(f: File | null) {
     setError(null);
     if (!f) return;
@@ -104,11 +106,15 @@ export default function ChatPage() {
       setError("Claude can't read video. Attach a photo or a PDF instead.");
       return;
     }
-    const isImage = f.type.startsWith("image/");
+    const nameLower = f.name.toLowerCase();
+    const isImage =
+      f.type.startsWith("image/") || /\.(jpe?g|png|gif|webp)$/.test(nameLower);
     const isPdf =
-      f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
+      f.type === "application/pdf" || nameLower.endsWith(".pdf");
     if (!isImage && !isPdf) {
-      setError("Only photos and PDF files can be attached.");
+      setError(
+        "That file isn't a photo or PDF. Pick a JPG/PNG/GIF/WebP or PDF."
+      );
       return;
     }
     setFile(f);
@@ -178,9 +184,21 @@ export default function ChatPage() {
       fd.append("conversationId", "default");
       fd.append("message", t);
       if (attached) {
-        const payload = attached.type.startsWith("image/")
-          ? await resizeImage(attached)
-          : attached;
+        const nameLower = attached.name.toLowerCase();
+        const looksLikeImage =
+          attached.type.startsWith("image/") ||
+          /\.(jpe?g|png|gif|webp)$/.test(nameLower);
+        let payload: Blob = attached;
+        if (looksLikeImage) {
+          // Downscale to keep the upload small. If the browser can't decode
+          // the image (e.g., some HEIC files), send the original — the server
+          // gives a clearer error than we can.
+          try {
+            payload = await resizeImage(attached);
+          } catch {
+            payload = attached;
+          }
+        }
         fd.append("file", payload, attached.name);
       }
       const r = await fetch("/api/chat", { method: "POST", body: fd });
@@ -196,14 +214,13 @@ export default function ChatPage() {
       setMessages(list.messages || []);
       if (speakReply && d.reply) speak(d.reply);
     } catch (e) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          content:
-            (e as Error).message || "Something went wrong. Please try again.",
-        },
-      ]);
+      // Drop the optimistic user message and surface the error in the input
+      // area, instead of pretending Claude replied with the error text.
+      setMessages((m) => m.slice(0, -1));
+      setError((e as Error).message || "Something went wrong. Please try again.");
+      // Put the typed text back so the user doesn't lose what they wrote.
+      if (t) updateInput(t);
+      if (attached) setFile(attached);
     } finally {
       setBusy(false);
     }
