@@ -111,10 +111,30 @@ export async function POST(req: NextRequest) {
     fs.writeFileSync(path.join(ATTACHMENT_DIR, stored), bytes);
     attachment = { kind, mediaType, dataBase64: bytes.toString("base64") };
     saved = { kind, filename: file.name || "attachment", mime: mediaType, stored };
+  } else if (file !== null && file !== undefined) {
+    // A "file" entry was present but unusable (empty, or not a File-shaped
+    // entry the parser recognised). Surface it instead of silently sending
+    // the message without the attachment, which makes the attach-not-working
+    // case look like Claude can't see the photo.
+    const looksLikeFile = file instanceof File;
+    return NextResponse.json(
+      {
+        error: looksLikeFile
+          ? "Your attachment came through empty. Try picking the photo again."
+          : "Your attachment didn't come through. Try picking the photo again.",
+      },
+      { status: 400 }
+    );
   }
 
   if (!userMessage && !attachment) {
-    return NextResponse.json({ error: "Empty message" }, { status: 400 });
+    return NextResponse.json(
+      {
+        error:
+          "Please type a message or attach a photo/PDF.",
+      },
+      { status: 400 }
+    );
   }
 
   const history = (
