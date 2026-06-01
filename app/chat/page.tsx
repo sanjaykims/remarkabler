@@ -191,15 +191,34 @@ export default function ChatPage() {
         let payload: Blob = attached;
         if (looksLikeImage) {
           // Downscale to keep the upload small. If the browser can't decode
-          // the image (e.g., some HEIC files), send the original — the server
-          // gives a clearer error than we can.
+          // the image (e.g., some HEIC files) or returns a 0-byte blob,
+          // send the original — the server gives a clearer error than we can.
           try {
-            payload = await resizeImage(attached);
+            const resized = await resizeImage(attached);
+            if (resized.size > 0) payload = resized;
           } catch {
-            payload = attached;
+            // keep original
           }
         }
-        fd.append("file", payload, attached.name);
+        // Wrap as a File explicitly so the multipart entry always carries
+        // a real filename and content-type, even when payload is a generic
+        // Blob from canvas.toBlob — some browsers/servers drop a bare Blob
+        // entry, which silently fails the attachment.
+        const fileToSend =
+          payload instanceof File
+            ? payload
+            : new File([payload], attached.name, {
+                type:
+                  payload.type ||
+                  attached.type ||
+                  "application/octet-stream",
+              });
+        if (fileToSend.size === 0) {
+          throw new Error(
+            "Couldn't read that photo — try picking it again from your gallery."
+          );
+        }
+        fd.append("file", fileToSend);
       }
       const r = await fetch("/api/chat", { method: "POST", body: fd });
       const d = await r.json().catch(() => ({}));
