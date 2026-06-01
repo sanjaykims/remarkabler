@@ -5,6 +5,25 @@ export const runtime = "nodejs";
 
 const MAX_BYTES = 20 * 1024 * 1024;
 
+// File-shaped values arriving via PWA Web Share Target on Android Chrome
+// come from a *different* File constructor than the one this module sees,
+// so `value instanceof File` returns false even though the value is plainly
+// a File. Duck-type the check instead — anything with a numeric `size` and
+// an `arrayBuffer` method is treated as a file for our purposes.
+type FileLike = {
+  name?: string;
+  type?: string;
+  size: number;
+  arrayBuffer: () => Promise<ArrayBuffer>;
+};
+function isFileLike(v: unknown): v is FileLike {
+  if (v === null || typeof v !== "object") return false;
+  const o = v as { size?: unknown; arrayBuffer?: unknown };
+  return (
+    typeof o.size === "number" && typeof o.arrayBuffer === "function"
+  );
+}
+
 /**
  * Web Share Target endpoint. When the installed PWA is picked from the
  * phone's share sheet, the browser POSTs the shared PDF here as multipart
@@ -28,13 +47,13 @@ export async function POST(req: NextRequest) {
   // case the manifest's PDF filter strips the file content from the
   // multipart body and we see no file at all. Capturing the rest lets us
   // surface what was received instead of a generic "no file" message.
-  const usableFiles: File[] = [];
+  const usableFiles: FileLike[] = [];
   const emptyFiles: Array<{ field: string; name: string; type: string; size: number }> = [];
   const textEntries: Array<{ field: string; value: string }> = [];
 
   if (form) {
     for (const [key, value] of form.entries()) {
-      if (value instanceof File) {
+      if (isFileLike(value)) {
         if (value.size > 0) usableFiles.push(value);
         else
           emptyFiles.push({
@@ -80,24 +99,25 @@ export async function POST(req: NextRequest) {
   const added: string[] = [];
   const skipped: string[] = [];
   for (const file of usableFiles) {
+    const name = file.name || "shared.pdf";
     const isPdf =
-      file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      file.type === "application/pdf" || name.toLowerCase().endsWith(".pdf");
     if (!isPdf) {
-      skipped.push(`${file.name || "file"} (not a PDF — ${file.type || "no MIME"})`);
+      skipped.push(`${name} (not a PDF — ${file.type || "no MIME"})`);
       continue;
     }
     if (file.size > MAX_BYTES) {
-      skipped.push(`${file.name || "file"} (too large — max 20 MB)`);
+      skipped.push(`${name} (too large — max 20 MB)`);
       continue;
     }
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const nb = createNotebook(file.name, bytes);
+      const nb = createNotebook(name, bytes);
       // Transcribe in the background; each notebook runs on its own.
       void processNotebook(nb.id).catch(() => {});
       added.push(nb.name);
     } catch (err) {
-      skipped.push(`${file.name || "file"} (${(err as Error).message})`);
+      skipped.push(`${name} (${(err as Error).message})`);
     }
   }
 
