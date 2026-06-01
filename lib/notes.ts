@@ -126,14 +126,16 @@ export function deleteNotebook(id: string): void {
  */
 export function buildNotesContext(opts: { maxChars?: number } = {}): string {
   const limit = opts.maxChars ?? 150_000;
+  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
   const rows = db()
     .prepare(
       `SELECT n.name as notebook_name, p.page_index, p.ocr_text
        FROM pages p JOIN notebooks n ON n.id = p.notebook_id
        WHERE p.ocr_text IS NOT NULL AND p.ocr_text != ''
+         AND p.notebook_id != ?
        ORDER BY n.name, p.page_index`
     )
-    .all() as Array<{
+    .all(excludeId) as Array<{
     notebook_name: string;
     page_index: number;
     ocr_text: string;
@@ -176,14 +178,17 @@ function ftsQuery(message: string): string {
 export function retrieveRelevantNotes(query: string, limit = 8): string {
   const q = ftsQuery(query);
   if (!q) return "";
+  // When discipline is off, exclude its notebook from retrieval entirely.
+  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
   let rows: Array<{ notebook_name: string; ocr_text: string; page_id: string }>;
   try {
     rows = db()
       .prepare(
         `SELECT notebook_name, ocr_text, page_id FROM pages_fts
-         WHERE pages_fts MATCH ? ORDER BY rank LIMIT ?`
+         WHERE pages_fts MATCH ? AND notebook_id != ?
+         ORDER BY rank LIMIT ?`
       )
-      .all(q, limit) as Array<{
+      .all(q, excludeId, limit) as Array<{
       notebook_name: string;
       ocr_text: string;
       page_id: string;
@@ -305,6 +310,17 @@ export function buildChatContext(opts: { maxChars?: number } = {}): string {
 // The synced GitHub "discipline" repo is stored as a single notebook so it
 // flows through chat, retrieval, and the profile like any other notes.
 export const DISCIPLINE_ID = "github-discipline";
+
+// User-controllable opt-in: when off, the discipline notebook is not fed to
+// chat retrieval or context, and Sync is blocked. Past entries stay in the DB.
+export function isDisciplineEnabled(): boolean {
+  const v = getSetting("discipline_enabled");
+  return v === null ? true : v === "1";
+}
+
+export function setDisciplineEnabled(enabled: boolean): void {
+  setSetting("discipline_enabled", enabled ? "1" : "0");
+}
 
 /** Replace the discipline notebook with the freshly fetched repo files.
  *  Returns the concatenated text for folding into the profile. */

@@ -198,3 +198,7 @@ export function setSetting(key: string, value: string) {
     )
     .run(key, value);
 }
+
+export function clearSetting(key: string) {
+  db().prepare("DELETE FROM settings WHERE key = ?").run(key);
+}

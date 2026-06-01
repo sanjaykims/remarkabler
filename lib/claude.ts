@@ -1,13 +1,32 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { recordUsage } from "@/lib/usage";
+import { getSetting } from "@/lib/db";
 
-const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
-// Chat is the high-volume, cost-sensitive path — default it to Sonnet (cheaper
-// than Opus). OCR and insights stay on the configured CLAUDE_MODEL.
-const CHAT_MODEL = process.env.CHAT_MODEL || "claude-sonnet-4-6";
-// If the chat model is overloaded, fall back to this one for that message so
-// chat never gets stuck on a busy model (e.g. Haiku → Sonnet).
-const CHAT_FALLBACK_MODEL = process.env.CHAT_FALLBACK_MODEL || "claude-sonnet-4-6";
+// Each Claude model resolves at call time: in-app setting (Memory tab) overrides
+// the Railway env var, which overrides the built-in default. Building the model
+// dynamically means flipping a model in the UI takes effect immediately, with
+// no restart, and the env var keeps working when nothing's been set in-app.
+function modelMain(): string {
+  return (
+    getSetting("model_main") ||
+    process.env.CLAUDE_MODEL ||
+    "claude-opus-4-7"
+  );
+}
+function modelChat(): string {
+  return (
+    getSetting("model_chat") ||
+    process.env.CHAT_MODEL ||
+    "claude-sonnet-4-6"
+  );
+}
+function modelChatFallback(): string {
+  return (
+    getSetting("model_chat_fallback") ||
+    process.env.CHAT_FALLBACK_MODEL ||
+    "claude-sonnet-4-6"
+  );
+}
 
 let _client: Anthropic | null = null;
 function client(): Anthropic {
@@ -40,7 +59,7 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
   // max_tokens is large enough that it could exceed the 10-minute timeout;
   // streaming also keeps the connection alive for a long transcription.
   const stream = client().messages.stream({
-    model: MODEL,
+    model: modelMain(),
     max_tokens: 32000,
     system: [
       "You transcribe handwritten notebooks from a reMarkable tablet.",
@@ -72,7 +91,7 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
     ],
   });
   const resp = await stream.finalMessage();
-  recordUsage("ocr", MODEL, resp.usage);
+  recordUsage("ocr", modelMain(), resp.usage);
 
   if (resp.stop_reason === "max_tokens") {
     throw new Error(
@@ -128,7 +147,7 @@ export async function buildSelfModel(opts: {
   notesContext: string;
 }): Promise<string> {
   const resp = await client().messages.create({
-    model: MODEL,
+    model: modelMain(),
     max_tokens: 2048,
     system: [
       "You are building a private, evolving profile of a person from their",
@@ -149,7 +168,7 @@ export async function buildSelfModel(opts: {
       },
     ],
   });
-  recordUsage("memory", MODEL, resp.usage);
+  recordUsage("memory", modelMain(), resp.usage);
   const block = resp.content.find((b) => b.type === "text");
   return block && block.type === "text" ? block.text : "";
 }
@@ -160,7 +179,7 @@ export async function updateSelfModel(opts: {
   newContent: string;
 }): Promise<string> {
   const resp = await client().messages.create({
-    model: MODEL,
+    model: modelMain(),
     max_tokens: 2048,
     system: [
       "You maintain a private, evolving profile of a person, built from their",
@@ -188,7 +207,7 @@ export async function updateSelfModel(opts: {
       },
     ],
   });
-  recordUsage("memory", MODEL, resp.usage);
+  recordUsage("memory", modelMain(), resp.usage);
   const block = resp.content.find((b) => b.type === "text");
   return block && block.type === "text" ? block.text : "";
 }
@@ -271,18 +290,20 @@ export async function chatOverNotes(opts: {
     },
   ];
 
-  let usedModel = CHAT_MODEL;
+  const chat = modelChat();
+  const fallback = modelChatFallback();
+  let usedModel = chat;
   let resp;
   try {
-    resp = await client().messages.create({ model: CHAT_MODEL, max_tokens: 4096, system, messages });
+    resp = await client().messages.create({ model: chat, max_tokens: 4096, system, messages });
   } catch (err) {
     const status = (err as { status?: number }).status;
     const overloaded =
       status === 429 || status === 529 || (typeof status === "number" && status >= 500);
-    if (overloaded && CHAT_FALLBACK_MODEL && CHAT_FALLBACK_MODEL !== CHAT_MODEL) {
+    if (overloaded && fallback && fallback !== chat) {
       // The chat model is busy — answer this one on the fallback model.
-      usedModel = CHAT_FALLBACK_MODEL;
-      resp = await client().messages.create({ model: CHAT_FALLBACK_MODEL, max_tokens: 4096, system, messages });
+      usedModel = fallback;
+      resp = await client().messages.create({ model: fallback, max_tokens: 4096, system, messages });
     } else {
       throw err;
     }
@@ -301,7 +322,7 @@ export async function chatOverNotes(opts: {
  */
 export async function generateInsightTitle(content: string): Promise<string> {
   const resp = await client().messages.create({
-    model: MODEL,
+    model: modelMain(),
     max_tokens: 32,
     system: [
       "You write an extremely short topic title for a personal reflection note.",
@@ -311,7 +332,7 @@ export async function generateInsightTitle(content: string): Promise<string> {
     ].join("\n"),
     messages: [{ role: "user", content: content.slice(0, 4000) }],
   });
-  recordUsage("insight_title", MODEL, resp.usage);
+  recordUsage("insight_title", modelMain(), resp.usage);
 
   const block = resp.content.find((b) => b.type === "text");
   const text = block && block.type === "text" ? block.text : "";
@@ -347,7 +368,7 @@ export async function generateInsights(opts: {
     : "";
 
   const resp = await client().messages.create({
-    model: MODEL,
+    model: modelMain(),
     max_tokens: 2048,
     system: [
       "You help a person understand themselves by reflecting on their",
@@ -375,7 +396,7 @@ export async function generateInsights(opts: {
       },
     ],
   });
-  recordUsage("insights", MODEL, resp.usage);
+  recordUsage("insights", modelMain(), resp.usage);
 
   const block = resp.content.find((b) => b.type === "text");
   return block && block.type === "text" ? block.text : "";

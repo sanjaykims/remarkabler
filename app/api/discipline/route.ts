@@ -10,6 +10,7 @@ import {
   disciplineStatus,
   disciplineFiles,
   buildNotesContext,
+  isDisciplineEnabled,
 } from "@/lib/notes";
 import { getCurrentProfile, saveProfile } from "@/lib/profile";
 import { buildSelfModel, updateSelfModel } from "@/lib/claude";
@@ -31,6 +32,13 @@ export async function GET() {
 
 export async function POST() {
   if (!isAuthenticated()) return LOCKED();
+
+  if (!isDisciplineEnabled()) {
+    return NextResponse.json(
+      { error: "Discipline sharing is turned off in Remarkabler." },
+      { status: 403 }
+    );
+  }
 
   const cfg = disciplineConfig();
   if (!cfg) {
