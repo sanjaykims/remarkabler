@@ -6,7 +6,7 @@ import { ocrNotebookPdf, buildSelfModel, updateSelfModel } from "./claude";
 import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
 import { owntracksRouteContext } from "./owntracks";
 import { recentRouteContext } from "./timeline";
-import { recentLocationsContext } from "./location";
+import { recentLocationsContext, isLocationEnabled } from "./location";
 
 const FILES_DIR = path.join(
   process.env.DATA_DIR || path.join(process.cwd(), "data"),
@@ -240,6 +240,7 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export function maybeDistillLocation(): void {
   if (distillingLocation) return;
+  if (!isLocationEnabled()) return; // user has opted out of location sharing
   const last = getSetting("location_distill_at");
   if (last && Date.now() - Date.parse(last) < WEEK_MS) return;
   const profile = getCurrentProfile();

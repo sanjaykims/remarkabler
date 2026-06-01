@@ -35,6 +35,8 @@ export default function MemoryPage() {
     points: number;
     lastTst: number | null;
   } | null>(null);
+  const [locEnabled, setLocEnabled] = useState<boolean | null>(null);
+  const [locTogBusy, setLocTogBusy] = useState(false);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -78,11 +80,40 @@ export default function MemoryPage() {
     }
   }
 
+  async function loadLocSettings() {
+    try {
+      const d = await fetch("/api/location/settings").then((r) => r.json());
+      setLocEnabled(!!d.enabled);
+    } catch {
+      setLocEnabled(true);
+    }
+  }
+
+  async function toggleLocation() {
+    if (locEnabled === null || locTogBusy) return;
+    const next = !locEnabled;
+    setLocTogBusy(true);
+    try {
+      const r = await fetch("/api/location/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      const d = await r.json();
+      if (r.ok) setLocEnabled(!!d.enabled);
+    } catch {
+      // leave state as-is
+    } finally {
+      setLocTogBusy(false);
+    }
+  }
+
   useEffect(() => {
     load();
     loadDisc();
     loadLocs();
     loadOt();
+    loadLocSettings();
   }, []);
 
   function getPosition(): Promise<GeolocationPosition> {
@@ -330,8 +361,32 @@ export default function MemoryPage() {
         {discMsg && <p className="text-sm opacity-70">{discMsg}</p>}
       </section>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
         <h2 className="font-medium">Location</h2>
+
+        <div className="flex items-start justify-between gap-3 pb-2 border-b border-stone-200 dark:border-stone-800">
+          <div className="text-xs">
+            <p className="font-medium">Share location with Remarkabler</p>
+            <p className="opacity-70">
+              When off, no location is logged, ingested, or fed to Claude.
+              Past entries stay saved but are not used.
+            </p>
+          </div>
+          <button
+            onClick={toggleLocation}
+            disabled={locEnabled === null || locTogBusy}
+            aria-pressed={locEnabled === true}
+            className={
+              "shrink-0 rounded-full px-3 py-1 text-xs font-medium disabled:opacity-50 " +
+              (locEnabled
+                ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900"
+                : "border border-stone-300 dark:border-stone-700")
+            }
+          >
+            {locEnabled === null ? "…" : locEnabled ? "On" : "Off"}
+          </button>
+        </div>
+
         <p className="text-xs opacity-70">
           Tap to log where you are now (with the time). Each tap saves one
           place — tap once a day, or at each spot you want remembered. Your
@@ -340,7 +395,7 @@ export default function MemoryPage() {
         </p>
         <button
           onClick={logLocation}
-          disabled={locBusy}
+          disabled={locBusy || locEnabled === false}
           className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
         >
           {locBusy ? "Getting location…" : "Log my location"}
@@ -380,7 +435,7 @@ export default function MemoryPage() {
           />
           <button
             onClick={openTimelinePicker}
-            disabled={importBusy}
+            disabled={importBusy || locEnabled === false}
             className="rounded border border-stone-300 dark:border-stone-700 px-4 py-2 text-sm disabled:opacity-50"
           >
             {importBusy ? "Importing…" : "Upload location timeline"}
@@ -391,6 +446,12 @@ export default function MemoryPage() {
 
       <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
         <h2 className="font-medium">Auto route (OwnTracks)</h2>
+        {locEnabled === false && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Location sharing is off — incoming points are rejected. Turn it on
+            in the Location section above to use this.
+          </p>
+        )}
         {ot?.configured ? (
           <>
             <p className="text-xs opacity-70">

@@ -10,7 +10,7 @@ import {
   maybeDistillLocation,
 } from "@/lib/notes";
 import { getCurrentProfile } from "@/lib/profile";
-import { recentLocationsContext } from "@/lib/location";
+import { recentLocationsContext, isLocationEnabled } from "@/lib/location";
 import { recentRouteContext } from "@/lib/timeline";
 import { owntracksRouteContext } from "@/lib/owntracks";
 import { chatOverNotes } from "@/lib/claude";
@@ -109,11 +109,13 @@ export async function POST(req: NextRequest) {
     : buildNotesContext({ maxChars: 30000 });
 
   // Prefer the Google Timeline import, then the automatic OwnTracks route,
-  // then the one-tap location log.
-  const recentLocations =
-    recentRouteContext() ||
-    (await owntracksRouteContext()) ||
-    recentLocationsContext();
+  // then the one-tap location log. Suppressed entirely if the user has turned
+  // off the in-app "Share location with Remarkabler" switch.
+  const recentLocations = isLocationEnabled()
+    ? recentRouteContext() ||
+      (await owntracksRouteContext()) ||
+      recentLocationsContext()
+    : "";
 
   let reply: string;
   let replyModel: string;

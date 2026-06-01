@@ -6,6 +6,7 @@ import {
   addPoint,
   owntracksStatus,
 } from "@/lib/owntracks";
+import { isLocationEnabled } from "@/lib/location";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,13 @@ export async function POST(req: NextRequest) {
   }
   if (!checkOwntracksToken(token)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!isLocationEnabled()) {
+    return NextResponse.json(
+      { error: "Location sharing is turned off in Remarkabler." },
+      { status: 403 }
+    );
   }
 
   const body = await req.json().catch(() => null);

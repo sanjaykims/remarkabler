@@ -1,8 +1,20 @@
-import { db } from "./db";
+import { db, getSetting, setSetting } from "./db";
 
 // A simple daily location log: the user taps "Log my location" and the app
 // stores where they were and when. Fed into chat so Claude knows where they've
 // been recently. Not background tracking — one point per tap.
+
+// User-controllable opt-in switch. Defaults to ON when the setting has never
+// been touched, to preserve behavior for existing deployments — but the
+// Memory page surfaces the toggle so non-developers can flip it off in-app.
+export function isLocationEnabled(): boolean {
+  const v = getSetting("location_enabled");
+  return v === null ? true : v === "1";
+}
+
+export function setLocationEnabled(enabled: boolean): void {
+  setSetting("location_enabled", enabled ? "1" : "0");
+}
 
 export function addLocation(opts: {
   lat: number;
