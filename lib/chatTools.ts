@@ -1,6 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { normaliseDates, isDisciplineEnabled } from "./notes";
+import { isLocationEnabled } from "./location";
+import { owntracksRouteContext } from "./owntracks";
+
+// Display TZ for "today/yesterday" calculations — defaults to KST (UTC+9).
+const TZ_OFFSET_MIN = Number(process.env.LOCATION_TZ_OFFSET || "540");
 
 // Tools exposed to chatOverNotes so Claude can look up specific diary
 // entries on demand instead of being pre-fed retrieved excerpts. The
@@ -80,6 +85,74 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
           description: "How many days back to include (default 7, max 30).",
         },
       },
+    },
+  },
+  {
+    name: "current_time_kst",
+    description:
+      "Get the current date, time, and day of the week in Korea Standard Time (UTC+9). Call this whenever the user says \"today\", \"yesterday\", \"this week\", \"last month\", etc. — you need to know what \"today\" actually is to look up the right entries.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_recent_locations",
+    description:
+      "Get the user's recent location route — places they were at, when, and how long they stayed — for the last N days. Use for \"where have I been this month?\" or \"how often was I at the gym?\". Returns nothing if location sharing is off.",
+    input_schema: {
+      type: "object",
+      properties: {
+        days: {
+          type: "integer",
+          description: "How many days back to include (default 7, max 30).",
+        },
+      },
+    },
+  },
+  {
+    name: "search_chat_history",
+    description:
+      "Search the user's past chat conversations with you (including archived/cleared chats) by keyword or phrase. Use when the user references something they said to you before (\"remember when I told you about…\", \"what did you say about X?\").",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Words to search for in past messages." },
+        limit: {
+          type: "integer",
+          description: "Max matches to return (default 10, max 30).",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_insights",
+    description:
+      "Return the most recent on-demand 'insights' (cumulative reflections you've written about the user from their notes). Use when the user asks about your earlier observations or reflections.",
+    input_schema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "integer",
+          description: "Max insights to return (default 5, max 20).",
+        },
+      },
+    },
+  },
+  {
+    name: "get_writing_stats",
+    description:
+      "Get a summary of how much the user has written: total notebooks, total OCR'd pages, approximate word count, and the date range. Use for questions about their writing volume or consistency.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "count_entries_mentioning",
+    description:
+      "Count how many diary pages mention a specific word or phrase, and return the matching notebook names + page numbers. Use for \"how often have I written about X?\" or \"when did I last mention Y?\".",
+    input_schema: {
+      type: "object",
+      properties: {
+        term: { type: "string", description: "Word or phrase to count occurrences of." },
+      },
+      required: ["term"],
     },
   },
 ];
@@ -250,7 +323,167 @@ function getRecentEntries(input: { days?: number }): unknown {
   }
 }
 
-export function executeTool(name: string, input: unknown): string {
+function currentTimeKst(): unknown {
+  const now = new Date();
+  const shifted = new Date(now.getTime() + TZ_OFFSET_MIN * 60 * 1000);
+  const iso = shifted.toISOString();
+  const tzLabel =
+    TZ_OFFSET_MIN === 540
+      ? "KST"
+      : `UTC${TZ_OFFSET_MIN >= 0 ? "+" : ""}${TZ_OFFSET_MIN / 60}`;
+  const dayNames = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+  return {
+    now: `${iso.slice(0, 10)} ${iso.slice(11, 16)} ${tzLabel}`,
+    date: iso.slice(0, 10),
+    time: iso.slice(11, 16),
+    day_of_week: dayNames[shifted.getUTCDay()],
+    timezone: tzLabel,
+  };
+}
+
+async function getRecentLocations(input: { days?: number }): Promise<unknown> {
+  if (!isLocationEnabled()) {
+    return { route: "", note: "Location sharing is off in Remarkabler." };
+  }
+  const days = Math.max(1, Math.min(30, Number(input.days) || 7));
+  const route = await owntracksRouteContext(days);
+  return route
+    ? { days, route }
+    : { days, route: "", note: "No automatic location data for that range." };
+}
+
+function searchChatHistory(input: { query?: string; limit?: number }): unknown {
+  const query = String(input.query || "").trim();
+  if (!query) return { matches: [], note: "Empty query." };
+  const limit = Math.max(1, Math.min(30, Number(input.limit) || 10));
+  const pattern = `%${query.toLowerCase()}%`;
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT role, content, created_at FROM chat_messages
+         WHERE LOWER(content) LIKE ?
+         ORDER BY id DESC LIMIT ?`
+      )
+      .all(pattern, limit) as Array<{
+        role: string;
+        content: string;
+        created_at: string;
+      }>;
+    return {
+      matches: rows.map((r) => ({
+        when: r.created_at,
+        role: r.role,
+        text: trim(r.content, 500),
+      })),
+    };
+  } catch {
+    return { matches: [], note: "Search failed." };
+  }
+}
+
+function getInsights(input: { limit?: number }): unknown {
+  const limit = Math.max(1, Math.min(20, Number(input.limit) || 5));
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT title, content, created_at FROM insights
+         ORDER BY id DESC LIMIT ?`
+      )
+      .all(limit) as Array<{
+        title: string | null;
+        content: string;
+        created_at: string;
+      }>;
+    return {
+      insights: rows.map((r) => ({
+        when: r.created_at,
+        title: r.title || "(untitled)",
+        text: trim(r.content, 2000),
+      })),
+    };
+  } catch {
+    return { insights: [], note: "Lookup failed." };
+  }
+}
+
+function getWritingStats(): unknown {
+  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  try {
+    const row = db()
+      .prepare(
+        `SELECT
+           COUNT(DISTINCT n.id) AS notebook_count,
+           COUNT(p.id) AS page_count,
+           SUM(LENGTH(p.ocr_text) - LENGTH(REPLACE(p.ocr_text, ' ', '')) + 1) AS word_count,
+           MIN(n.synced_at) AS earliest_upload,
+           MAX(n.synced_at) AS latest_upload
+         FROM notebooks n LEFT JOIN pages p ON p.notebook_id = n.id
+         WHERE n.id != ?
+           AND p.ocr_text IS NOT NULL AND p.ocr_text != ''`
+      )
+      .get(excludeId) as {
+        notebook_count: number | null;
+        page_count: number | null;
+        word_count: number | null;
+        earliest_upload: string | null;
+        latest_upload: string | null;
+      };
+    return {
+      notebook_count: row.notebook_count || 0,
+      page_count: row.page_count || 0,
+      approx_word_count: row.word_count || 0,
+      earliest_upload: row.earliest_upload,
+      latest_upload: row.latest_upload,
+    };
+  } catch {
+    return { note: "Lookup failed." };
+  }
+}
+
+function countEntriesMentioning(input: { term?: string }): unknown {
+  const term = String(input.term || "").trim();
+  if (!term) return { count: 0, note: "Empty term." };
+  const terms = normaliseDates(term.toLowerCase())
+    .replace(/["'()*:^{}[\]~+\-.,!?]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 2)
+    .slice(0, 10);
+  if (terms.length === 0) return { count: 0, note: "Term not usable for search." };
+  // AND is stricter than OR for counting "how often X" rather than "either X or Y".
+  const q = terms.map((t) => `"${t}"`).join(" AND ");
+  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT notebook_name, page_id FROM pages_fts
+         WHERE pages_fts MATCH ? AND notebook_id != ?
+         ORDER BY rank`
+      )
+      .all(q, excludeId) as Array<{ notebook_name: string; page_id: string }>;
+    return {
+      count: rows.length,
+      pages: rows.slice(0, 20).map((r) => ({
+        notebook: r.notebook_name,
+        page: Number((r.page_id || "").split(":")[1] || 0) + 1,
+      })),
+    };
+  } catch {
+    return { count: 0, note: "Lookup failed." };
+  }
+}
+
+export async function executeTool(
+  name: string,
+  input: unknown
+): Promise<string> {
   const i = (input ?? {}) as Record<string, unknown>;
   try {
     switch (name) {
@@ -264,6 +497,18 @@ export function executeTool(name: string, input: unknown): string {
         return JSON.stringify(getNotebook(i));
       case "get_recent_entries":
         return JSON.stringify(getRecentEntries(i));
+      case "current_time_kst":
+        return JSON.stringify(currentTimeKst());
+      case "get_recent_locations":
+        return JSON.stringify(await getRecentLocations(i));
+      case "search_chat_history":
+        return JSON.stringify(searchChatHistory(i));
+      case "get_insights":
+        return JSON.stringify(getInsights(i));
+      case "get_writing_stats":
+        return JSON.stringify(getWritingStats());
+      case "count_entries_mentioning":
+        return JSON.stringify(countEntriesMentioning(i));
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });
     }

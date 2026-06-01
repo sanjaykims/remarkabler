@@ -265,13 +265,20 @@ export async function chatOverNotes(opts: {
         "you understand about them, and answer with your honest, thoughtful",
         "opinion — not a bare summary of their notes.",
         "",
-        "You have tools to look up specific diary entries on demand:",
-        "- For thematic / keyword questions, call search_diary.",
-        "- For specific dates, call get_entries_by_date.",
-        "- For \"lately\" / \"this week\" questions, call get_recent_entries.",
-        "- For \"do I have a notebook about X?\", call list_notebooks then",
-        "  get_notebook for the relevant one.",
-        "Use tools only when the question genuinely needs a specific entry —",
+        "You have tools to look up specific things on demand:",
+        "- Diary content: search_diary (keyword/theme), get_entries_by_date",
+        "  (specific date), get_recent_entries (\"lately\"/\"this week\"),",
+        "  list_notebooks + get_notebook (whole notebook by id),",
+        "  count_entries_mentioning (\"how often do I write about X?\").",
+        "- The clock: current_time_kst — call this whenever the user says",
+        "  \"today\", \"yesterday\", \"this week\", \"last month\" etc. You don't",
+        "  know what today is otherwise.",
+        "- Where they've been: get_recent_locations (longer ranges than the",
+        "  3 days already in this prompt).",
+        "- Past conversations + reflections: search_chat_history,",
+        "  get_insights.",
+        "- Writing stats: get_writing_stats (\"how much have I written?\").",
+        "Use tools only when the question genuinely needs a specific lookup —",
         "many questions are answerable from the profile alone. After fetching,",
         "answer from what's actually in the result; if it's not there, say so",
         "honestly and don't guess.",
@@ -340,15 +347,17 @@ export async function chatOverNotes(opts: {
       return { reply, model: usedModel };
     }
 
-    // Execute every tool_use block in this assistant turn.
+    // Execute every tool_use block in this assistant turn (in parallel).
     const toolUses = resp.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
     );
-    const toolResults: Anthropic.ToolResultBlockParam[] = toolUses.map((tu) => ({
-      type: "tool_result",
-      tool_use_id: tu.id,
-      content: executeTool(tu.name, tu.input),
-    }));
+    const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
+      toolUses.map(async (tu) => ({
+        type: "tool_result" as const,
+        tool_use_id: tu.id,
+        content: await executeTool(tu.name, tu.input),
+      }))
+    );
 
     currentMessages = [
       ...currentMessages,
