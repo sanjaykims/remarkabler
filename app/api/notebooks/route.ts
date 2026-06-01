@@ -7,6 +7,20 @@ export const runtime = "nodejs";
 
 const MAX_BYTES = 20 * 1024 * 1024;
 
+// Same duck-type pattern as in /share — files arriving via PWA share / some
+// Android browsers don't pass `instanceof File`.
+type FileLike = {
+  name?: string;
+  type?: string;
+  size: number;
+  arrayBuffer: () => Promise<ArrayBuffer>;
+};
+function isFileLike(v: unknown): v is FileLike {
+  if (v === null || typeof v !== "object") return false;
+  const o = v as { size?: unknown; arrayBuffer?: unknown };
+  return typeof o.size === "number" && typeof o.arrayBuffer === "function";
+}
+
 const LOCKED = () =>
   NextResponse.json({ error: "Locked" }, { status: 401 });
 
@@ -30,11 +44,10 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   if (!isAuthenticated()) return LOCKED();
   const form = await req.formData().catch(() => null);
-  const files = form
-    ? form
-        .getAll("file")
-        .filter((f): f is File => f instanceof File && f.size > 0)
-    : [];
+  const raw: unknown[] = form ? form.getAll("file") : [];
+  const files: FileLike[] = raw.filter(
+    (f): f is FileLike => isFileLike(f) && f.size > 0
+  );
   if (files.length === 0) {
     return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
   }
@@ -42,23 +55,24 @@ export async function POST(req: NextRequest) {
   const added: Array<{ id: string; name: string }> = [];
   const skipped: string[] = [];
   for (const file of files) {
+    const name = file.name || "uploaded.pdf";
     const isPdf =
-      file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      file.type === "application/pdf" || name.toLowerCase().endsWith(".pdf");
     if (!isPdf) {
-      skipped.push(`${file.name || "file"} (not a PDF)`);
+      skipped.push(`${name} (not a PDF)`);
       continue;
     }
     if (file.size > MAX_BYTES) {
-      skipped.push(`${file.name || "file"} (too large — max 20 MB)`);
+      skipped.push(`${name} (too large — max 20 MB)`);
       continue;
     }
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const nb = createNotebook(file.name, bytes);
+      const nb = createNotebook(name, bytes);
       void processNotebook(nb.id).catch(() => {});
       added.push({ id: nb.id, name: nb.name });
     } catch (err) {
-      skipped.push(`${file.name || "file"} (${(err as Error).message})`);
+      skipped.push(`${name} (${(err as Error).message})`);
     }
   }
 
