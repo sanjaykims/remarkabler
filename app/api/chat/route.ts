@@ -8,6 +8,8 @@ import {
   maybeDistillLocation,
   maybeGenerateWeeklyInsight,
   maybeBackfillEmbeddings,
+  maybeBackfillEntryDates,
+  maybeGenerateDailySummaries,
 } from "@/lib/notes";
 import { getCurrentProfile } from "@/lib/profile";
 import { recentLocationsContext, isLocationEnabled } from "@/lib/location";
@@ -164,6 +166,11 @@ export async function POST(req: NextRequest) {
   // Bring older pages' semantic embeddings online (no-op once everything
   // has an embedding, or when VOYAGE_API_KEY isn't set).
   maybeBackfillEmbeddings();
+  // Multi-level memory (Phase 2): tag pages with the diary's own date,
+  // then generate daily summaries for any day that doesn't have one yet.
+  // Both run in the background and cap their work per tick.
+  maybeBackfillEntryDates();
+  maybeGenerateDailySummaries();
   const profile = getCurrentProfile() || "";
 
   // Prefer the Google Timeline import, then the automatic OwnTracks route,

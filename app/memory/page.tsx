@@ -48,6 +48,9 @@ export default function MemoryPage() {
   } | null>(null);
   const [modelsBusy, setModelsBusy] = useState(false);
 
+  const [bookBusy, setBookBusy] = useState(false);
+  const [bookMsg, setBookMsg] = useState<string | null>(null);
+
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   async function load() {
@@ -152,6 +155,34 @@ export default function MemoryPage() {
       setModels(d);
     } catch {
       setModels(null);
+    }
+  }
+
+  async function composeBookDraft() {
+    if (bookBusy) return;
+    setBookBusy(true);
+    setBookMsg("Composing… this can take a minute or two.");
+    try {
+      const r = await fetch("/api/export/book");
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.error || "Compose failed");
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const date = new Date().toISOString().slice(0, 10);
+      a.download = `remarkabler-book-${date}.md`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setBookMsg("Done — check your downloads for the composed book.");
+    } catch (e) {
+      setBookMsg((e as Error).message || "Couldn't compose the book.");
+    } finally {
+      setBookBusy(false);
     }
   }
 
@@ -655,22 +686,43 @@ export default function MemoryPage() {
         )}
       </section>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
         <h2 className="font-medium">Export — book draft</h2>
-        <p className="text-xs opacity-70">
-          Download everything as one Markdown file: your profile, every diary
-          entry (chronological), every chat with Claude (including cleared
-          ones — they're never deleted, only hidden), and all insights.
-          Perfect raw material for turning into a printed book or further
-          editing.
-        </p>
-        <a
-          href="/api/export"
-          download
-          className="inline-block rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm"
-        >
-          Download book draft (Markdown)
-        </a>
+
+        <div className="space-y-1.5">
+          <p className="text-xs opacity-70">
+            <strong>Raw bundle.</strong> Everything in one Markdown file:
+            profile, every diary (chronological), every chat (including
+            cleared ones — they're never deleted, only hidden), all
+            insights. Instant download, zero cost.
+          </p>
+          <a
+            href="/api/export"
+            download
+            className="inline-block rounded border border-stone-300 dark:border-stone-700 px-4 py-2 text-sm"
+          >
+            Download raw bundle
+          </a>
+        </div>
+
+        <div className="space-y-1.5 pt-3 border-t border-stone-200 dark:border-stone-800">
+          <p className="text-xs opacity-70">
+            <strong>Composed by Claude.</strong> An editor pass on Opus that
+            turns the raw bundle into a real chaptered book — prologue,
+            chronological chapters with quoted diary excerpts, a "what
+            I've noticed" reflection, and a closing on the present.
+            Takes a minute or two; costs about <strong>$1–2</strong> per
+            run on Opus (visible on the Cost tab).
+          </p>
+          <button
+            onClick={composeBookDraft}
+            disabled={bookBusy}
+            className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+          >
+            {bookBusy ? "Composing…" : "Compose with Claude"}
+          </button>
+          {bookMsg && <p className="text-sm opacity-70">{bookMsg}</p>}
+        </div>
       </section>
     </div>
   );

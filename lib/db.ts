@@ -50,6 +50,23 @@ export function db(): Database.Database {
   } catch {
     // column already exists
   }
+  // The diary's own date for a page — parsed from the YYYY-MM-DD-HHMM-KST
+  // timestamp the user writes at the top of each entry. Lets daily
+  // summaries group entries by *when they were written*, not when uploaded.
+  try {
+    _db.exec(`ALTER TABLE pages ADD COLUMN entry_date TEXT`);
+  } catch {
+    // column already exists
+  }
+  _db.exec(`CREATE INDEX IF NOT EXISTS idx_pages_entry_date ON pages(entry_date)`);
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS daily_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL UNIQUE,
+      summary TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
   // Any notebook still "processing" at startup was interrupted by a restart.
   _db
     .prepare(

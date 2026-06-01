@@ -150,6 +150,52 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "get_day_summary",
+    description:
+      "Return the auto-generated daily summary for one date — what they wrote, thought about, and felt that day. Use this when the user asks about a specific date; it's cheaper and tighter than fetching the raw entries via get_entries_by_date.",
+    input_schema: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description: "Date in YYYY-MM-DD (e.g., '2026-05-28').",
+        },
+      },
+      required: ["date"],
+    },
+  },
+  {
+    name: "get_week_summary",
+    description:
+      "Return up to seven daily summaries covering one week. Use for \"how was this week / last week?\" questions. Returns whatever days the week contains — gaps just mean nothing was written that day.",
+    input_schema: {
+      type: "object",
+      properties: {
+        week_start: {
+          type: "string",
+          description:
+            "First day of the week in YYYY-MM-DD. The tool returns this day plus the next six.",
+        },
+      },
+      required: ["week_start"],
+    },
+  },
+  {
+    name: "get_month_summary",
+    description:
+      "Return every daily summary for one calendar month. Use for \"what was [month] like?\" questions — Claude can then synthesise the patterns itself from the daily summaries.",
+    input_schema: {
+      type: "object",
+      properties: {
+        month: {
+          type: "string",
+          description: "Month in YYYY-MM (e.g., '2026-05').",
+        },
+      },
+      required: ["month"],
+    },
+  },
+  {
     name: "count_entries_mentioning",
     description:
       "Count how many diary pages mention a specific word or phrase, and return the matching notebook names + page numbers. Use for \"how often have I written about X?\" or \"when did I last mention Y?\".",
@@ -542,6 +588,62 @@ function getWritingStats(): unknown {
   }
 }
 
+function getDaySummary(input: { date?: string }): unknown {
+  const date = String(input.date || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { summary: null, note: "date must be YYYY-MM-DD." };
+  }
+  try {
+    const row = db()
+      .prepare(
+        `SELECT summary, created_at FROM daily_summaries WHERE date = ?`
+      )
+      .get(date) as { summary: string; created_at: string } | undefined;
+    if (!row) return { date, summary: null, note: "No summary for that date (no entries written or summary not generated yet)." };
+    return { date, summary: row.summary, written_at: row.created_at };
+  } catch {
+    return { summary: null, note: "Lookup failed." };
+  }
+}
+
+function getWeekSummary(input: { week_start?: string }): unknown {
+  const start = String(input.week_start || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+    return { days: [], note: "week_start must be YYYY-MM-DD." };
+  }
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT date, summary FROM daily_summaries
+         WHERE date >= ? AND date <= date(?, '+6 days')
+         ORDER BY date ASC`
+      )
+      .all(start, start) as Array<{ date: string; summary: string }>;
+    return { week_start: start, days: rows };
+  } catch {
+    return { days: [], note: "Lookup failed." };
+  }
+}
+
+function getMonthSummary(input: { month?: string }): unknown {
+  const month = String(input.month || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    return { days: [], note: "month must be YYYY-MM." };
+  }
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT date, summary FROM daily_summaries
+         WHERE date LIKE ?
+         ORDER BY date ASC`
+      )
+      .all(`${month}-%`) as Array<{ date: string; summary: string }>;
+    return { month, days: rows };
+  } catch {
+    return { days: [], note: "Lookup failed." };
+  }
+}
+
 function countEntriesMentioning(input: { term?: string }): unknown {
   const term = String(input.term || "").trim();
   if (!term) return { count: 0, note: "Empty term." };
@@ -603,6 +705,12 @@ export async function executeTool(
         return JSON.stringify(getWritingStats());
       case "count_entries_mentioning":
         return JSON.stringify(countEntriesMentioning(i));
+      case "get_day_summary":
+        return JSON.stringify(getDaySummary(i));
+      case "get_week_summary":
+        return JSON.stringify(getWeekSummary(i));
+      case "get_month_summary":
+        return JSON.stringify(getMonthSummary(i));
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });
     }

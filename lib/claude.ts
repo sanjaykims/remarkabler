@@ -317,6 +317,10 @@ export async function chatOverNotes(opts: {
         "  (specific date), get_recent_entries (\"lately\"/\"this week\"),",
         "  list_notebooks + get_notebook (whole notebook by id),",
         "  count_entries_mentioning (\"how often do I write about X?\").",
+        "- Daily / weekly / monthly summaries (auto-generated, cheaper than",
+        "  raw entries): get_day_summary, get_week_summary, get_month_summary.",
+        "  Prefer these for \"how was [date/week/month]?\" — only fall back to",
+        "  get_entries_by_date when you need the raw words.",
         "- The clock: current_time_kst — call this whenever the user says",
         "  \"today\", \"yesterday\", \"this week\", \"last month\" etc. You don't",
         "  know what today is otherwise.",
@@ -419,6 +423,135 @@ export async function chatOverNotes(opts: {
       "I had to look up a lot and didn't finish — try asking again, maybe a bit more specifically.",
     model: usedModel,
   };
+}
+
+/**
+ * Summarise one day's diary entries into a short third-person paragraph.
+ * Used by the multi-level memory: each dated entry gets a daily summary;
+ * weeks and months are aggregated from these. Runs on the cheaper main
+ * model so daily generation stays inexpensive even at scale.
+ */
+export async function summarizeDay(opts: {
+  date: string;
+  entries: string;
+}): Promise<string> {
+  const resp = await client().messages.create({
+    model: modelMain(),
+    max_tokens: 800,
+    system: [
+      "You summarise a person's diary entries from one day into a short,",
+      "specific, third-person paragraph (\"They wrote about…\"). Capture what",
+      "happened, what they thought about, how they felt, and any new threads.",
+      "Be grounded in the actual entries — quote a short phrase or two where",
+      "it sharpens the point. 100–200 words. No preamble, no heading.",
+    ].join("\n"),
+    messages: [
+      {
+        role: "user",
+        content: [
+          `Date: ${opts.date}`,
+          "",
+          "Their entries:",
+          opts.entries,
+        ].join("\n"),
+      },
+    ],
+  });
+  recordUsage("daily_summary", modelMain(), resp.usage);
+  const block = resp.content.find((b) => b.type === "text");
+  return block && block.type === "text" ? block.text : "";
+}
+
+/**
+ * Compose a chaptered "book draft" — the editor pass that takes the raw
+ * profile + diary + insights and produces a structured, narrated Markdown
+ * document. Streamed so the long output can keep the connection alive.
+ */
+export async function composeBook(opts: {
+  profile: string;
+  diary: string;
+  insights: string;
+  exportedAt: string;
+}): Promise<{ text: string; model: string }> {
+  const model = modelMain();
+  const stream = client().messages.stream({
+    model,
+    max_tokens: 24000,
+    system: [
+      "You are a thoughtful editor turning a person's private diary into a",
+      "book draft about their life — written for them, not anyone else.",
+      "You are given their accumulated profile (use it as your understanding",
+      "of who they are), their diary entries (chronological), and your own",
+      "past reflections about them.",
+      "",
+      "Compose a structured Markdown book with this shape:",
+      "",
+      "# (a title that captures the period or what stands out about it)",
+      "",
+      "_Subtitle — a single line setting what this is._",
+      "",
+      "## Prologue",
+      "  Two or three paragraphs introducing who they were at the start of",
+      "  this record and what they were carrying.",
+      "",
+      "## Chapters (multiple)",
+      "  Organise chronologically by month or season — one chapter per",
+      "  natural arc. Each chapter has a brief title, an opening paragraph",
+      "  that sets the scene, and weaves real diary excerpts (quoted) with",
+      "  editorial connective tissue. Keep their actual voice in the quotes;",
+      "  your voice is the editor between them.",
+      "",
+      "## What I've Noticed",
+      "  A reflection chapter distilling the patterns from your past",
+      "  reflections — what's recurring, what's evolved, what hasn't.",
+      "",
+      "## Where You Are Now",
+      "  A closing chapter on the present, grounded in the most recent",
+      "  entries.",
+      "",
+      "Write in second person (\"You wrote…\"). Quote short real lines from",
+      "the diary inside `> blockquotes`; the rest is your editorial voice.",
+      "Be specific — this is one person's life, not a generic self-help",
+      "essay. Don't hedge with \"perhaps\" or \"maybe\" when the diary is",
+      "clear; do say so plainly when something is unclear.",
+    ].join("\n"),
+    messages: [
+      {
+        role: "user",
+        content: [
+          `(Compiled ${opts.exportedAt}.)`,
+          "",
+          "=== MY PROFILE ===",
+          opts.profile || "(No profile yet.)",
+          "=== END PROFILE ===",
+          "",
+          "=== MY DIARY (chronological) ===",
+          opts.diary || "(No diary entries yet.)",
+          "=== END DIARY ===",
+          ...(opts.insights
+            ? [
+                "",
+                "=== YOUR PAST REFLECTIONS ABOUT ME ===",
+                opts.insights,
+                "=== END REFLECTIONS ===",
+              ]
+            : []),
+          "",
+          "Compose the book.",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  let text = "";
+  for await (const event of stream) {
+    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+      text += event.delta.text;
+    }
+  }
+  const final = await stream.finalMessage();
+  recordUsage("book", model, final.usage);
+  return { text, model };
 }
 
 /**
