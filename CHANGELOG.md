@@ -1,5 +1,53 @@
 # Changelog
 
+## 2026-06-01
+
+### Added
+- **Privacy controls — every data source is now a switch.** Toggles on the
+  Memory tab let you opt out of feeding location and discipline (GitHub) data
+  to Claude without touching env vars. When off, ingestion is rejected,
+  retrieval excludes the source, and the chat prompt is built without it;
+  past entries stay in the database untouched.
+- **In-app Claude model picker** on the Memory tab. Three dropdowns (Chat,
+  OCR + memory, Chat fallback) override the Railway env vars in real time —
+  no restart, no console. The first option clears the in-app override and
+  falls back to the env / built-in default. Resolution order is DB → env →
+  default, so existing deployments keep working unchanged.
+- **Weekly location distill into the evolving memory.** Once a week, when
+  you chat, Remarkabler folds your recent location route into your "profile
+  of you" — patterns and routines only, not raw stops. Skipped when the
+  location share toggle is off. Best-effort, in the background, on Opus.
+- **"via Haiku" indicator in chat.** Every reply now records which model
+  answered. When the chat model is briefly overloaded and the app falls back
+  to the cheaper Haiku model, the affected reply shows a small label so it's
+  clear which model spoke. New `model` column on `chat_messages`.
+- **Multi-file upload everywhere.** Both the Notebooks page picker and the
+  reMarkable PWA share target now accept multiple PDFs at once. Each is
+  validated and ingested independently, transcribing in parallel; the success
+  page summarises what was added and lists anything skipped (wrong type, too
+  large).
+- **Public-launch package.** A polished, share-ready `README.md` with a
+  screenshot gallery, a "Deploy on Railway" one-click button
+  (`railway.json` + badge), and an `MIT` `LICENSE`. A new-user manual at
+  `USER_GUIDE.md`, and a two-page system-architecture diagram at
+  `remarkabler-architecture.pdf`.
+
+### Changed
+- Repository renamed in package + UI: `package.json` is `remarkabler`; the
+  remaining "Feed Claude" references in code (insights export filename, chat
+  draft storage key) are now "remarkabler". The WebAuthn user handle is
+  intentionally unchanged so existing passkeys keep working.
+- `lib/claude.ts` model selection refactored to resolve at call time from
+  DB → env → default. No behaviour change unless an in-app override is set.
+
+### Fixed
+- **Sharing multiple PDFs from the reMarkable app to Remarkabler.** The Web
+  Share Target read only the first file via `formData.get("file")`, so when
+  the reMarkable app shared 2+ PDFs at once (delivered as multiple entries
+  under the same field name), the rest were dropped — and depending on the
+  bundling, the share could appear to fail entirely. Now uses `getAll("file")`
+  and ingests each in turn.
+
 ## 2026-05-16
 
 ### Added

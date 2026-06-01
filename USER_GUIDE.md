@@ -64,6 +64,11 @@ This is the heart of the app.
 4. When it finishes, Claude has read every page **and** folded what it learned
    into its memory of you.
 
+**Multiple at once.** You can select **several PDFs** in the file dialog, or
+share several from the reMarkable app at once — they all upload together and
+transcribe independently. The page shows "Uploaded N notebooks" and lists
+anything skipped (wrong type, too large).
+
 **Tip (Android):** You can also **share a PDF straight from the reMarkable app
 to Remarkabler** using your phone's share button — it starts transcription
 automatically, no manual upload.
@@ -82,6 +87,10 @@ not a generic summary.
 - **Clear** hides the conversation from view for privacy. The messages aren't
   deleted — they're archived and still inform future answers, so the
   conversation continues seamlessly.
+- Sometimes you'll see a small **"via Haiku — main model was busy"** label
+  under a reply. That means the main chat model was briefly overloaded and the
+  app used the cheaper fallback for that one message. The next message goes
+  back to the main model automatically.
 
 Example questions:
 - *"What have I been worrying about lately?"*
@@ -128,7 +137,18 @@ files become part of your memory. On the **Memory** tab, tap **Sync now** to
 pull the latest. (This needs to be configured once with access details — see
 the setup appendix.)
 
+A **"Share discipline notes with Remarkabler"** toggle in the same section lets
+you stop feeding these notes to Claude at any time. When off, Sync is disabled
+and your discipline pages are filtered out of every chat answer; past entries
+stay in the database and reappear the moment you flip it back on.
+
 ### Location — three ways
+
+A **"Share location with Remarkabler"** toggle at the top of the Location
+section lets you stop sharing location with the app at any time. When off, the
+ingestion endpoints reject new data, the chat prompt no longer includes your
+recent route, and the weekly memory distill (below) is skipped. Past entries
+remain in your database — turning it back on restores everything.
 
 Remarkabler can know where you've been, so you can ask about your days.
 
@@ -147,6 +167,12 @@ Remarkabler can know where you've been, so you can ask about your days.
    A companion phone app that quietly reports your location all day, so
    Remarkabler can reconstruct **where you went and how long you stayed** —
    automatically, no taps. Setup is in the next section.
+
+**Weekly location distill.** Once a week, when you chat, Remarkabler quietly
+folds your recent route into your evolving memory — *patterns only* (routines,
+where you spend most of your time, notable changes), never raw stops. It runs
+in the background, costs one Opus call a week, and is skipped entirely when
+the share toggle is off.
 
 ---
 
@@ -181,6 +207,38 @@ Settings → **Mode: HTTP** → paste the link → set any UserID → Reporting:
 should climb and show a "last received" time.
 
 ---
+
+## Privacy controls — what you choose to share
+
+Remarkabler is built so **every data source is a switch you control,** and
+they all live in the **Memory** tab:
+
+| Switch | When *off*, this happens |
+|---|---|
+| **Share location with Remarkabler** | Your location is not fed to Claude, the weekly memory distill is skipped, and incoming location data is rejected (OwnTracks, Google Timeline upload, "Log my location"). |
+| **Share discipline notes with Remarkabler** | Your synced GitHub notes are filtered out of every chat answer and Sync is disabled. |
+| **Claude models** (next section) | You pick which model — and price — handles each task. |
+
+Flipping a switch off keeps **past data in your own database** — it just stops
+the flow to Claude. You can flip it back on any time and everything resumes.
+
+## Choosing your Claude models
+
+In the **Memory** tab's "Claude models" section there are three dropdowns —
+you pay per call, so this is real-time cost control:
+
+- **Chat** — what answers your daily questions. **Sonnet 4.6** is a good
+  balance. Opus is most thoughtful (and most expensive); Haiku is cheap but
+  shallower.
+- **OCR & memory** — transcribes your handwriting and updates your evolving
+  memory. **Opus is recommended** — errors here poison your memory
+  permanently, so this is the worst place to cheap out.
+- **Chat fallback** — used only when the chat model is briefly overloaded. A
+  cheaper tier here means a busy chat still gets an answer (and you'll see the
+  "via Haiku" label on that one reply).
+
+The first option in each dropdown — *"Use Railway / default"* — clears your
+in-app choice and falls back to whatever was set in the host's environment.
 
 ## Privacy & the lock
 
