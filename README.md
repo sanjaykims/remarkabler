@@ -43,20 +43,25 @@ quietly distills your location patterns into the same evolving profile.
 
 You'll need an [Anthropic API key](https://console.anthropic.com).
 
-**Local:**
+### Hosted (Railway) — recommended
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fsanjaykims%2Fremarkable-feed)
+
+The button starts a new Railway project from this repo. Then, in your new project:
+
+1. **Variables → `ANTHROPIC_API_KEY`** — paste your key from [console.anthropic.com](https://console.anthropic.com).
+2. **Volumes** — add a volume (Railway → service → New → Volume) mounted at `/data`. Then in **Variables** add `DATA_DIR=/data`.
+3. Open the URL Railway assigns. Done.
+
+You can flip on optional features later by adding more variables (see [Configuration](#configuration)). For a truly one-click flow for *other* people, you can [publish your running project as a Railway template](https://docs.railway.com/guides/marketplace/publish) once it's live — that pre-configures the volume and env vars for the next person.
+
+### Local
 ```bash
 cp .env.local.example .env.local   # paste your ANTHROPIC_API_KEY
 npm install
 npm run dev
 ```
 Open <http://localhost:3001>.
-
-**Hosted (Railway):**
-1. Fork this repo.
-2. Connect it to a new Railway project.
-3. Attach a persistent volume and set `DATA_DIR` to its mount path (e.g. `/data`).
-4. Set the env vars below. Only `ANTHROPIC_API_KEY` is required to start.
-5. Push to `main` — Railway auto-deploys.
 
 ## Configuration
 
