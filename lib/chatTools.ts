@@ -3,6 +3,12 @@ import { db } from "./db";
 import { normaliseDates, isDisciplineEnabled } from "./notes";
 import { isLocationEnabled } from "./location";
 import { owntracksRouteContext } from "./owntracks";
+import {
+  embed,
+  decodeEmbedding,
+  cosineSimilarity,
+  embeddingsEnabled,
+} from "./embeddings";
 
 // Display TZ for "today/yesterday" calculations — defaults to KST (UTC+9).
 const TZ_OFFSET_MIN = Number(process.env.LOCATION_TZ_OFFSET || "540");
@@ -157,20 +163,21 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-function searchDiary(input: { query?: string; limit?: number }): unknown {
-  const query = String(input.query || "").trim();
-  if (!query) return { excerpts: [], note: "Empty query." };
-  const limit = Math.max(1, Math.min(20, Number(input.limit) || 8));
+// FTS-only search (literal-word matches). Used as one half of the hybrid.
+function ftsSearch(
+  query: string,
+  limit: number,
+  excludeId: string
+): Array<{ notebook_name: string; text: string; page_id: string }> {
   const terms = normaliseDates(query.toLowerCase())
     .replace(/["'()*:^{}[\]~+\-.,!?]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length >= 2)
     .slice(0, 24);
-  if (terms.length === 0) return { excerpts: [], note: "No usable terms in query." };
+  if (terms.length === 0) return [];
   const q = terms.map((t) => `"${t}"`).join(" OR ");
-  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
   try {
-    const rows = db()
+    return db()
       .prepare(
         `SELECT notebook_name, ocr_text AS text, page_id
          FROM pages_fts
@@ -182,16 +189,103 @@ function searchDiary(input: { query?: string; limit?: number }): unknown {
         text: string;
         page_id: string;
       }>;
-    return {
-      excerpts: rows.map((r) => ({
-        notebook: r.notebook_name,
-        page: Number((r.page_id || "").split(":")[1] || 0) + 1,
-        text: trim(r.text),
-      })),
-    };
   } catch {
-    return { excerpts: [], note: "Search failed." };
+    return [];
   }
+}
+
+// Semantic search: embed the query, brute-force cosine sim against every
+// page embedding (corpus is small; this is plenty fast).
+async function semanticSearch(
+  query: string,
+  limit: number,
+  excludeId: string
+): Promise<
+  Array<{ notebook_name: string; text: string; page_id: string; score: number }>
+> {
+  if (!embeddingsEnabled()) return [];
+  const qVec = await embed(query, "query");
+  if (!qVec) return [];
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT p.id AS page_id, p.ocr_text AS text, n.name AS notebook_name,
+                p.embedding AS embedding
+         FROM pages p JOIN notebooks n ON n.id = p.notebook_id
+         WHERE p.embedding IS NOT NULL
+           AND p.notebook_id != ?`
+      )
+      .all(excludeId) as Array<{
+        page_id: string;
+        text: string;
+        notebook_name: string;
+        embedding: Buffer;
+      }>;
+    const scored = rows.map((r) => ({
+      page_id: r.page_id,
+      notebook_name: r.notebook_name,
+      text: r.text,
+      score: cosineSimilarity(qVec, decodeEmbedding(r.embedding)),
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+async function searchDiary(input: {
+  query?: string;
+  limit?: number;
+}): Promise<unknown> {
+  const query = String(input.query || "").trim();
+  if (!query) return { excerpts: [], note: "Empty query." };
+  const limit = Math.max(1, Math.min(20, Number(input.limit) || 8));
+  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+
+  // Run FTS (literal) and semantic (meaning) in parallel; combine + dedupe.
+  const [fts, sem] = await Promise.all([
+    Promise.resolve(ftsSearch(query, limit, excludeId)),
+    semanticSearch(query, limit, excludeId),
+  ]);
+
+  const seen = new Set<string>();
+  type Hit = {
+    notebook: string;
+    page: number;
+    text: string;
+    source: "fts" | "semantic" | "both";
+  };
+  const merged: Hit[] = [];
+  // Semantic results come first (re-ranked by meaning), then FTS catches
+  // literal matches the embedding might have missed.
+  for (const r of sem) {
+    if (seen.has(r.page_id)) continue;
+    seen.add(r.page_id);
+    merged.push({
+      notebook: r.notebook_name,
+      page: Number((r.page_id || "").split(":")[1] || 0) + 1,
+      text: trim(r.text),
+      source: "semantic",
+    });
+  }
+  for (const r of fts) {
+    if (seen.has(r.page_id)) continue;
+    seen.add(r.page_id);
+    merged.push({
+      notebook: r.notebook_name,
+      page: Number((r.page_id || "").split(":")[1] || 0) + 1,
+      text: trim(r.text),
+      source: "fts",
+    });
+  }
+  return {
+    excerpts: merged.slice(0, limit),
+    note:
+      sem.length === 0 && embeddingsEnabled()
+        ? "Semantic search returned nothing (embeddings may still be backfilling). FTS results only."
+        : undefined,
+  };
 }
 
 function getEntriesByDate(input: { date?: string }): unknown {
@@ -488,7 +582,7 @@ export async function executeTool(
   try {
     switch (name) {
       case "search_diary":
-        return JSON.stringify(searchDiary(i));
+        return JSON.stringify(await searchDiary(i));
       case "get_entries_by_date":
         return JSON.stringify(getEntriesByDate(i));
       case "list_notebooks":

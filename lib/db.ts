@@ -43,6 +43,13 @@ export function db(): Database.Database {
   } catch {
     // column already exists
   }
+  // Per-page semantic embedding (Float32 BLOB) for hybrid (FTS + meaning)
+  // search. Backfilled in the background; absent for older pages until then.
+  try {
+    _db.exec(`ALTER TABLE pages ADD COLUMN embedding BLOB`);
+  } catch {
+    // column already exists
+  }
   // Any notebook still "processing" at startup was interrupted by a restart.
   _db
     .prepare(

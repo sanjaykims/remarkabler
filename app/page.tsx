@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatLocalTime } from "@/lib/format";
-import { maybeGenerateWeeklyInsight } from "@/lib/notes";
+import { maybeGenerateWeeklyInsight, maybeBackfillEmbeddings } from "@/lib/notes";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +23,9 @@ export default function Home() {
   // Every dashboard load is a chance to write the weekly reflection in the
   // background if it's been ~7 days. Fire-and-forget — never blocks the render.
   maybeGenerateWeeklyInsight();
+  // Same idea for filling in semantic embeddings for pages that don't have
+  // one yet (e.g. everything you uploaded before this feature shipped).
+  maybeBackfillEmbeddings();
 
   const stats = db()
     .prepare(

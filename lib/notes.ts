@@ -3,6 +3,7 @@ import fs from "fs";
 import { randomUUID } from "crypto";
 import { db, getSetting, setSetting } from "./db";
 import { ocrNotebookPdf, buildSelfModel, updateSelfModel, generateInsights, generateInsightTitle } from "./claude";
+import { embedBatch, embeddingsEnabled, encodeEmbedding } from "./embeddings";
 import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
 import { owntracksRouteContext } from "./owntracks";
 import { recentRouteContext } from "./timeline";
@@ -82,6 +83,23 @@ export async function processNotebook(id: string): Promise<void> {
     db()
       .prepare(`UPDATE notebooks SET status='done', error=NULL WHERE id = ?`)
       .run(id);
+
+    // Embed each page semantically (Voyage). Failures are silent — search
+    // falls back to FTS-only for pages without an embedding.
+    if (embeddingsEnabled()) {
+      try {
+        const withText = pages.filter((p) => p.text && p.text.trim().length > 0);
+        const vecs = await embedBatch(withText.map((p) => p.text), "document");
+        if (vecs) {
+          const upd = db().prepare(`UPDATE pages SET embedding = ? WHERE id = ?`);
+          for (let i = 0; i < withText.length; i++) {
+            upd.run(encodeEmbedding(vecs[i]), `${id}:${withText[i].pageIndex}`);
+          }
+        }
+      } catch {
+        // best-effort
+      }
+    }
 
     // Fold this notebook into the evolving profile of the person. Best-effort
     // and already in the background, so a failure never affects the upload.
@@ -256,6 +274,58 @@ export function ensureProfileSeed(): void {
 let distillingLocation = false;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 let generatingWeeklyInsight = false;
+let backfillingEmbeddings = false;
+
+/**
+ * Embed any pages that don't yet have a vector — for an existing app whose
+ * pages predate the embedding column, this brings them online so semantic
+ * search works against the full corpus. Fire-and-forget; safe to call often.
+ */
+export function maybeBackfillEmbeddings(): void {
+  if (backfillingEmbeddings) return;
+  if (!embeddingsEnabled()) return;
+  // Cheap guard: only run when at least one page is missing an embedding.
+  try {
+    const row = db()
+      .prepare(
+        `SELECT COUNT(*) AS c FROM pages
+         WHERE ocr_text IS NOT NULL AND ocr_text != '' AND embedding IS NULL`
+      )
+      .get() as { c: number };
+    if (row.c === 0) return;
+  } catch {
+    return;
+  }
+  backfillingEmbeddings = true;
+  (async () => {
+    try {
+      const BATCH = 32;
+      // Loop until nothing's missing or we hit a failure.
+      // (Each iteration commits its batch before the next read.)
+
+      while (true) {
+        const rows = db()
+          .prepare(
+            `SELECT id, ocr_text FROM pages
+             WHERE ocr_text IS NOT NULL AND ocr_text != '' AND embedding IS NULL
+             LIMIT ?`
+          )
+          .all(BATCH) as Array<{ id: string; ocr_text: string }>;
+        if (rows.length === 0) break;
+        const vecs = await embedBatch(rows.map((r) => r.ocr_text), "document");
+        if (!vecs) break;
+        const upd = db().prepare(`UPDATE pages SET embedding = ? WHERE id = ?`);
+        for (let i = 0; i < rows.length; i++) {
+          upd.run(encodeEmbedding(vecs[i]), rows[i].id);
+        }
+      }
+    } catch {
+      // best-effort
+    } finally {
+      backfillingEmbeddings = false;
+    }
+  })();
+}
 
 /**
  * Once a week, fold where the person has been into the evolving profile —

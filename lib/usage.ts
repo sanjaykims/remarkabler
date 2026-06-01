@@ -20,6 +20,10 @@ const PRICES: Record<string, Prices> = {
   "claude-sonnet-4-6": { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   "claude-sonnet-4-5": { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   "claude-haiku-4-5": { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
+  // Voyage AI embeddings — input-only pricing; output is unused.
+  "voyage-3-large": { input: 0.18, output: 0, cacheWrite: 0, cacheRead: 0 },
+  "voyage-3": { input: 0.06, output: 0, cacheWrite: 0, cacheRead: 0 },
+  "voyage-3-lite": { input: 0.02, output: 0, cacheWrite: 0, cacheRead: 0 },
 };
 
 // If a model isn't in the table, fall back to Opus pricing so we never
