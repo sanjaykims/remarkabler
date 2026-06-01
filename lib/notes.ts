@@ -159,9 +159,29 @@ export function buildNotesContext(opts: { maxChars?: number } = {}): string {
 
 // Turn a free-text question into a safe FTS5 query: keep word-ish tokens,
 // quote each (so punctuation can't be read as an operator), OR them together.
+// The diary entries are timestamped "YYYY-MM-DD-HHMM-KST", so the indexed
+// tokens for May 28 look like "2026", "05", "28". A natural query like
+// "5/28" or "5/28th" needs to be turned into "05" + "28" for the search
+// to actually find that entry — that's what this preprocessor does. Also
+// strips ordinal suffixes ("28th" → "28").
+function normaliseDates(msg: string): string {
+  let out = msg.replace(/(\d)(st|nd|rd|th)\b/gi, "$1");
+  // YYYY-M-D or YYYY/M/D → "YYYY MM DD"  (handled first so the M-D rule
+  // below doesn't pick up a substring of it)
+  out = out.replace(
+    /\b(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})\b/g,
+    (_, y, m, d) => ` ${y} ${String(m).padStart(2, "0")} ${String(d).padStart(2, "0")} `
+  );
+  // M/D or M-D → "MM DD"
+  out = out.replace(
+    /\b(\d{1,2})[\/-](\d{1,2})\b/g,
+    (_, m, d) => ` ${String(m).padStart(2, "0")} ${String(d).padStart(2, "0")} `
+  );
+  return out;
+}
+
 function ftsQuery(message: string): string {
-  const terms = message
-    .toLowerCase()
+  const terms = normaliseDates(message.toLowerCase())
     .replace(/["'()*:^{}[\]~+\-.,!?]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length >= 2)
