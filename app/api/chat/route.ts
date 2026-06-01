@@ -3,12 +3,7 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { db, DATA_DIR } from "@/lib/db";
-import {
-  buildNotesContext,
-  retrieveRelevantNotes,
-  ensureProfileSeed,
-  maybeDistillLocation,
-} from "@/lib/notes";
+import { ensureProfileSeed, maybeDistillLocation } from "@/lib/notes";
 import { getCurrentProfile } from "@/lib/profile";
 import { recentLocationsContext, isLocationEnabled } from "@/lib/location";
 import { recentRouteContext } from "@/lib/timeline";
@@ -152,16 +147,14 @@ export async function POST(req: NextRequest) {
       .all(conversationId) as Array<{ role: "user" | "assistant"; content: string }>
   ).reverse();
 
-  // Reason over the accumulated profile + a few relevant excerpts, instead of
-  // the whole notes corpus. If the profile hasn't been built yet, seed it in
-  // the background and fall back to a capped notes context for this message.
+  // Reason over the accumulated profile and let the chat model call tools
+  // (search_diary / get_entries_by_date / list_notebooks / get_notebook /
+  // get_recent_entries) to fetch specific entries on demand. Seed the
+  // profile in the background if it hasn't been built yet.
   ensureProfileSeed();
   // Once a week, quietly fold the recent location route into the profile.
   maybeDistillLocation();
   const profile = getCurrentProfile() || "";
-  const relevantNotes = profile
-    ? retrieveRelevantNotes(userMessage)
-    : buildNotesContext({ maxChars: 30000 });
 
   // Prefer the Google Timeline import, then the automatic OwnTracks route,
   // then the one-tap location log. Suppressed entirely if the user has turned
@@ -175,7 +168,7 @@ export async function POST(req: NextRequest) {
   let reply: string;
   let replyModel: string;
   try {
-    const result = await chatOverNotes({ profile, relevantNotes, recentLocations, history, userMessage, attachment });
+    const result = await chatOverNotes({ profile, recentLocations, history, userMessage, attachment });
     reply = result.reply;
     replyModel = result.model;
   } catch (err) {

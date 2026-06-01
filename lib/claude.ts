@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { recordUsage } from "@/lib/usage";
 import { getSetting } from "@/lib/db";
+import { CHAT_TOOLS, executeTool } from "@/lib/chatTools";
 
 // Each Claude model resolves at call time: in-app setting (Memory tab) overrides
 // the Railway env var, which overrides the built-in default. Building the model
@@ -212,9 +213,10 @@ export async function updateSelfModel(opts: {
   return block && block.type === "text" ? block.text : "";
 }
 
+const MAX_TOOL_ITERATIONS = 6;
+
 export async function chatOverNotes(opts: {
   profile: string;
-  relevantNotes: string;
   recentLocations?: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   userMessage: string;
@@ -225,14 +227,7 @@ export async function chatOverNotes(opts: {
     content: m.content,
   }));
 
-  // Relevant diary excerpts (and any attachment) ride with the user's turn so
-  // the cached system block (instructions + profile) stays identical across a
-  // session — follow-up questions re-read it at cache rates.
-  const excerpts = opts.relevantNotes.trim()
-    ? `Relevant diary excerpts for this question:\n${opts.relevantNotes}\n\n`
-    : "";
-  const userText =
-    excerpts + (opts.userMessage || "Please look at this attachment.");
+  const userText = opts.userMessage || "Please look at this attachment.";
 
   if (opts.attachment) {
     const a = opts.attachment;
@@ -269,22 +264,26 @@ export async function chatOverNotes(opts: {
         "When they ask you something, think it through in light of everything",
         "you understand about them, and answer with your honest, thoughtful",
         "opinion — not a bare summary of their notes.",
-        "You may also be given specific diary excerpts relevant to the",
-        "question — use them for concrete detail and quotes.",
+        "",
+        "You have tools to look up specific diary entries on demand:",
+        "- For thematic / keyword questions, call search_diary.",
+        "- For specific dates, call get_entries_by_date.",
+        "- For \"lately\" / \"this week\" questions, call get_recent_entries.",
+        "- For \"do I have a notebook about X?\", call list_notebooks then",
+        "  get_notebook for the relevant one.",
+        "Use tools only when the question genuinely needs a specific entry —",
+        "many questions are answerable from the profile alone. After fetching,",
+        "answer from what's actually in the result; if it's not there, say so",
+        "honestly and don't guess.",
+        "",
         "Be warm, direct, and specific. If you genuinely don't know, say so.",
         "",
-        "Their diary entries carry timestamps in the format",
-        "`YYYY-MM-DD-HHMM-KST` (year-month-day-time-Korea Standard Time, UTC+9).",
-        "When they ask about a specific date or week, look for entries with",
-        "that timestamp in the excerpts and answer from what's actually written",
-        "there. If the date they asked about isn't in the excerpts you were",
-        "given, say so honestly — don't guess — and suggest they ask in a",
-        "thematic way (e.g. \"what's been on my mind?\") or attach that page",
-        "to the chat.",
+        "Their diary entries carry timestamps written as YYYY-MM-DD-HHMM-KST",
+        "(year-month-day-time-Korea Standard Time, UTC+9).",
         "",
         "=== YOUR UNDERSTANDING OF THEM ===",
         opts.profile.trim() ||
-          "(No profile yet — rely on the excerpts provided and answer with care.)",
+          "(No profile yet — use the tools to fetch real entries and answer with care.)",
         "=== END UNDERSTANDING ===",
         ...(opts.recentLocations?.trim()
           ? [
@@ -302,26 +301,68 @@ export async function chatOverNotes(opts: {
   const chat = modelChat();
   const fallback = modelChatFallback();
   let usedModel = chat;
-  let resp;
-  try {
-    resp = await client().messages.create({ model: chat, max_tokens: 4096, system, messages });
-  } catch (err) {
-    const status = (err as { status?: number }).status;
-    const overloaded =
-      status === 429 || status === 529 || (typeof status === "number" && status >= 500);
-    if (overloaded && fallback && fallback !== chat) {
-      // The chat model is busy — answer this one on the fallback model.
-      usedModel = fallback;
-      resp = await client().messages.create({ model: fallback, max_tokens: 4096, system, messages });
-    } else {
-      throw err;
-    }
-  }
-  recordUsage("chat", usedModel, resp.usage);
+  let currentMessages: Anthropic.MessageParam[] = messages;
 
-  const block = resp.content.find((b) => b.type === "text");
-  const reply = block && block.type === "text" ? block.text : "";
-  return { reply, model: usedModel };
+  for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
+    let resp;
+    try {
+      resp = await client().messages.create({
+        model: usedModel,
+        max_tokens: 4096,
+        system,
+        tools: CHAT_TOOLS,
+        messages: currentMessages,
+      });
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      const overloaded =
+        status === 429 || status === 529 || (typeof status === "number" && status >= 500);
+      if (iter === 0 && overloaded && fallback && fallback !== usedModel) {
+        // The chat model is busy — answer this turn on the fallback model.
+        usedModel = fallback;
+        resp = await client().messages.create({
+          model: usedModel,
+          max_tokens: 4096,
+          system,
+          tools: CHAT_TOOLS,
+          messages: currentMessages,
+        });
+      } else {
+        throw err;
+      }
+    }
+    recordUsage("chat", usedModel, resp.usage);
+
+    if (resp.stop_reason !== "tool_use") {
+      // Terminal turn: end_turn / max_tokens / stop_sequence — return the text.
+      const block = resp.content.find((b) => b.type === "text");
+      const reply = block && block.type === "text" ? block.text : "";
+      return { reply, model: usedModel };
+    }
+
+    // Execute every tool_use block in this assistant turn.
+    const toolUses = resp.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
+    );
+    const toolResults: Anthropic.ToolResultBlockParam[] = toolUses.map((tu) => ({
+      type: "tool_result",
+      tool_use_id: tu.id,
+      content: executeTool(tu.name, tu.input),
+    }));
+
+    currentMessages = [
+      ...currentMessages,
+      { role: "assistant", content: resp.content as Anthropic.ContentBlockParam[] },
+      { role: "user", content: toolResults },
+    ];
+  }
+
+  // Iteration limit hit — return a graceful note.
+  return {
+    reply:
+      "I had to look up a lot and didn't finish — try asking again, maybe a bit more specifically.",
+    model: usedModel,
+  };
 }
 
 /**
