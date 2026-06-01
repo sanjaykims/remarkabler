@@ -37,6 +37,16 @@ export default function MemoryPage() {
   } | null>(null);
   const [locEnabled, setLocEnabled] = useState<boolean | null>(null);
   const [locTogBusy, setLocTogBusy] = useState(false);
+  const [discEnabled, setDiscEnabled] = useState<boolean | null>(null);
+  const [discTogBusy, setDiscTogBusy] = useState(false);
+
+  type ModelInfo = { value: string; source: "db" | "env" | "default" };
+  const [models, setModels] = useState<{
+    main: ModelInfo;
+    chat: ModelInfo;
+    fallback: ModelInfo;
+  } | null>(null);
+  const [modelsBusy, setModelsBusy] = useState(false);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -108,12 +118,71 @@ export default function MemoryPage() {
     }
   }
 
+  async function loadDiscSettings() {
+    try {
+      const d = await fetch("/api/discipline/settings").then((r) => r.json());
+      setDiscEnabled(!!d.enabled);
+    } catch {
+      setDiscEnabled(true);
+    }
+  }
+
+  async function toggleDiscipline() {
+    if (discEnabled === null || discTogBusy) return;
+    const next = !discEnabled;
+    setDiscTogBusy(true);
+    try {
+      const r = await fetch("/api/discipline/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      const d = await r.json();
+      if (r.ok) setDiscEnabled(!!d.enabled);
+    } catch {
+      // leave state as-is
+    } finally {
+      setDiscTogBusy(false);
+    }
+  }
+
+  async function loadModels() {
+    try {
+      const d = await fetch("/api/settings/models").then((r) => r.json());
+      setModels(d);
+    } catch {
+      setModels(null);
+    }
+  }
+
+  async function setModel(slot: "main" | "chat" | "fallback", value: string) {
+    if (modelsBusy) return;
+    setModelsBusy(true);
+    try {
+      const r = await fetch("/api/settings/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [slot]: value }),
+      });
+      const d = await r.json();
+      if (r.ok) {
+        setModels({ main: d.main, chat: d.chat, fallback: d.fallback });
+      }
+    } catch {
+      // leave state as-is
+    } finally {
+      setModelsBusy(false);
+    }
+  }
+
   useEffect(() => {
     load();
     loadDisc();
     loadLocs();
     loadOt();
     loadLocSettings();
+    loadDiscSettings();
+    loadModels();
   }, []);
 
   function getPosition(): Promise<GeolocationPosition> {
@@ -331,9 +400,33 @@ export default function MemoryPage() {
                 ? ` ${disc.files} file${disc.files === 1 ? "" : "s"} in your memory${disc.lastSynced ? `, synced ${formatLocalTime(disc.lastSynced)}` : ""}.`
                 : " Not synced yet."}
             </p>
+
+            <div className="flex items-start justify-between gap-3 pb-2 border-b border-stone-200 dark:border-stone-800">
+              <div className="text-xs">
+                <p className="font-medium">Share discipline notes with Remarkabler</p>
+                <p className="opacity-70">
+                  When off, these notes are not fed to Claude and Sync is
+                  disabled. Past entries stay saved.
+                </p>
+              </div>
+              <button
+                onClick={toggleDiscipline}
+                disabled={discEnabled === null || discTogBusy}
+                aria-pressed={discEnabled === true}
+                className={
+                  "shrink-0 rounded-full px-3 py-1 text-xs font-medium disabled:opacity-50 " +
+                  (discEnabled
+                    ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900"
+                    : "border border-stone-300 dark:border-stone-700")
+                }
+              >
+                {discEnabled === null ? "…" : discEnabled ? "On" : "Off"}
+              </button>
+            </div>
+
             <button
               onClick={syncDiscipline}
-              disabled={discBusy}
+              disabled={discBusy || discEnabled === false}
               className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
             >
               {discBusy ? "Syncing…" : "Sync now"}
@@ -476,6 +569,89 @@ export default function MemoryPage() {
             <code>{origin}/api/owntracks?token=YOUR_TOKEN</code>. After that it
             sends your location all day, with nothing to tap.
           </p>
+        )}
+      </section>
+
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+        <h2 className="font-medium">Claude models</h2>
+        <p className="text-xs opacity-70">
+          Pick which Claude model runs each task. You only pay per call — switch
+          anytime. Your in-app choice overrides anything set on Railway; pick
+          the first option to fall back to the Railway / built-in default.
+        </p>
+
+        {models ? (
+          <>
+            {(
+              [
+                {
+                  slot: "chat" as const,
+                  label: "Chat",
+                  hint:
+                    "Answers your daily questions. Sonnet is the balanced everyday pick.",
+                  info: models.chat,
+                },
+                {
+                  slot: "main" as const,
+                  label: "OCR & memory",
+                  hint:
+                    "Transcribes your handwriting and updates your evolving memory. Opus is most accurate; this is the worst place to cheap out.",
+                  info: models.main,
+                },
+                {
+                  slot: "fallback" as const,
+                  label: "Chat fallback",
+                  hint:
+                    "Used briefly when the chat model is busy. A cheaper tier here means a busy chat still gets an answer.",
+                  info: models.fallback,
+                },
+              ] as const
+            ).map(({ slot, label, hint, info }) => {
+              const STANDARD = [
+                { value: "claude-opus-4-8", label: "Opus 4.8 — strongest, most expensive" },
+                { value: "claude-sonnet-4-6", label: "Sonnet 4.6 — balanced" },
+                { value: "claude-haiku-4-5", label: "Haiku 4.5 — cheapest, fastest" },
+              ];
+              const options = STANDARD.slice();
+              if (
+                info.source === "db" &&
+                !STANDARD.some((o) => o.value === info.value)
+              ) {
+                options.push({ value: info.value, label: `${info.value} (custom)` });
+              }
+              const sourceLabel =
+                info.source === "env"
+                  ? `from Railway: ${info.value}`
+                  : info.source === "db"
+                    ? `your choice: ${info.value}`
+                    : `default: ${info.value}`;
+              return (
+                <div
+                  key={slot}
+                  className="space-y-1 pt-2 border-t border-stone-100 dark:border-stone-900 first:border-t-0 first:pt-0"
+                >
+                  <p className="text-sm font-medium">{label}</p>
+                  <p className="text-xs opacity-70">{hint}</p>
+                  <p className="text-[11px] opacity-60">Currently using {sourceLabel}.</p>
+                  <select
+                    value={info.source === "db" ? info.value : ""}
+                    onChange={(e) => setModel(slot, e.target.value)}
+                    disabled={modelsBusy}
+                    className="w-full rounded border border-stone-300 dark:border-stone-700 bg-transparent p-2 text-sm disabled:opacity-50"
+                  >
+                    <option value="">— Use Railway / default</option>
+                    {options.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+          </>
+        ) : (
+          <p className="text-xs opacity-60">Loading…</p>
         )}
       </section>
     </div>
