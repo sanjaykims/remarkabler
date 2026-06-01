@@ -33,6 +33,22 @@ const EXT: Record<string, string> = {
   "application/pdf": ".pdf",
 };
 
+// Some Android file managers hand us a File with an empty MIME, so we
+// derive one from the extension as a fallback.
+const EXT_TO_MIME: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  pdf: "application/pdf",
+};
+
+function ext(name: string): string {
+  const i = name.toLowerCase().lastIndexOf(".");
+  return i >= 0 ? name.slice(i + 1).toLowerCase() : "";
+}
+
 export async function POST(req: NextRequest) {
   if (!isAuthenticated()) return LOCKED();
 
@@ -52,10 +68,16 @@ export async function POST(req: NextRequest) {
     | undefined;
 
   if (file instanceof File && file.size > 0) {
-    const mime = file.type;
-    const isImage = IMAGE_TYPES.includes(mime);
+    const mime = file.type || "";
+    const extension = ext(file.name);
+    // Fall back to the extension when MIME is missing/odd.
+    const effectiveMime = mime || EXT_TO_MIME[extension] || "";
+    const isImage =
+      IMAGE_TYPES.includes(effectiveMime) ||
+      (effectiveMime.startsWith("image/") &&
+        ["jpg", "jpeg", "png", "gif", "webp"].includes(extension));
     const isPdf =
-      mime === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      effectiveMime === "application/pdf" || extension === "pdf";
     if (mime.startsWith("video/")) {
       return NextResponse.json(
         { error: "Claude can't read video. Attach a photo or a PDF instead." },
@@ -64,7 +86,10 @@ export async function POST(req: NextRequest) {
     }
     if (!isImage && !isPdf) {
       return NextResponse.json(
-        { error: "Only photos (JPG, PNG, GIF, WebP) and PDF files can be attached." },
+        {
+          error:
+            "Only photos (JPG, PNG, GIF, WebP) and PDF files can be attached. Please pick one of those.",
+        },
         { status: 400 }
       );
     }
@@ -76,7 +101,11 @@ export async function POST(req: NextRequest) {
     }
     const bytes = Buffer.from(await file.arrayBuffer());
     const kind: "image" | "document" = isImage ? "image" : "document";
-    const mediaType = isImage ? mime : "application/pdf";
+    const mediaType = isImage
+      ? IMAGE_TYPES.includes(effectiveMime)
+        ? effectiveMime
+        : EXT_TO_MIME[extension] || "image/jpeg"
+      : "application/pdf";
     fs.mkdirSync(ATTACHMENT_DIR, { recursive: true });
     const stored = `${randomUUID()}${EXT[mediaType] || ""}`;
     fs.writeFileSync(path.join(ATTACHMENT_DIR, stored), bytes);
