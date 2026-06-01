@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
 import { db, getSetting, setSetting } from "./db";
-import { ocrNotebookPdf, buildSelfModel, updateSelfModel, generateInsights, generateInsightTitle } from "./claude";
+import { ocrNotebookPdf, buildSelfModel, updateSelfModel, generateInsights, generateInsightTitle, summarizeDay } from "./claude";
 import { embedBatch, embeddingsEnabled, encodeEmbedding } from "./embeddings";
 import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
 import { owntracksRouteContext } from "./owntracks";
@@ -74,10 +74,14 @@ export async function processNotebook(id: string): Promise<void> {
        VALUES(?,?,?,?,?)`
     );
 
+    const setEntryDate = db().prepare(`UPDATE pages SET entry_date = ? WHERE id = ?`);
     for (const p of pages) {
       const pageId = `${id}:${p.pageIndex}`;
       insertPage.run(pageId, id, p.pageIndex, pdfPath, p.text, p.summary, ocrModel, ocrAt);
-      if (p.text) insertFts.run(p.text, p.summary, row.name, pageId, id);
+      if (p.text) {
+        insertFts.run(p.text, p.summary, row.name, pageId, id);
+        setEntryDate.run(extractEntryDate(p.text) || "none", pageId);
+      }
     }
 
     db()
@@ -275,6 +279,133 @@ let distillingLocation = false;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 let generatingWeeklyInsight = false;
 let backfillingEmbeddings = false;
+let backfillingEntryDates = false;
+let generatingDailySummaries = false;
+
+// Pull the user's own diary timestamp ("YYYY-MM-DD-HHMM-KST") out of a page
+// of OCR'd text. Used to group entries by the date the user wrote them, not
+// the date they happened to upload the notebook.
+export function extractEntryDate(text: string): string | null {
+  if (!text) return null;
+  const m = text.match(/(\d{4})-(\d{2})-(\d{2})-\d{4}-KST/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+/**
+ * For pages that don't yet have an entry_date, parse it from their text
+ * and store it. Cheap, runs in batches in the background. Pages with no
+ * timestamp get marked with a sentinel ("none") so we don't keep re-trying.
+ */
+export function maybeBackfillEntryDates(): void {
+  if (backfillingEntryDates) return;
+  try {
+    const row = db()
+      .prepare(
+        `SELECT COUNT(*) AS c FROM pages
+         WHERE ocr_text IS NOT NULL AND ocr_text != '' AND entry_date IS NULL`
+      )
+      .get() as { c: number };
+    if (row.c === 0) return;
+  } catch {
+    return;
+  }
+  backfillingEntryDates = true;
+  (async () => {
+    try {
+      const upd = db().prepare(`UPDATE pages SET entry_date = ? WHERE id = ?`);
+      while (true) {
+        const rows = db()
+          .prepare(
+            `SELECT id, ocr_text FROM pages
+             WHERE ocr_text IS NOT NULL AND ocr_text != '' AND entry_date IS NULL
+             LIMIT 64`
+          )
+          .all() as Array<{ id: string; ocr_text: string }>;
+        if (rows.length === 0) break;
+        for (const r of rows) {
+          const d = extractEntryDate(r.ocr_text);
+          upd.run(d || "none", r.id);
+        }
+      }
+    } catch {
+      // best-effort
+    } finally {
+      backfillingEntryDates = false;
+    }
+  })();
+}
+
+/**
+ * For any date that has diary entries but no daily summary yet, generate
+ * the summary in the background. Caps at 3 generations per tick so a
+ * fresh-out-of-the-box backfill doesn't ramp up cost suddenly — the cap
+ * means a heavy backlog will fill in over several chat sessions.
+ */
+export function maybeGenerateDailySummaries(): void {
+  if (generatingDailySummaries) return;
+  try {
+    const row = db()
+      .prepare(
+        `SELECT COUNT(DISTINCT p.entry_date) AS c
+         FROM pages p
+         LEFT JOIN daily_summaries d ON d.date = p.entry_date
+         WHERE p.entry_date IS NOT NULL AND p.entry_date != 'none'
+           AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
+           AND d.id IS NULL`
+      )
+      .get() as { c: number };
+    if (row.c === 0) return;
+  } catch {
+    return;
+  }
+  generatingDailySummaries = true;
+  (async () => {
+    try {
+      const PER_TICK = 3;
+      const dates = db()
+        .prepare(
+          `SELECT DISTINCT p.entry_date AS date
+           FROM pages p
+           LEFT JOIN daily_summaries d ON d.date = p.entry_date
+           WHERE p.entry_date IS NOT NULL AND p.entry_date != 'none'
+             AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
+             AND d.id IS NULL
+           ORDER BY p.entry_date DESC
+           LIMIT ?`
+        )
+        .all(PER_TICK) as Array<{ date: string }>;
+      for (const { date } of dates) {
+        const entryRows = db()
+          .prepare(
+            `SELECT n.name AS notebook, p.page_index, p.ocr_text AS text
+             FROM pages p JOIN notebooks n ON n.id = p.notebook_id
+             WHERE p.entry_date = ?
+             ORDER BY p.notebook_id, p.page_index`
+          )
+          .all(date) as Array<{ notebook: string; page_index: number; text: string }>;
+        if (entryRows.length === 0) continue;
+        const entries = entryRows
+          .map(
+            (r) =>
+              `[${r.notebook} — page ${r.page_index + 1}]\n${r.text.trim()}`
+          )
+          .join("\n\n---\n\n");
+        const summary = await summarizeDay({ date, entries });
+        if (summary.trim()) {
+          db()
+            .prepare(
+              `INSERT OR REPLACE INTO daily_summaries(date, summary) VALUES(?, ?)`
+            )
+            .run(date, summary.trim());
+        }
+      }
+    } catch {
+      // best-effort
+    } finally {
+      generatingDailySummaries = false;
+    }
+  })();
+}
 
 /**
  * Embed any pages that don't yet have a vector — for an existing app whose

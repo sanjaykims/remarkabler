@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatLocalTime } from "@/lib/format";
-import { maybeGenerateWeeklyInsight, maybeBackfillEmbeddings } from "@/lib/notes";
+import {
+  maybeGenerateWeeklyInsight,
+  maybeBackfillEmbeddings,
+  maybeBackfillEntryDates,
+  maybeGenerateDailySummaries,
+} from "@/lib/notes";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +31,10 @@ export default function Home() {
   // Same idea for filling in semantic embeddings for pages that don't have
   // one yet (e.g. everything you uploaded before this feature shipped).
   maybeBackfillEmbeddings();
+  // And the multi-level memory: tag pages with their own diary date and
+  // generate a few missing daily summaries per visit.
+  maybeBackfillEntryDates();
+  maybeGenerateDailySummaries();
 
   const stats = db()
     .prepare(
