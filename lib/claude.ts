@@ -1,7 +1,33 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { recordUsage } from "@/lib/usage";
-import { getSetting } from "@/lib/db";
+import { db, getSetting } from "@/lib/db";
 import { CHAT_TOOLS, executeTool } from "@/lib/chatTools";
+
+// When updating / rebuilding the profile, also feed in the most recent
+// on-demand reflections so Claude's "memory of you" knows what it has been
+// noticing — not just what was written in the diary.
+function recentInsightsBlock(maxChars = 2000): string {
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT title, content FROM insights ORDER BY id DESC LIMIT 3`
+      )
+      .all() as Array<{ title: string | null; content: string }>;
+    if (rows.length === 0) return "";
+    return rows
+      .map((r) => {
+        const header = r.title ? `[${r.title}]\n` : "";
+        const text =
+          r.content.length > maxChars
+            ? r.content.slice(0, maxChars) + "…"
+            : r.content;
+        return `${header}${text}`;
+      })
+      .join("\n\n---\n\n");
+  } catch {
+    return "";
+  }
+}
 
 // Each Claude model resolves at call time: in-app setting (Memory tab) overrides
 // the Railway env var, which overrides the built-in default. Building the model
@@ -147,6 +173,7 @@ const PROFILE_FORMAT = [
 export async function buildSelfModel(opts: {
   notesContext: string;
 }): Promise<string> {
+  const insights = recentInsightsBlock();
   const resp = await client().messages.create({
     model: modelMain(),
     max_tokens: 2048,
@@ -165,6 +192,17 @@ export async function buildSelfModel(opts: {
           "=== MY DIARY ===",
           opts.notesContext,
           "=== END DIARY ===",
+          ...(insights
+            ? [
+                "",
+                "=== YOUR RECENT REFLECTIONS ABOUT ME (latest first) ===",
+                insights,
+                "=== END REFLECTIONS ===",
+                "",
+                "Weave the patterns you've already noticed into the profile;",
+                "don't restate them verbatim.",
+              ]
+            : []),
         ].join("\n"),
       },
     ],
@@ -179,6 +217,7 @@ export async function updateSelfModel(opts: {
   currentProfile: string;
   newContent: string;
 }): Promise<string> {
+  const insights = recentInsightsBlock(1500);
   const resp = await client().messages.create({
     model: modelMain(),
     max_tokens: 2048,
@@ -202,6 +241,14 @@ export async function updateSelfModel(opts: {
           "=== MY NEW DIARY ENTRY ===",
           opts.newContent,
           "=== END ===",
+          ...(insights
+            ? [
+                "",
+                "=== YOUR RECENT REFLECTIONS ABOUT ME (latest first) ===",
+                insights,
+                "=== END REFLECTIONS ===",
+              ]
+            : []),
           "",
           "Return the full, revised understanding of me.",
         ].join("\n"),
