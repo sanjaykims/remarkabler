@@ -157,6 +157,20 @@ export default function ChatPage() {
     });
   }
 
+  // Read a Blob as a raw base64 string (without the data: prefix).
+  function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = (reader.result as string) || "";
+        const i = result.indexOf(",");
+        resolve(i >= 0 ? result.slice(i + 1) : result);
+      };
+      reader.onerror = () => reject(new Error("Couldn't read that file."));
+      reader.readAsDataURL(blob);
+    });
+  }
+
   async function sendMessage(text: string, speakReply: boolean) {
     const t = text.trim();
     const attached = file;
@@ -180,9 +194,12 @@ export default function ChatPage() {
       },
     ]);
     try {
-      const fd = new FormData();
-      fd.append("conversationId", "default");
-      fd.append("message", t);
+      // JSON + base64 — bypasses multipart, which dropped the file part on
+      // Samsung Internet (the picture was silently going to /api/chat as
+      // a non-File entry, so Claude was answering without ever seeing it).
+      let attachmentJson:
+        | { filename: string; mediaType: string; dataBase64: string }
+        | undefined;
       if (attached) {
         const nameLower = attached.name.toLowerCase();
         const looksLikeImage =
@@ -190,9 +207,6 @@ export default function ChatPage() {
           /\.(jpe?g|png|gif|webp)$/.test(nameLower);
         let payload: Blob = attached;
         if (looksLikeImage) {
-          // Downscale to keep the upload small. If the browser can't decode
-          // the image (e.g., some HEIC files) or returns a 0-byte blob,
-          // send the original — the server gives a clearer error than we can.
           try {
             const resized = await resizeImage(attached);
             if (resized.size > 0) payload = resized;
@@ -200,27 +214,30 @@ export default function ChatPage() {
             // keep original
           }
         }
-        // Wrap as a File explicitly so the multipart entry always carries
-        // a real filename and content-type, even when payload is a generic
-        // Blob from canvas.toBlob — some browsers/servers drop a bare Blob
-        // entry, which silently fails the attachment.
-        const fileToSend =
-          payload instanceof File
-            ? payload
-            : new File([payload], attached.name, {
-                type:
-                  payload.type ||
-                  attached.type ||
-                  "application/octet-stream",
-              });
-        if (fileToSend.size === 0) {
+        if (payload.size === 0) {
           throw new Error(
             "Couldn't read that photo — try picking it again from your gallery."
           );
         }
-        fd.append("file", fileToSend);
+        const dataBase64 = await blobToBase64(payload);
+        const mediaType = looksLikeImage
+          ? payload.type || attached.type || "image/jpeg"
+          : "application/pdf";
+        attachmentJson = {
+          filename: attached.name,
+          mediaType,
+          dataBase64,
+        };
       }
-      const r = await fetch("/api/chat", { method: "POST", body: fd });
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: "default",
+          message: t,
+          attachment: attachmentJson,
+        }),
+      });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
         throw new Error(d.error || "Something went wrong. Please try again.");

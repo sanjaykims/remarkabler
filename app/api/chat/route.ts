@@ -52,13 +52,27 @@ function ext(name: string): string {
 export async function POST(req: NextRequest) {
   if (!isAuthenticated()) return LOCKED();
 
-  const form = await req.formData().catch(() => null);
-  if (!form) {
+  // JSON, not multipart — Samsung Internet's multipart serialisation was
+  // silently dropping the file part, so chat sends the attachment as
+  // base64 in a JSON body. PWA share-target stays multipart (the spec
+  // requires it).
+  const body = (await req.json().catch(() => null)) as
+    | {
+        conversationId?: unknown;
+        message?: unknown;
+        attachment?: {
+          filename?: unknown;
+          mediaType?: unknown;
+          dataBase64?: unknown;
+        };
+      }
+    | null;
+  if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
-  const conversationId = String(form.get("conversationId") || "default");
-  const userMessage = String(form.get("message") || "").trim();
-  const file = form.get("file");
+  const conversationId = String(body.conversationId || "default");
+  const userMessage = String(body.message || "").trim();
+  const att = body.attachment;
 
   // Validate and read an optional attachment.
   let attachment:
@@ -67,10 +81,10 @@ export async function POST(req: NextRequest) {
   let saved: { kind: "image" | "document"; filename: string; mime: string; stored: string }
     | undefined;
 
-  if (file instanceof File && file.size > 0) {
-    const mime = file.type || "";
-    const extension = ext(file.name);
-    // Fall back to the extension when MIME is missing/odd.
+  if (att && typeof att === "object" && typeof att.dataBase64 === "string") {
+    const mime = String(att.mediaType || "");
+    const filename = String(att.filename || "attachment");
+    const extension = ext(filename);
     const effectiveMime = mime || EXT_TO_MIME[extension] || "";
     const isImage =
       IMAGE_TYPES.includes(effectiveMime) ||
@@ -93,13 +107,22 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (file.size > MAX_ATTACHMENT_BYTES) {
+    const bytes = Buffer.from(att.dataBase64, "base64");
+    if (bytes.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Your attachment came through empty. Try picking the photo again.",
+        },
+        { status: 400 }
+      );
+    }
+    if (bytes.length > MAX_ATTACHMENT_BYTES) {
       return NextResponse.json(
         { error: "That file is too large (max 20 MB)." },
         { status: 400 }
       );
     }
-    const bytes = Buffer.from(await file.arrayBuffer());
     const kind: "image" | "document" = isImage ? "image" : "document";
     const mediaType = isImage
       ? IMAGE_TYPES.includes(effectiveMime)
@@ -109,30 +132,13 @@ export async function POST(req: NextRequest) {
     fs.mkdirSync(ATTACHMENT_DIR, { recursive: true });
     const stored = `${randomUUID()}${EXT[mediaType] || ""}`;
     fs.writeFileSync(path.join(ATTACHMENT_DIR, stored), bytes);
-    attachment = { kind, mediaType, dataBase64: bytes.toString("base64") };
-    saved = { kind, filename: file.name || "attachment", mime: mediaType, stored };
-  } else if (file !== null && file !== undefined) {
-    // A "file" entry was present but unusable (empty, or not a File-shaped
-    // entry the parser recognised). Surface it instead of silently sending
-    // the message without the attachment, which makes the attach-not-working
-    // case look like Claude can't see the photo.
-    const looksLikeFile = file instanceof File;
-    return NextResponse.json(
-      {
-        error: looksLikeFile
-          ? "Your attachment came through empty. Try picking the photo again."
-          : "Your attachment didn't come through. Try picking the photo again.",
-      },
-      { status: 400 }
-    );
+    attachment = { kind, mediaType, dataBase64: att.dataBase64 };
+    saved = { kind, filename, mime: mediaType, stored };
   }
 
   if (!userMessage && !attachment) {
     return NextResponse.json(
-      {
-        error:
-          "Please type a message or attach a photo/PDF.",
-      },
+      { error: "Please type a message or attach a photo/PDF." },
       { status: 400 }
     );
   }
