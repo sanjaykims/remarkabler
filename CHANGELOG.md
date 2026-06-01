@@ -3,6 +3,38 @@
 ## 2026-06-01
 
 ### Added
+- **Tool-calling chat — Claude now fetches diary entries on demand.** Replaces
+  the pre-retrieve-and-stuff pattern with proper tool use. Eleven tools cover
+  semantic + keyword search (`search_diary`), specific dates
+  (`get_entries_by_date`), recent entries, notebook listing and full reads,
+  occurrence counts, the current KST time (so "today / yesterday / this week"
+  resolve correctly), recent locations, past chat history, past insights, and
+  writing stats. Claude uses tools only when the question genuinely needs a
+  lookup; many turns still answer from the profile alone.
+- **Semantic memory (Phase 1).** Voyage AI embeddings now indexed per page;
+  `search_diary` is hybrid (FTS + cosine similarity), so "anything heavy
+  lately?" finds entries about burden, exhaustion, weight — even when the word
+  "heavy" never appears. New `pages.embedding` BLOB column, in-app backfill,
+  Voyage pricing wired into the Cost tab. Requires `VOYAGE_API_KEY`; the
+  feature is a no-op without it.
+- **Weekly auto-insight.** The Insights record now grows on its own — once a
+  week, when you chat or open the dashboard, a fresh reflection is written in
+  the background on Opus.
+- **Insights folded into memory.** Profile build/update prompts now include
+  the three most recent insights under a "YOUR RECENT REFLECTIONS ABOUT ME"
+  block, so the "memory of you" knows what Claude has been noticing about
+  you — not just what you wrote.
+- **Dashboard insight nudge.** When you have notebooks but no insights yet,
+  the dashboard surfaces a clear "No insights yet" card that explains the
+  feature and links to it, instead of hiding the section entirely.
+- **Diary timestamp awareness in chat.** Chat's system prompt names the
+  `YYYY-MM-DD-HHMM-KST` format and instructs Claude to look for it in
+  excerpts. The FTS query also normalises date shorthands ("5/28", "5-28",
+  "5/28th", "2026-5-28") to padded "05 28" so they hit the indexed timestamps.
+- **Diagnostic share-target failure page.** When a PWA share doesn't include a
+  usable PDF, the failure page now lists every form field that did come in
+  (empty file entries, text fields) and points at the right reMarkable export
+  flow, instead of a generic "no file" message.
 - **Privacy controls — every data source is now a switch.** Toggles on the
   Memory tab let you opt out of feeding location and discipline (GitHub) data
   to Claude without touching env vars. When off, ingestion is rejected,
@@ -47,6 +79,26 @@
   under the same field name), the rest were dropped — and depending on the
   bundling, the share could appear to fail entirely. Now uses `getAll("file")`
   and ingests each in turn.
+- **Sharing a single PDF from the reMarkable mobile app on Samsung Internet.**
+  The PDF was arriving correctly under the right field name, but
+  `value instanceof File` returned false (the OS share intent on Android Chrome
+  hands the file in via a different File constructor than the module sees), so
+  the file was misclassified as a text entry and rejected as "no PDF came
+  through." Both `/share` and `/api/notebooks` now duck-type — anything with
+  a numeric `size` and an `arrayBuffer` method is treated as a file.
+- **Chat photo attachments silently dropped on Samsung Internet.** Same
+  multipart-quirk class: the resized photo blob was being delivered as a
+  non-File entry the parser dropped, and chat answered as if no image was
+  attached. Switched the chat attachment path from multipart to JSON+base64,
+  which bypasses the multipart parser entirely (the PWA share target stays on
+  multipart — the Web Share Target spec requires it). The error UX also got
+  cleaner: when something does go wrong, the message appears in the input's
+  red banner with your text + attachment preserved, instead of as a fake
+  "assistant" reply.
+- **Chat attachment hardening — robust against empty MIME, HEIC decode
+  failures, and zero-byte resize blobs.** Both client and server accept by
+  filename extension when MIME is missing; the resize falls back to the
+  original blob when the browser can't decode it.
 
 ## 2026-05-16
 
