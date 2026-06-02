@@ -4,6 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
 import { setPickingFile } from "../lockState";
 
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
 export default function MemoryPage() {
   const [content, setContent] = useState("");
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
@@ -50,6 +57,16 @@ export default function MemoryPage() {
 
   const [bookBusy, setBookBusy] = useState(false);
   const [bookMsg, setBookMsg] = useState<string | null>(null);
+
+  type BackupStatus = {
+    configured: boolean;
+    repo: string | null;
+    lastAt: string | null;
+    lastError: string | null;
+    lastSizeBytes: number | null;
+  };
+  const [backup, setBackup] = useState<BackupStatus | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -186,6 +203,28 @@ export default function MemoryPage() {
     }
   }
 
+  async function loadBackup() {
+    try {
+      setBackup(await fetch("/api/backup").then((r) => r.json()));
+    } catch {
+      setBackup(null);
+    }
+  }
+
+  async function runManualBackup() {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const r = await fetch("/api/backup", { method: "POST" });
+      await r.json().catch(() => ({}));
+      await loadBackup();
+    } catch {
+      // surfaced via lastError on the loaded status
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
   async function setModel(slot: "main" | "chat" | "fallback", value: string) {
     if (modelsBusy) return;
     setModelsBusy(true);
@@ -214,6 +253,7 @@ export default function MemoryPage() {
     loadLocSettings();
     loadDiscSettings();
     loadModels();
+    loadBackup();
   }, []);
 
   function getPosition(): Promise<GeolocationPosition> {
@@ -683,6 +723,53 @@ export default function MemoryPage() {
           </>
         ) : (
           <p className="text-xs opacity-60">Loading…</p>
+        )}
+      </section>
+
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+        <h2 className="font-medium">Backup to GitHub</h2>
+        {backup === null ? (
+          <p className="text-xs opacity-60">Loading…</p>
+        ) : backup.configured ? (
+          <>
+            <p className="text-xs opacity-70">
+              Connected to <code>{backup.repo}</code>. A full snapshot of
+              your database, PDFs, and chat attachments is pushed there
+              automatically about once every 30 days. The repo is yours;
+              even if Remarkabler or its host disappears, the record
+              survives.
+            </p>
+            <p className="text-xs opacity-70">
+              {backup.lastAt ? (
+                <>Last backup: {formatLocalTime(backup.lastAt)}</>
+              ) : (
+                <>No backup yet — tap below to run the first one now.</>
+              )}
+              {backup.lastSizeBytes !== null && backup.lastAt && (
+                <> · {formatBytes(backup.lastSizeBytes)}</>
+              )}
+            </p>
+            {backup.lastError && (
+              <p className="text-xs text-red-600">
+                Last error: {backup.lastError}
+              </p>
+            )}
+            <button
+              onClick={runManualBackup}
+              disabled={backupBusy}
+              className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {backupBusy ? "Backing up…" : "Backup now"}
+            </button>
+          </>
+        ) : (
+          <p className="text-xs opacity-70 break-words">
+            Not configured. Off-site auto-backup needs two env vars in
+            Railway: <code>BACKUP_REPO</code> (e.g.{" "}
+            <code>you/remarkabler-backup</code>) and a fine-grained{" "}
+            <code>BACKUP_GITHUB_TOKEN</code> with write access to just that
+            repo. Add them and redeploy; this section will switch on.
+          </p>
         )}
       </section>
 
