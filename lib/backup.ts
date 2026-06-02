@@ -9,7 +9,12 @@ import { db, DATA_DIR, getSetting, setSetting, clearSetting } from "./db";
 // belongs to the user, the token only has write access to that one repo,
 // so this is the smallest reasonable surface for off-site durability.
 
-const BACKUP_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000; // ~monthly
+const BACKUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // ~weekly
+// Keep the last N snapshots in the repo. Older ones are pruned via the
+// GitHub API after each successful backup, so the repo never balloons
+// indefinitely. 12 ≈ 3 months of weekly snapshots — plenty to roll back
+// from any single bad week.
+const BACKUPS_TO_KEEP = 12;
 let runningBackup = false;
 
 export function backupConfigured(): boolean {
@@ -45,6 +50,73 @@ function stampNow(): string {
     `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
     `-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`
   );
+}
+
+type RepoFile = { name: string; sha: string; path: string; type?: string };
+
+async function listBackups(): Promise<RepoFile[]> {
+  const repo = process.env.BACKUP_REPO;
+  const token = process.env.BACKUP_GITHUB_TOKEN;
+  if (!repo || !token) return [];
+  const url = `https://api.github.com/repos/${repo}/contents/backups`;
+  try {
+    const resp = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    if (resp.status === 404) return []; // backups/ doesn't exist yet
+    if (!resp.ok) return [];
+    const data = (await resp.json()) as RepoFile[];
+    return data
+      .filter((f) => f.type === "file" && f.name.endsWith(".tar.gz"))
+      .sort((a, b) => a.name.localeCompare(b.name)); // oldest first
+  } catch {
+    return [];
+  }
+}
+
+async function deleteBackupFile(
+  path: string,
+  sha: string,
+  commitMessage: string
+): Promise<void> {
+  const repo = process.env.BACKUP_REPO;
+  const token = process.env.BACKUP_GITHUB_TOKEN;
+  if (!repo || !token) return;
+  const url = `https://api.github.com/repos/${repo}/contents/${path}`;
+  const resp = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    body: JSON.stringify({ message: commitMessage, sha }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`Delete failed (${resp.status}): ${text.slice(0, 200)}`);
+  }
+}
+
+async function pruneOldBackups(): Promise<number> {
+  const all = await listBackups();
+  if (all.length <= BACKUPS_TO_KEEP) return 0;
+  const toDelete = all.slice(0, all.length - BACKUPS_TO_KEEP);
+  let deleted = 0;
+  for (const f of toDelete) {
+    try {
+      await deleteBackupFile(f.path, f.sha, `Prune old backup ${f.name}`);
+      deleted++;
+    } catch {
+      // best-effort; skip this one and try the rest
+    }
+  }
+  return deleted;
 }
 
 async function pushToGithub(
@@ -142,6 +214,14 @@ export async function runBackup(): Promise<number> {
       `backups/${stamp}.tar.gz`,
       `Backup ${stamp}`
     );
+
+    // 5. Prune old snapshots (best-effort; never fails the backup).
+    try {
+      await pruneOldBackups();
+    } catch {
+      // ignore — keeping the new backup is what matters
+    }
+
     return bytes.length;
   } finally {
     // Always clean up the staging area + the tarball.
