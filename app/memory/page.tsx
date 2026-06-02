@@ -735,9 +735,10 @@ export default function MemoryPage() {
             <p className="text-xs opacity-70">
               Connected to <code>{backup.repo}</code>. A full snapshot of
               your database, PDFs, and chat attachments is pushed there
-              automatically about once every 30 days. The repo is yours;
-              even if Remarkabler or its host disappears, the record
-              survives.
+              automatically about once a week. The repo keeps the latest
+              12 snapshots (~3 months); older ones are pruned so storage
+              doesn&rsquo;t balloon forever. The repo is yours; even if
+              Remarkabler or its host disappears, the record survives.
             </p>
             <p className="text-xs opacity-70">
               {backup.lastAt ? (
