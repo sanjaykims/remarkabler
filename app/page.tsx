@@ -7,6 +7,7 @@ import {
   maybeBackfillEntryDates,
   maybeGenerateDailySummaries,
 } from "@/lib/notes";
+import { maybeRunMonthlyBackup } from "@/lib/backup";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,8 @@ export default function Home() {
   // generate a few missing daily summaries per visit.
   maybeBackfillEntryDates();
   maybeGenerateDailySummaries();
+  // ~Monthly off-site backup to a private GitHub repo of yours.
+  maybeRunMonthlyBackup();
 
   const stats = db()
     .prepare(

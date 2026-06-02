@@ -1,0 +1,185 @@
+import fs from "fs";
+import path from "path";
+import { execSync } from "child_process";
+import { db, DATA_DIR, getSetting, setSetting, clearSetting } from "./db";
+
+// Auto-backup to a user-owned private GitHub repo. The whole DATA_DIR
+// (SQLite database + uploaded PDFs + chat attachments) is bundled into a
+// single date-stamped tar.gz and pushed via GitHub's REST API. The repo
+// belongs to the user, the token only has write access to that one repo,
+// so this is the smallest reasonable surface for off-site durability.
+
+const BACKUP_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000; // ~monthly
+let runningBackup = false;
+
+export function backupConfigured(): boolean {
+  return !!(process.env.BACKUP_REPO && process.env.BACKUP_GITHUB_TOKEN);
+}
+
+export type BackupStatus = {
+  configured: boolean;
+  repo: string | null;
+  lastAt: string | null;
+  lastError: string | null;
+  lastSizeBytes: number | null;
+};
+
+export function backupStatus(): BackupStatus {
+  const sizeStr = getSetting("backup_last_size_bytes");
+  return {
+    configured: backupConfigured(),
+    repo: process.env.BACKUP_REPO || null,
+    lastAt: getSetting("backup_last_at"),
+    lastError: getSetting("backup_last_error"),
+    lastSizeBytes: sizeStr ? Number(sizeStr) || null : null,
+  };
+}
+
+function pad(n: number): string {
+  return n.toString().padStart(2, "0");
+}
+
+function stampNow(): string {
+  const d = new Date();
+  return (
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
+    `-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`
+  );
+}
+
+async function pushToGithub(
+  content: Buffer,
+  repoPath: string,
+  commitMessage: string
+): Promise<void> {
+  const repo = process.env.BACKUP_REPO;
+  const token = process.env.BACKUP_GITHUB_TOKEN;
+  if (!repo || !token) throw new Error("Backup env vars not set");
+
+  const apiBase = `https://api.github.com/repos/${repo}/contents/${repoPath}`;
+
+  // If the file already exists at that path (e.g., manual retry with the
+  // same timestamp), GitHub requires the existing SHA for the update.
+  let existingSha: string | undefined;
+  try {
+    const head = await fetch(apiBase, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    if (head.ok) {
+      const data = (await head.json()) as { sha?: string };
+      existingSha = data.sha;
+    }
+  } catch {
+    // ignore — assume not present
+  }
+
+  const resp = await fetch(apiBase, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    body: JSON.stringify({
+      message: commitMessage,
+      content: content.toString("base64"),
+      ...(existingSha ? { sha: existingSha } : {}),
+    }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(
+      `GitHub upload failed (${resp.status}): ${text.slice(0, 200)}`
+    );
+  }
+}
+
+/**
+ * Build a tar.gz of DATA_DIR (clean SQLite copy + PDFs + chat attachments)
+ * and push it to the configured GitHub repo. Returns the byte size of the
+ * uploaded archive.
+ */
+export async function runBackup(): Promise<number> {
+  if (!backupConfigured()) {
+    throw new Error("Backup is not configured. Set BACKUP_REPO and BACKUP_GITHUB_TOKEN in Railway.");
+  }
+  const stamp = stampNow();
+  const stagingDir = `/tmp/remarkabler-backup-staging-${stamp}`;
+  const tarPath = `/tmp/remarkabler-backup-${stamp}.tar.gz`;
+  fs.mkdirSync(stagingDir, { recursive: true });
+
+  try {
+    // 1. Clean SQLite copy via the online backup API — safe even mid-write.
+    const dbCopyPath = path.join(stagingDir, "app.db");
+    // better-sqlite3's backup() returns a Promise.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db() as any).backup(dbCopyPath);
+
+    // 2. Copy the PDF + attachment directories (use cp for symlink safety).
+    const filesSrc = path.join(DATA_DIR, "files");
+    if (fs.existsSync(filesSrc)) {
+      execSync(`cp -r "${filesSrc}" "${stagingDir}/files"`, { stdio: "pipe" });
+    }
+    const attSrc = path.join(DATA_DIR, "chat-attachments");
+    if (fs.existsSync(attSrc)) {
+      execSync(`cp -r "${attSrc}" "${stagingDir}/chat-attachments"`, {
+        stdio: "pipe",
+      });
+    }
+
+    // 3. tar + gzip the whole staging directory.
+    execSync(`tar czf "${tarPath}" -C "${stagingDir}" .`, { stdio: "pipe" });
+
+    // 4. Read the archive and push to GitHub.
+    const bytes = fs.readFileSync(tarPath);
+    await pushToGithub(
+      bytes,
+      `backups/${stamp}.tar.gz`,
+      `Backup ${stamp}`
+    );
+    return bytes.length;
+  } finally {
+    // Always clean up the staging area + the tarball.
+    try {
+      execSync(`rm -rf "${stagingDir}" "${tarPath}"`, { stdio: "pipe" });
+    } catch {
+      // best-effort
+    }
+  }
+}
+
+/**
+ * Fire-and-forget monthly backup. If the configured backup hasn't run in
+ * 30 days (or has never run), kicks off a backup in the background. Safe
+ * to call from chat POST and dashboard render — most calls are a single
+ * cheap DB read.
+ */
+export function maybeRunMonthlyBackup(): void {
+  if (runningBackup) return;
+  if (!backupConfigured()) return;
+  const last = getSetting("backup_last_at");
+  if (last) {
+    const lastAt = Date.parse(last);
+    if (!Number.isNaN(lastAt) && Date.now() - lastAt < BACKUP_INTERVAL_MS) {
+      return;
+    }
+  }
+  runningBackup = true;
+  (async () => {
+    try {
+      const size = await runBackup();
+      setSetting("backup_last_at", new Date().toISOString());
+      setSetting("backup_last_size_bytes", String(size));
+      clearSetting("backup_last_error");
+    } catch (err) {
+      setSetting("backup_last_error", (err as Error).message.slice(0, 500));
+    } finally {
+      runningBackup = false;
+    }
+  })();
+}

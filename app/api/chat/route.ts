@@ -11,6 +11,7 @@ import {
   maybeBackfillEntryDates,
   maybeGenerateDailySummaries,
 } from "@/lib/notes";
+import { maybeRunMonthlyBackup } from "@/lib/backup";
 import { getCurrentProfile } from "@/lib/profile";
 import { recentLocationsContext, isLocationEnabled } from "@/lib/location";
 import { recentRouteContext } from "@/lib/timeline";
@@ -171,6 +172,9 @@ export async function POST(req: NextRequest) {
   // Both run in the background and cap their work per tick.
   maybeBackfillEntryDates();
   maybeGenerateDailySummaries();
+  // Monthly off-site backup to a private GitHub repo (no-op when not
+  // configured, or when the last backup is less than 30 days old).
+  maybeRunMonthlyBackup();
   const profile = getCurrentProfile() || "";
 
   // Prefer the Google Timeline import, then the automatic OwnTracks route,
