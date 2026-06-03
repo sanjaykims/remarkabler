@@ -234,12 +234,12 @@ export async function runBackup(): Promise<number> {
 }
 
 /**
- * Fire-and-forget monthly backup. If the configured backup hasn't run in
- * 30 days (or has never run), kicks off a backup in the background. Safe
- * to call from chat POST and dashboard render — most calls are a single
- * cheap DB read.
+ * Fire-and-forget weekly backup. If the configured backup hasn't run in
+ * BACKUP_INTERVAL_MS (~7 days) or has never run, kicks off a backup in
+ * the background. Safe to call from chat POST and dashboard render — most
+ * calls are a single cheap DB read against settings.
  */
-export function maybeRunMonthlyBackup(): void {
+export function maybeRunWeeklyBackup(): void {
   if (runningBackup) return;
   if (!backupConfigured()) return;
   const last = getSetting("backup_last_at");

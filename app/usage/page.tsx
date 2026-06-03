@@ -18,6 +18,9 @@ const FEATURE_LABEL: Record<string, string> = {
   insights: "Insights",
   insight_title: "Insight titles",
   memory: "Memory",
+  daily_summary: "Daily summaries",
+  book: "Book composition",
+  embeddings: "Semantic embeddings",
 };
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 

@@ -7,6 +7,7 @@ import { embedBatch, embeddingsEnabled, encodeEmbedding } from "./embeddings";
 import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
 import { owntracksRouteContext } from "./owntracks";
 import { recentLocationsContext, isLocationEnabled } from "./location";
+import { parseSqliteUtc } from "./format";
 
 const FILES_DIR = path.join(
   process.env.DATA_DIR || path.join(process.cwd(), "data"),
@@ -137,9 +138,11 @@ export function deleteNotebook(id: string): void {
 }
 
 /**
- * Concatenate every OCR'd page into a single context block for the chat
- * model. Truncates at `maxChars`; for very large note collections, swap this
- * for a retrieval step that queries the `pages_fts` table per message.
+ * Concatenate every OCR'd page into one big context block. Used by the
+ * insights generator, the book composer, and the memory rebuild — places
+ * that want the full corpus, not just retrieved excerpts. Chat does NOT
+ * call this; chat uses tool-calling against pages_fts on demand instead.
+ * Truncates at maxChars to stay within the model's input window.
  */
 export function buildNotesContext(opts: { maxChars?: number } = {}): string {
   const limit = opts.maxChars ?? 150_000;
@@ -169,7 +172,7 @@ export function buildNotesContext(opts: { maxChars?: number } = {}): string {
     out += block;
   }
   if (truncated) {
-    out += `\n[...truncated to ${limit} chars; switch to retrieval over pages_fts for full coverage]\n`;
+    out += `\n[...truncated to ${limit} chars; older pages omitted]\n`;
   }
   return out || "(no notebooks have been uploaded yet)";
 }
@@ -237,7 +240,7 @@ let generatingDailySummaries = false;
 // paying 7+ guard DB reads (each a COUNT or join over `pages`) on every
 // request. Once every five minutes is plenty for the kind of work this
 // kicks off — embedding backfills, daily summaries, the weekly insight,
-// the weekly location distill, monthly backup.
+// the weekly location distill, weekly backup.
 const MAINTENANCE_INTERVAL_MS = 5 * 60 * 1000;
 let lastMaintenanceAt = 0;
 
@@ -479,8 +482,8 @@ export function maybeGenerateWeeklyInsight(): void {
       .prepare(`SELECT created_at FROM insights ORDER BY id DESC LIMIT 1`)
       .get() as { created_at: string } | undefined;
     if (last) {
-      const lastAt = Date.parse(last.created_at.replace(" ", "T") + "Z");
-      if (Date.now() - lastAt < WEEK_MS) return;
+      const lastAt = parseSqliteUtc(last.created_at);
+      if (lastAt && Date.now() - lastAt.getTime() < WEEK_MS) return;
     }
   } catch {
     return;
@@ -618,15 +621,14 @@ export function disciplineStatus(): { files: number; lastSynced: string | null }
 }
 
 // Need a top-level import for the backup function so the sweep can call it.
-// (Local require to avoid touching the rest of the import block above and
-// keep the diff focused.)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// (Local require to avoid a circular import: lib/backup.ts already imports
+// from lib/db.ts, and we only need the backup function inside the sweep.)
 let _maybeRunWeeklyBackup: (() => void) | null = null;
 function getMaybeRunWeeklyBackup(): () => void {
   if (_maybeRunWeeklyBackup) return _maybeRunWeeklyBackup;
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = require("./backup") as { maybeRunMonthlyBackup: () => void };
-  _maybeRunWeeklyBackup = mod.maybeRunMonthlyBackup;
+  const mod = require("./backup") as { maybeRunWeeklyBackup: () => void };
+  _maybeRunWeeklyBackup = mod.maybeRunWeeklyBackup;
   return _maybeRunWeeklyBackup;
 }
 

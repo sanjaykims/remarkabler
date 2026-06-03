@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
-import { setPickingFile } from "../lockState";
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;

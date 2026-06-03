@@ -2,24 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { createNotebook, processNotebook, deleteNotebook } from "@/lib/notes";
 import { isAuthenticated } from "@/lib/auth";
+import { FileLike, isFileLike, isPdfFile, MAX_UPLOAD_BYTES } from "@/lib/upload";
 
 export const runtime = "nodejs";
-
-const MAX_BYTES = 20 * 1024 * 1024;
-
-// Same duck-type pattern as in /share — files arriving via PWA share / some
-// Android browsers don't pass `instanceof File`.
-type FileLike = {
-  name?: string;
-  type?: string;
-  size: number;
-  arrayBuffer: () => Promise<ArrayBuffer>;
-};
-function isFileLike(v: unknown): v is FileLike {
-  if (v === null || typeof v !== "object") return false;
-  const o = v as { size?: unknown; arrayBuffer?: unknown };
-  return typeof o.size === "number" && typeof o.arrayBuffer === "function";
-}
 
 const LOCKED = () =>
   NextResponse.json({ error: "Locked" }, { status: 401 });
@@ -56,13 +41,11 @@ export async function POST(req: NextRequest) {
   const skipped: string[] = [];
   for (const file of files) {
     const name = file.name || "uploaded.pdf";
-    const isPdf =
-      file.type === "application/pdf" || name.toLowerCase().endsWith(".pdf");
-    if (!isPdf) {
+    if (!isPdfFile({ name, type: file.type })) {
       skipped.push(`${name} (not a PDF)`);
       continue;
     }
-    if (file.size > MAX_BYTES) {
+    if (file.size > MAX_UPLOAD_BYTES) {
       skipped.push(`${name} (too large — max 20 MB)`);
       continue;
     }

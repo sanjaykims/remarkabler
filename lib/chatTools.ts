@@ -9,9 +9,7 @@ import {
   cosineSimilarity,
   embeddingsEnabled,
 } from "./embeddings";
-
-// Display TZ for "today/yesterday" calculations — defaults to KST (UTC+9).
-const TZ_OFFSET_MIN = Number(process.env.LOCATION_TZ_OFFSET || "540");
+import { TZ_OFFSET_MIN } from "./format";
 
 // Tools exposed to chatOverNotes so Claude can look up specific diary
 // entries on demand instead of being pre-fed retrieved excerpts. The

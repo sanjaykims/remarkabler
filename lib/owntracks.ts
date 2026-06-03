@@ -1,14 +1,12 @@
 import crypto from "crypto";
 import { db } from "./db";
+import { TZ_OFFSET_MIN } from "./format";
 
 // OwnTracks background-location ingestion. The app receives raw points, then
 // clusters them into "stays" (a place you stayed a while) with arrival/leave
 // times and dwell, names each via reverse geocoding (cached), and feeds the
 // recent route to chat. Enabled only when OWNTRACKS_TOKEN is set.
 
-// Minutes to add to UTC for display (default Seoul, UTC+9). Override with
-// LOCATION_TZ_OFFSET.
-const TZ_OFFSET = Number(process.env.LOCATION_TZ_OFFSET || "540");
 const STAY_RADIUS_KM = 0.2;
 const MIN_DWELL_SEC = 8 * 60;
 
@@ -137,7 +135,7 @@ async function geocode(lat: number, lng: number): Promise<string> {
 }
 
 function fmtLocal(tst: number): { date: string; time: string } {
-  const d = new Date((tst + TZ_OFFSET * 60) * 1000);
+  const d = new Date((tst + TZ_OFFSET_MIN * 60) * 1000);
   const iso = d.toISOString();
   return { date: iso.slice(0, 10), time: iso.slice(11, 16) };
 }

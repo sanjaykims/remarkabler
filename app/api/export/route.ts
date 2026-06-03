@@ -2,41 +2,31 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
 import { getCurrentProfileRow } from "@/lib/profile";
+import { TZ_OFFSET_MIN, parseSqliteUtc } from "@/lib/format";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 
-// Display timezone for export timestamps — defaults to Seoul / KST.
-const TZ_OFFSET_MIN = Number(process.env.LOCATION_TZ_OFFSET || "540");
-
-function parseUtc(s: string | null): Date | null {
-  if (!s) return null;
-  // SQLite default CURRENT_TIMESTAMP is "YYYY-MM-DD HH:MM:SS" with no TZ.
-  // Treat it as UTC.
-  const d = new Date(s.replace(" ", "T") + "Z");
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
 function shifted(d: Date): Date {
   return new Date(d.getTime() + TZ_OFFSET_MIN * 60 * 1000);
 }
 
 function fmtDate(iso: string | null): string {
-  const d = parseUtc(iso);
+  const d = parseSqliteUtc(iso);
   if (!d) return "";
   return shifted(d).toISOString().slice(0, 10);
 }
 
 function fmtDateTime(iso: string | null): string {
-  const d = parseUtc(iso);
+  const d = parseSqliteUtc(iso);
   if (!d) return "";
   return shifted(d).toISOString().slice(0, 16).replace("T", " ");
 }
 
 function fmtTime(iso: string | null): string {
-  const d = parseUtc(iso);
+  const d = parseSqliteUtc(iso);
   if (!d) return "";
   return shifted(d).toISOString().slice(11, 16);
 }
