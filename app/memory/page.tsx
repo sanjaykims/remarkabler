@@ -412,7 +412,9 @@ export default function MemoryPage() {
       </section>
 
       {loading ? (
-        <p className="text-sm opacity-60">Loading…</p>
+        // Skeleton matching the textarea's footprint so the page chrome
+        // doesn't lurch when the profile fetch resolves a moment later.
+        <div className="h-72 rounded border border-stone-200 dark:border-stone-800 animate-pulse opacity-30" />
       ) : (
         <>
           {content || dirty ? (
