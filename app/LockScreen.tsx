@@ -212,5 +212,12 @@ function friendly(e: unknown, fallback: string): string {
   if (/timed out|timeout|NotAllowed/i.test(msg)) {
     return "Cancelled or timed out. Please try again.";
   }
+  if (
+    /credential manager|InvalidStateError|already (registered|exists)|unknown error/i.test(
+      msg
+    )
+  ) {
+    return "Your phone may still have an old Remarkabler passkey from a previous setup. Tap \"Unlock with passcode only\" below — it always works. To fix the fingerprint later, delete the existing Remarkabler passkey in your phone's settings (Passwords & Passkeys, or Samsung Pass) and try Register again.";
+  }
   return msg || fallback;
 }
