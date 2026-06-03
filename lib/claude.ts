@@ -409,6 +409,13 @@ export async function chatOverNotes(opts: {
         content: await executeTool(tu.name, tu.input),
       }))
     );
+    // Mark the last tool_result with cache_control so the conversation
+    // history through this point gets cached. The next iteration's API call
+    // then hits the cache for everything before its own new tool_use, which
+    // dramatically reduces billed input tokens on multi-tool turns.
+    if (toolResults.length > 0) {
+      toolResults[toolResults.length - 1].cache_control = { type: "ephemeral" };
+    }
 
     currentMessages = [
       ...currentMessages,

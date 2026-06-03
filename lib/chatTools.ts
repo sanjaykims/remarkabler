@@ -239,8 +239,15 @@ function ftsSearch(
   }
 }
 
-// Semantic search: embed the query, brute-force cosine sim against every
-// page embedding (corpus is small; this is plenty fast).
+// How many pages to brute-force cosine-compare against in a single semantic
+// search. With a 1024-dim float32 embedding each row is ~4 KB; at 2000 rows
+// that's ~8 MB and a couple-ms loop in JS — fine for now. When the corpus
+// outgrows that we'll need a real vector index (sqlite-vec etc.).
+const SEMANTIC_SCAN_CAP = 2000;
+
+// Semantic search: embed the query, brute-force cosine sim against the
+// most recent N page embeddings. Bounding the scan keeps the memory cost
+// and CPU cost predictable as the corpus grows.
 async function semanticSearch(
   query: string,
   limit: number,
@@ -258,9 +265,11 @@ async function semanticSearch(
                 p.embedding AS embedding
          FROM pages p JOIN notebooks n ON n.id = p.notebook_id
          WHERE p.embedding IS NOT NULL
-           AND p.notebook_id != ?`
+           AND p.notebook_id != ?
+         ORDER BY p.id DESC
+         LIMIT ?`
       )
-      .all(excludeId) as Array<{
+      .all(excludeId, SEMANTIC_SCAN_CAP) as Array<{
         page_id: string;
         text: string;
         notebook_name: string;
