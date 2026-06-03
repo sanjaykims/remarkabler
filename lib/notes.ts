@@ -8,6 +8,7 @@ import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
 import { owntracksRouteContext } from "./owntracks";
 import { recentLocationsContext, isLocationEnabled } from "./location";
 import { parseSqliteUtc } from "./format";
+import { maybeCleanupOrphanAttachments } from "./cleanup";
 
 const FILES_DIR = path.join(
   process.env.DATA_DIR || path.join(process.cwd(), "data"),
@@ -652,6 +653,9 @@ export function runMaintenanceSweep(): void {
   maybeBackfillEmbeddings();
   maybeBackfillEntryDates();
   maybeGenerateDailySummaries();
+  // Daily-gated sweep: orphan chat_attachment rows + stray files in the
+  // chat-attachments directory whose row was already gone.
+  maybeCleanupOrphanAttachments();
   try {
     getMaybeRunWeeklyBackup()();
   } catch {
