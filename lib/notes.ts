@@ -536,9 +536,18 @@ export function maybeGenerateWeeklyInsight(): void {
  */
 export function buildChatContext(opts: { maxChars?: number } = {}): string {
   const limit = opts.maxChars ?? 50_000;
-  const rows = db()
-    .prepare(`SELECT role, content FROM chat_messages ORDER BY id ASC`)
-    .all() as Array<{ role: string; content: string }>;
+  // Only the tail of the conversation matters (the char-budget loop below
+  // walks backwards and stops the moment it overflows). Pull the most
+  // recent ~500 rows instead of every chat message ever — once chat_messages
+  // grows past a few thousand rows the old "ORDER BY id ASC" with no LIMIT
+  // becomes the slowest single query in the app.
+  const rows = (
+    db()
+      .prepare(
+        `SELECT role, content FROM chat_messages ORDER BY id DESC LIMIT 500`
+      )
+      .all() as Array<{ role: string; content: string }>
+  ).reverse();
 
   let out = "";
   for (let i = rows.length - 1; i >= 0; i--) {

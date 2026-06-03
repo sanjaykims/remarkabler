@@ -83,6 +83,23 @@ function tzModifier(tzMinutes: number): string {
   return `${n >= 0 ? "+" : "-"}${Math.abs(n)} minutes`;
 }
 
+// Compute the UTC range [start, end) that covers a local-time month (YYYY-MM)
+// or day (YYYY-MM-DD), so SQLite can do an index-seek on created_at rather
+// than full-scanning the table and running strftime() on every row.
+function utcRangeFor(local: string, tzMinutes: number): { start: string; end: string } {
+  const isMonth = /^\d{4}-\d{2}$/.test(local);
+  // Construct the local-time boundary as a real Date, then subtract the
+  // viewer's offset to get the equivalent UTC timestamp.
+  const startLocal = new Date(`${local}${isMonth ? "-01" : ""}T00:00:00Z`);
+  const endLocal = new Date(startLocal);
+  if (isMonth) endLocal.setUTCMonth(endLocal.getUTCMonth() + 1);
+  else endLocal.setUTCDate(endLocal.getUTCDate() + 1);
+  const offsetMs = tzMinutes * 60 * 1000;
+  const fmt = (d: Date) =>
+    new Date(d.getTime() - offsetMs).toISOString().replace("T", " ").slice(0, 19);
+  return { start: fmt(startLocal), end: fmt(endLocal) };
+}
+
 export function totalUsage(): number {
   const row = db()
     .prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS cost FROM api_usage`)
@@ -92,31 +109,32 @@ export function totalUsage(): number {
 
 export function monthlyUsage(month: string, tzMinutes: number) {
   const mod = tzModifier(tzMinutes);
+  const { start, end } = utcRangeFor(month, tzMinutes);
   const days = db()
     .prepare(
       `SELECT date(created_at, ?) AS day, SUM(cost_usd) AS cost, COUNT(*) AS calls
        FROM api_usage
-       WHERE strftime('%Y-%m', created_at, ?) = ?
+       WHERE created_at >= ? AND created_at < ?
        GROUP BY day ORDER BY day`
     )
-    .all(mod, mod, month) as Array<{ day: string; cost: number; calls: number }>;
+    .all(mod, start, end) as Array<{ day: string; cost: number; calls: number }>;
   const total = days.reduce((s, d) => s + (d.cost || 0), 0);
   const calls = days.reduce((s, d) => s + (d.calls || 0), 0);
   return { days, total, calls };
 }
 
 export function dailyUsage(date: string, tzMinutes: number) {
-  const mod = tzModifier(tzMinutes);
+  const { start, end } = utcRangeFor(date, tzMinutes);
   const byFeature = db()
     .prepare(
       `SELECT feature, SUM(cost_usd) AS cost, COUNT(*) AS calls,
               SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
               SUM(cache_read_tokens) AS cache_read_tokens
        FROM api_usage
-       WHERE date(created_at, ?) = ?
+       WHERE created_at >= ? AND created_at < ?
        GROUP BY feature ORDER BY cost DESC`
     )
-    .all(mod, date) as Array<{
+    .all(start, end) as Array<{
     feature: string;
     cost: number;
     calls: number;
