@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
-import { normaliseDates, isDisciplineEnabled } from "./notes";
+import { normaliseDates, isDisciplineEnabled, DISCIPLINE_ID } from "./notes";
 import { isLocationEnabled } from "./location";
 import { owntracksRouteContext } from "./owntracks";
 import {
@@ -18,7 +18,6 @@ const TZ_OFFSET_MIN = Number(process.env.LOCATION_TZ_OFFSET || "540");
 // discipline notebook is always excluded when the user has turned off
 // "Share discipline notes with Remarkabler."
 
-const DISCIPLINE_ID = "github-discipline";
 const MAX_EXCERPT_CHARS = 1500;
 
 function trim(s: string, max = MAX_EXCERPT_CHARS): string {

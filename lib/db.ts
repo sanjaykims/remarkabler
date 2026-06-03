@@ -59,6 +59,17 @@ export function db(): Database.Database {
     // column already exists
   }
   _db.exec(`CREATE INDEX IF NOT EXISTS idx_pages_entry_date ON pages(entry_date)`);
+  // Hot path: chat POST history fetch, chat GET render, attachment join, and
+  // the Clear/archive UPDATE all filter on (conversation_id, archived_at) and
+  // sort by id. One compound index covers all four queries.
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_chat_messages_conv_archived
+       ON chat_messages(conversation_id, archived_at, id)`
+  );
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_chat_attachments_message
+       ON chat_attachments(message_id)`
+  );
   _db.exec(`
     CREATE TABLE IF NOT EXISTS daily_summaries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
