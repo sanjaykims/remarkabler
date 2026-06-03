@@ -8,6 +8,29 @@ export const CHALLENGE_COOKIE = "fc_challenge";
 // How long a successful unlock keeps the app open on a device.
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // seconds
 
+// Sliding inactivity timeout (server-side defence in depth). Even if the
+// client-side AutoLock fails or is bypassed, the server itself refuses to
+// honour a session that hasn't seen any activity for this long, forcing a
+// fresh fingerprint / passcode unlock. Tune with INACTIVITY_HOURS env var
+// (default 24).
+const INACTIVITY_TIMEOUT_MS =
+  (Number(process.env.INACTIVITY_HOURS) || 24) * 60 * 60 * 1000;
+// Refresh the activity stamp at most this often, so isAuthenticated() —
+// which is called many times per page render — isn't writing to the
+// settings table on every single call.
+const ACTIVITY_REFRESH_THROTTLE_MS = 60 * 1000;
+
+function markActivityNow(now: number): void {
+  setSetting("last_activity_at", String(now));
+}
+
+function getLastActivityMs(): number | null {
+  const v = getSetting("last_activity_at");
+  if (!v) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 /**
  * The lock is active only once the owner sets APP_PASSCODE in the environment.
  * Before that, the app behaves exactly as before — so deploying this code
@@ -29,6 +52,9 @@ function sessionSecret(): string {
 }
 
 export function createSessionToken(): string {
+  // Any new session is a fresh authentication event — reset the activity
+  // clock so the inactivity timeout starts from now.
+  markActivityNow(Date.now());
   const payload = String(Date.now() + SESSION_MAX_AGE * 1000);
   const sig = crypto
     .createHmac("sha256", sessionSecret())
@@ -56,11 +82,29 @@ function verifySessionToken(token: string): boolean {
   return Number.isFinite(exp) && exp > Date.now();
 }
 
-/** True if the current request carries a valid session, or the lock is off. */
+/**
+ * True if the current request carries a valid session, or the lock is off.
+ *
+ * Also enforces the sliding inactivity timeout: a request whose session
+ * hasn't been touched in INACTIVITY_TIMEOUT_MS is rejected here, even if
+ * the cookie's own HMAC is still intact. Active sessions get their
+ * `last_activity_at` refreshed (throttled so we're not writing on every
+ * single call inside a single render).
+ */
 export function isAuthenticated(): boolean {
   if (!isLockEnabled()) return true;
   const token = cookies().get(SESSION_COOKIE)?.value;
-  return !!token && verifySessionToken(token);
+  if (!token || !verifySessionToken(token)) return false;
+
+  const now = Date.now();
+  const last = getLastActivityMs();
+  if (last !== null && now - last > INACTIVITY_TIMEOUT_MS) {
+    return false; // session expired due to inactivity
+  }
+  if (last === null || now - last > ACTIVITY_REFRESH_THROTTLE_MS) {
+    markActivityNow(now);
+  }
+  return true;
 }
 
 /** Constant-time comparison of a submitted passcode against APP_PASSCODE. */
