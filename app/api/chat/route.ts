@@ -6,7 +6,6 @@ import { db, DATA_DIR } from "@/lib/db";
 import { runMaintenanceSweep } from "@/lib/notes";
 import { getCurrentProfile } from "@/lib/profile";
 import { recentLocationsContext, isLocationEnabled } from "@/lib/location";
-import { recentRouteContext } from "@/lib/timeline";
 import { owntracksRouteContext, warmOwntracksGeocodes } from "@/lib/owntracks";
 import { chatOverNotes } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
@@ -154,17 +153,14 @@ export async function POST(req: NextRequest) {
   runMaintenanceSweep();
   const profile = getCurrentProfile() || "";
 
-  // Prefer the Google Timeline import, then the automatic OwnTracks route,
-  // then the one-tap location log. Suppressed entirely if the user has
-  // turned off the in-app "Share location with Remarkabler" switch. The
-  // OwnTracks call uses cached geocodes only — any uncached stays show as
-  // raw lat/lng for this turn, and a background warmer (fired below) fills
-  // them in so the next chat resolves to real place names. Previously this
-  // serial-awaited up to 40 Nominatim fetches on every send.
+  // Prefer the automatic OwnTracks route, fall back to the one-tap log.
+  // Suppressed entirely when the user has turned off the in-app "Share
+  // location with Remarkabler" switch. owntracksRouteContext() uses
+  // cached geocodes only — any uncached stays show as raw lat/lng for
+  // this turn, and a background warmer (fired below) fills them in so
+  // the next chat resolves to real place names.
   const recentLocations = isLocationEnabled()
-    ? recentRouteContext() ||
-      (await owntracksRouteContext()) ||
-      recentLocationsContext()
+    ? (await owntracksRouteContext()) || recentLocationsContext()
     : "";
   if (isLocationEnabled()) warmOwntracksGeocodes();
 

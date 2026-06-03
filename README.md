@@ -95,7 +95,7 @@ Opus is the expensive engine, Haiku is the cheap one.
 - `lib/notes.ts` — notebook ingestion, background OCR, FTS retrieval, weekly location distill, the GitHub "discipline" sync.
 - `lib/profile.ts` — the versioned "profile of you".
 - `lib/usage.ts` — per-call cost + monthly / daily aggregation.
-- `lib/owntracks.ts` · `lib/timeline.ts` · `lib/location.ts` — three location sources.
+- `lib/owntracks.ts` · `lib/location.ts` — automatic OwnTracks route and the one-tap "Log my location" path.
 - `lib/auth.ts` · `lib/webauthn.ts` — session cookie + passkey lock.
 - `lib/github.ts` — fetch text files from the optional discipline repo.
 - `app/api/*` — routes for each feature.
