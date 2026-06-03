@@ -1,28 +1,8 @@
 import { NextRequest } from "next/server";
 import { createNotebook, processNotebook } from "@/lib/notes";
+import { FileLike, isFileLike, isPdfFile, MAX_UPLOAD_BYTES } from "@/lib/upload";
 
 export const runtime = "nodejs";
-
-const MAX_BYTES = 20 * 1024 * 1024;
-
-// File-shaped values arriving via PWA Web Share Target on Android Chrome
-// come from a *different* File constructor than the one this module sees,
-// so `value instanceof File` returns false even though the value is plainly
-// a File. Duck-type the check instead — anything with a numeric `size` and
-// an `arrayBuffer` method is treated as a file for our purposes.
-type FileLike = {
-  name?: string;
-  type?: string;
-  size: number;
-  arrayBuffer: () => Promise<ArrayBuffer>;
-};
-function isFileLike(v: unknown): v is FileLike {
-  if (v === null || typeof v !== "object") return false;
-  const o = v as { size?: unknown; arrayBuffer?: unknown };
-  return (
-    typeof o.size === "number" && typeof o.arrayBuffer === "function"
-  );
-}
 
 /**
  * Web Share Target endpoint. When the installed PWA is picked from the
@@ -100,13 +80,11 @@ export async function POST(req: NextRequest) {
   const skipped: string[] = [];
   for (const file of usableFiles) {
     const name = file.name || "shared.pdf";
-    const isPdf =
-      file.type === "application/pdf" || name.toLowerCase().endsWith(".pdf");
-    if (!isPdf) {
+    if (!isPdfFile({ name, type: file.type })) {
       skipped.push(`${name} (not a PDF — ${file.type || "no MIME"})`);
       continue;
     }
-    if (file.size > MAX_BYTES) {
+    if (file.size > MAX_UPLOAD_BYTES) {
       skipped.push(`${name} (too large — max 20 MB)`);
       continue;
     }
