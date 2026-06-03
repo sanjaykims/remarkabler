@@ -64,6 +64,15 @@ export default function MemoryPage() {
   const [backup, setBackup] = useState<BackupStatus | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
 
+  type EmbedStatus = {
+    enabled: boolean;
+    model: string;
+    embeddedPages: number;
+    totalPages: number;
+    lastCallAt: string | null;
+  };
+  const [embed, setEmbed] = useState<EmbedStatus | null>(null);
+
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   async function load() {
@@ -207,6 +216,14 @@ export default function MemoryPage() {
     }
   }
 
+  async function loadEmbed() {
+    try {
+      setEmbed(await fetch("/api/embeddings/status").then((r) => r.json()));
+    } catch {
+      setEmbed(null);
+    }
+  }
+
   async function runManualBackup() {
     if (backupBusy) return;
     setBackupBusy(true);
@@ -250,6 +267,7 @@ export default function MemoryPage() {
     loadDiscSettings();
     loadModels();
     loadBackup();
+    loadEmbed();
   }, []);
 
   function getPosition(): Promise<GeolocationPosition> {
@@ -665,6 +683,38 @@ export default function MemoryPage() {
           </>
         ) : (
           <p className="text-xs opacity-60">Loading…</p>
+        )}
+      </section>
+
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+        <h2 className="font-medium">Semantic search (Voyage)</h2>
+        {embed === null ? (
+          <p className="text-xs opacity-60">Loading…</p>
+        ) : embed.enabled ? (
+          <>
+            <p className="text-xs opacity-70">
+              On — chat finds entries by meaning, not just keywords.{" "}
+              <span className="font-medium">
+                {embed.embeddedPages}/{embed.totalPages}
+              </span>{" "}
+              pages embedded ({embed.model}).
+              {embed.lastCallAt
+                ? ` Last call ${formatLocalTime(embed.lastCallAt)}.`
+                : " No calls yet — uploads run this in the background."}
+            </p>
+            {embed.embeddedPages < embed.totalPages && (
+              <p className="text-xs opacity-60">
+                Remaining pages get embedded automatically the next time the
+                background sweep runs (triggered by chat or upload).
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-xs opacity-70 break-words">
+            Off — chat is using keyword (FTS) search only. To turn on, set{" "}
+            <code>VOYAGE_API_KEY</code> in Railway and redeploy. Embedding
+            costs are tiny (cents per thousand pages).
+          </p>
         )}
       </section>
 

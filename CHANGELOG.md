@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-03
+
+### Added
+- **Memory page: Voyage / semantic-search status row.** Shows whether
+  embeddings are enabled, the current model, embedded / total page count,
+  and the time of the last Voyage call — so the user can confirm at a glance
+  whether hybrid search is actually running for them. Backed by a new
+  `/api/embeddings/status` endpoint.
+
 ## 2026-06-01
 
 ### Added
