@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     if (!content) {
       return NextResponse.json({ error: "Nothing to save." }, { status: 400 });
     }
-    saveProfile(content, "edit");
+    saveProfile(content);
     return NextResponse.json({ ok: true });
   }
 
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
-    saveProfile(content, "rebuild");
+    saveProfile(content);
     return NextResponse.json({ ok: true, content });
   }
 

@@ -72,7 +72,7 @@ export async function POST() {
     const updated = current
       ? await updateSelfModel({ currentProfile: current, newContent: disciplineText })
       : await buildSelfModel({ notesContext: buildNotesContext() });
-    saveProfile(updated, "discipline-sync");
+    saveProfile(updated);
   } catch {
     // profile fold is best-effort
   }
