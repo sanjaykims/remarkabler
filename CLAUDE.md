@@ -69,7 +69,8 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - `lib/notes.ts` — `createNotebook` (fast: save PDF + DB row), `processNotebook`
   (background OCR, then folds the entry into the profile via
   `build`/`updateSelfModel`), `deleteNotebook`, `buildNotesContext`,
-  `buildChatContext`, `retrieveRelevantNotes` (FTS), `ensureProfileSeed`.
+  `buildChatContext`, `ensureProfileSeed`. (Chat retrieval now lives in
+  `lib/chatTools.ts` as the `search_diary` tool, dispatched by Claude.)
 - `app/api/notebooks` — upload (POST) / list (GET) / delete; `app/api/chat`;
   `app/api/insights`; `app/api/usage` (cost aggregation).
 - `app/notebooks`, `app/chat`, `app/insights`, `app/usage` (cost calendar) — UI
@@ -81,10 +82,12 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 
 - **Chat reasons over the profile, not the whole corpus.** `chatOverNotes`
   takes the compact `profile` (Claude's accumulated understanding, updated in
-  the background when a diary is fed) plus a few `retrieveRelevantNotes` FTS
-  excerpts — NOT the full notes context. Sending all notes per message is what
-  made one chat cost ~$0.11; do not revert to that. The profile is built/kept
-  by `buildSelfModel`/`updateSelfModel` on `CLAUDE_MODEL` (Opus); chat stays on
+  the background when a diary is fed) and exposes a set of tools in
+  `lib/chatTools.ts` (`search_diary`, `get_entries_by_date`,
+  `get_day_summary` etc.) that Claude calls on demand — NOT the full notes
+  context. Sending all notes per message is what made one chat cost ~$0.11;
+  do not revert to that. The profile is built/kept by
+  `buildSelfModel`/`updateSelfModel` on `CLAUDE_MODEL` (Opus); chat stays on
   `CHAT_MODEL` (Sonnet by default). If the chat model is overloaded, chat
   falls back to `CHAT_FALLBACK_MODEL` (default `claude-sonnet-4-6`) for that
   message. Insights deliberately still uses the full corpus (it's an

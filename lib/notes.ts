@@ -202,51 +202,7 @@ export function normaliseDates(msg: string): string {
   return out;
 }
 
-function ftsQuery(message: string): string {
-  const terms = normaliseDates(message.toLowerCase())
-    .replace(/["'()*:^{}[\]~+\-.,!?]/g, " ")
-    .split(/\s+/)
-    .filter((w) => w.length >= 2)
-    .slice(0, 24);
-  if (terms.length === 0) return "";
-  return terms.map((t) => `"${t}"`).join(" OR ");
-}
 
-/**
- * Find the diary pages most relevant to a question via the `pages_fts`
- * full-text index, for grounding the chat in specific entries. Best-effort:
- * returns "" if nothing matches or the query can't be built.
- */
-export function retrieveRelevantNotes(query: string, limit = 8): string {
-  const q = ftsQuery(query);
-  if (!q) return "";
-  // When discipline is off, exclude its notebook from retrieval entirely.
-  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
-  let rows: Array<{ notebook_name: string; ocr_text: string; page_id: string }>;
-  try {
-    rows = db()
-      .prepare(
-        `SELECT notebook_name, ocr_text, page_id FROM pages_fts
-         WHERE pages_fts MATCH ? AND notebook_id != ?
-         ORDER BY rank LIMIT ?`
-      )
-      .all(q, excludeId, limit) as Array<{
-      notebook_name: string;
-      ocr_text: string;
-      page_id: string;
-    }>;
-  } catch {
-    return "";
-  }
-  if (rows.length === 0) return "";
-  const out = rows
-    .map((r) => {
-      const pageNum = Number(r.page_id.split(":")[1] || 0) + 1;
-      return `## ${r.notebook_name} — page ${pageNum}\n${r.ocr_text}`;
-    })
-    .join("\n\n");
-  return out.length > 12000 ? out.slice(0, 12000) : out;
-}
 
 let seedingProfile = false;
 /**
