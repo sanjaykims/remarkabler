@@ -78,6 +78,59 @@ export function db(): Database.Database {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  // Drop columns that have been confirmed dead — written but never read by
+  // any current code path. Idempotent (SQLite raises "no such column" once
+  // the drop has already happened, and the try/catch swallows it).
+  for (const sql of [
+    `ALTER TABLE notebooks DROP COLUMN parent`,
+    `ALTER TABLE notebooks DROP COLUMN last_modified`,
+    `ALTER TABLE notebooks DROP COLUMN hash`,
+    `ALTER TABLE pages DROP COLUMN image_path`,
+    `ALTER TABLE pages DROP COLUMN ocr_model`,
+    `ALTER TABLE pages DROP COLUMN ocr_at`,
+    `ALTER TABLE pages DROP COLUMN ocr_summary`,
+    `ALTER TABLE profile DROP COLUMN source`,
+  ]) {
+    try {
+      _db.exec(sql);
+    } catch {
+      // column already absent
+    }
+  }
+  // pages_fts is an FTS5 virtual table — DROP COLUMN isn't supported, so we
+  // rebuild it once to remove the now-empty ocr_summary column. Gated by a
+  // settings flag so the rebuild only runs after the schema has been bumped
+  // (and never again afterwards).
+  try {
+    const row = _db
+      .prepare(`SELECT value FROM settings WHERE key = 'schema_pages_fts_v3'`)
+      .get() as { value: string } | undefined;
+    if (!row) {
+      _db.exec(`DROP TABLE IF EXISTS pages_fts`);
+      _db.exec(`
+        CREATE VIRTUAL TABLE pages_fts USING fts5(
+          ocr_text,
+          notebook_name,
+          page_id UNINDEXED,
+          notebook_id UNINDEXED
+        )
+      `);
+      _db.exec(`
+        INSERT INTO pages_fts(ocr_text, notebook_name, page_id, notebook_id)
+        SELECT p.ocr_text, n.name, p.id, p.notebook_id
+        FROM pages p JOIN notebooks n ON n.id = p.notebook_id
+        WHERE p.ocr_text IS NOT NULL AND p.ocr_text != ''
+      `);
+      _db
+        .prepare(
+          `INSERT INTO settings(key,value) VALUES('schema_pages_fts_v3','1')
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value`
+        )
+        .run();
+    }
+  } catch {
+    // best-effort; older deployments stay on the previous FTS schema
+  }
   // Any notebook still "processing" at startup was interrupted by a restart.
   _db
     .prepare(
@@ -99,9 +152,6 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS notebooks (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  parent TEXT,
-  last_modified TEXT,
-  hash TEXT,
   synced_at TEXT
 );
 
@@ -109,11 +159,7 @@ CREATE TABLE IF NOT EXISTS pages (
   id TEXT PRIMARY KEY,
   notebook_id TEXT NOT NULL,
   page_index INTEGER NOT NULL,
-  image_path TEXT,
   ocr_text TEXT,
-  ocr_summary TEXT,
-  ocr_model TEXT,
-  ocr_at TEXT,
   FOREIGN KEY (notebook_id) REFERENCES notebooks(id) ON DELETE CASCADE
 );
 
@@ -121,8 +167,7 @@ CREATE INDEX IF NOT EXISTS idx_pages_notebook ON pages(notebook_id);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
   ocr_text,
-  ocr_summary,
-  notebook_name UNINDEXED,
+  notebook_name,
   page_id UNINDEXED,
   notebook_id UNINDEXED
 );
@@ -177,7 +222,6 @@ CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage(created_at);
 CREATE TABLE IF NOT EXISTS profile (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   content TEXT NOT NULL,
-  source TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -28,10 +28,10 @@ export function hasProfile(): boolean {
   return row.c > 0;
 }
 
-export function saveProfile(content: string, source: string): void {
+export function saveProfile(content: string): void {
   const trimmed = content.trim();
   if (!trimmed) return;
   db()
-    .prepare(`INSERT INTO profile(content, source) VALUES(?, ?)`)
-    .run(trimmed, source);
+    .prepare(`INSERT INTO profile(content) VALUES(?)`)
+    .run(trimmed);
 }

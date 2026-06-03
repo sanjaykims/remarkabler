@@ -37,8 +37,8 @@ export function createNotebook(
 
   db()
     .prepare(
-      `INSERT INTO notebooks(id,name,parent,last_modified,hash,synced_at,status)
-       VALUES(?,?,NULL,NULL,NULL,datetime('now'),'processing')`
+      `INSERT INTO notebooks(id,name,synced_at,status)
+       VALUES(?,?,datetime('now'),'processing')`
     )
     .run(id, name);
 
@@ -61,24 +61,20 @@ export async function processNotebook(id: string): Promise<void> {
     const pdfBytes = fs.readFileSync(pdfPath);
     const pages = await ocrNotebookPdf(pdfBytes);
 
-    const ocrModel = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
-    const ocrAt = new Date().toISOString();
-
     const insertPage = db().prepare(
-      `INSERT INTO pages(id,notebook_id,page_index,image_path,ocr_text,ocr_summary,ocr_model,ocr_at)
-       VALUES(?,?,?,?,?,?,?,?)`
+      `INSERT INTO pages(id,notebook_id,page_index,ocr_text) VALUES(?,?,?,?)`
     );
     const insertFts = db().prepare(
-      `INSERT INTO pages_fts(ocr_text,ocr_summary,notebook_name,page_id,notebook_id)
-       VALUES(?,?,?,?,?)`
+      `INSERT INTO pages_fts(ocr_text,notebook_name,page_id,notebook_id)
+       VALUES(?,?,?,?)`
     );
 
     const setEntryDate = db().prepare(`UPDATE pages SET entry_date = ? WHERE id = ?`);
     for (const p of pages) {
       const pageId = `${id}:${p.pageIndex}`;
-      insertPage.run(pageId, id, p.pageIndex, pdfPath, p.text, p.summary, ocrModel, ocrAt);
+      insertPage.run(pageId, id, p.pageIndex, p.text);
       if (p.text) {
-        insertFts.run(p.text, p.summary, row.name, pageId, id);
+        insertFts.run(p.text, row.name, pageId, id);
         setEntryDate.run(extractEntryDate(p.text) || "none", pageId);
       }
     }
@@ -116,7 +112,7 @@ export async function processNotebook(id: string): Promise<void> {
         const updated = current
           ? await updateSelfModel({ currentProfile: current, newContent: entryText })
           : await buildSelfModel({ notesContext: buildNotesContext() });
-        saveProfile(updated, current ? "update" : "seed");
+        saveProfile(updated);
       }
     } catch {
       // profile update is best-effort
@@ -221,7 +217,7 @@ export function ensureProfileSeed(): void {
   (async () => {
     try {
       const profile = await buildSelfModel({ notesContext: buildNotesContext() });
-      saveProfile(profile, "seed");
+      saveProfile(profile);
     } catch {
       // best-effort; will retry on the next chat
     } finally {
@@ -456,7 +452,7 @@ export function maybeDistillLocation(): void {
           currentProfile: profile,
           newContent: framed,
         });
-        saveProfile(updated, "location-distill");
+        saveProfile(updated);
       }
       // Mark the weekly cadence even when there's no route, so we don't
       // recompute the (geocoding-heavy) week summary on every chat.
@@ -586,25 +582,23 @@ export function replaceDisciplineNotebook(
   const name = "Discipline (GitHub)";
   db()
     .prepare(
-      `INSERT INTO notebooks(id,name,parent,last_modified,hash,synced_at,status)
-       VALUES(?,?,NULL,NULL,NULL,datetime('now'),'done')`
+      `INSERT INTO notebooks(id,name,synced_at,status)
+       VALUES(?,?,datetime('now'),'done')`
     )
     .run(DISCIPLINE_ID, name);
 
   const insertPage = db().prepare(
-    `INSERT INTO pages(id,notebook_id,page_index,image_path,ocr_text,ocr_summary,ocr_model,ocr_at)
-     VALUES(?,?,?,?,?,?,?,?)`
+    `INSERT INTO pages(id,notebook_id,page_index,ocr_text) VALUES(?,?,?,?)`
   );
   const insertFts = db().prepare(
-    `INSERT INTO pages_fts(ocr_text,ocr_summary,notebook_name,page_id,notebook_id)
-     VALUES(?,?,?,?,?)`
+    `INSERT INTO pages_fts(ocr_text,notebook_name,page_id,notebook_id)
+     VALUES(?,?,?,?)`
   );
-  const now = new Date().toISOString();
   files.forEach((f, i) => {
     const pageId = `${DISCIPLINE_ID}:${i}`;
     const text = `# ${f.path}\n${f.content}`;
-    insertPage.run(pageId, DISCIPLINE_ID, i, null, text, "", "github", now);
-    insertFts.run(text, "", name, pageId, DISCIPLINE_ID);
+    insertPage.run(pageId, DISCIPLINE_ID, i, text);
+    insertFts.run(text, name, pageId, DISCIPLINE_ID);
   });
 
   return files.map((f) => `## ${f.path}\n${f.content}`).join("\n\n");

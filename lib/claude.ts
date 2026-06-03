@@ -66,7 +66,7 @@ function client(): Anthropic {
   return _client;
 }
 
-export type PageOcr = { pageIndex: number; text: string; summary: string };
+export type PageOcr = { pageIndex: number; text: string };
 
 /**
  * Transcribe an entire notebook PDF in one Claude call. Claude ingests the
@@ -145,7 +145,7 @@ function parsePages(raw: string): PageOcr[] {
     // No page markers came back — keep the whole transcript as one page
     // rather than losing the content.
     const whole = raw.trim();
-    return whole ? [{ pageIndex: 0, text: whole, summary: "" }] : [];
+    return whole ? [{ pageIndex: 0, text: whole }] : [];
   }
 
   return parts.slice(1).map((chunk, i) => {
@@ -153,7 +153,6 @@ function parsePages(raw: string): PageOcr[] {
     return {
       pageIndex: i,
       text: text.toLowerCase() === "(blank)" ? "" : text,
-      summary: "",
     };
   });
 }
