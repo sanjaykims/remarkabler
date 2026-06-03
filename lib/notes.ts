@@ -6,7 +6,6 @@ import { ocrNotebookPdf, buildSelfModel, updateSelfModel, generateInsights, gene
 import { embedBatch, embeddingsEnabled, encodeEmbedding } from "./embeddings";
 import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
 import { owntracksRouteContext } from "./owntracks";
-import { recentRouteContext } from "./timeline";
 import { recentLocationsContext, isLocationEnabled } from "./location";
 
 const FILES_DIR = path.join(
@@ -442,7 +441,6 @@ export function maybeDistillLocation(): void {
     try {
       const week =
         (await owntracksRouteContext(7, { allowNetwork: true })) ||
-        recentRouteContext() ||
         recentLocationsContext();
       if (week.trim()) {
         const framed = [

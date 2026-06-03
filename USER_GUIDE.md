@@ -142,7 +142,7 @@ you stop feeding these notes to Claude at any time. When off, Sync is disabled
 and your discipline pages are filtered out of every chat answer; past entries
 stay in the database and reappear the moment you flip it back on.
 
-### Location — three ways
+### Location — two ways
 
 A **"Share location with Remarkabler"** toggle at the top of the Location
 section lets you stop sharing location with the app at any time. When off, the
@@ -157,13 +157,7 @@ Remarkabler can know where you've been, so you can ask about your days.
    now*, with the time. **One tap = one place.** It can't track in the
    background, so it only remembers when you tap.
 
-2. **Upload location timeline** (your full history, manually)
-   In **Google Maps**, open your Timeline → Settings → **Export Timeline
-   data**, then tap **Upload location timeline** here. Remarkabler reads each
-   stop — place, arrival/leave time, and how long you stayed — and feeds your
-   recent route to chat.
-
-3. **Auto route (OwnTracks)** — *recommended for the full daily route*
+2. **Auto route (OwnTracks)** — *recommended for the full daily route*
    A companion phone app that quietly reports your location all day, so
    Remarkabler can reconstruct **where you went and how long you stayed** —
    automatically, no taps. Setup is in the next section.
@@ -215,7 +209,7 @@ they all live in the **Memory** tab:
 
 | Switch | When *off*, this happens |
 |---|---|
-| **Share location with Remarkabler** | Your location is not fed to Claude, the weekly memory distill is skipped, and incoming location data is rejected (OwnTracks, Google Timeline upload, "Log my location"). |
+| **Share location with Remarkabler** | Your location is not fed to Claude, the weekly memory distill is skipped, and incoming location data is rejected (OwnTracks and "Log my location"). |
 | **Share discipline notes with Remarkabler** | Your synced GitHub notes are filtered out of every chat answer and Sync is disabled. |
 | **Claude models** (next section) | You pick which model — and price — handles each task. |
 
@@ -289,7 +283,7 @@ don't switch based on your phone's language.
 
 **It only logged one place when I tapped "Log my location."**
 That button records a single moment. For your *full* daily route, use
-**OwnTracks** or the **Google Timeline upload** instead.
+**OwnTracks** instead — it sends your location automatically all day.
 
 ---
 
