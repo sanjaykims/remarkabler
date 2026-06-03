@@ -238,6 +238,14 @@ let backfillingEmbeddings = false;
 let backfillingEntryDates = false;
 let generatingDailySummaries = false;
 
+// Throttle the whole background-maintenance cascade so a chat send isn't
+// paying 7+ guard DB reads (each a COUNT or join over `pages`) on every
+// request. Once every five minutes is plenty for the kind of work this
+// kicks off — embedding backfills, daily summaries, the weekly insight,
+// the weekly location distill, monthly backup.
+const MAINTENANCE_INTERVAL_MS = 5 * 60 * 1000;
+let lastMaintenanceAt = 0;
+
 // Pull the user's own diary timestamp ("YYYY-MM-DD-HHMM-KST") out of a page
 // of OCR'd text. Used to group entries by the date the user wrote them, not
 // the date they happened to upload the notebook.
@@ -433,7 +441,7 @@ export function maybeDistillLocation(): void {
   (async () => {
     try {
       const week =
-        (await owntracksRouteContext(7)) ||
+        (await owntracksRouteContext(7, { allowNetwork: true })) ||
         recentRouteContext() ||
         recentLocationsContext();
       if (week.trim()) {
@@ -606,6 +614,46 @@ export function disciplineStatus(): { files: number; lastSynced: string | null }
     | { synced_at: string | null; files: number }
     | undefined;
   return { files: row?.files ?? 0, lastSynced: row?.synced_at ?? null };
+}
+
+// Need a top-level import for the backup function so the sweep can call it.
+// (Local require to avoid touching the rest of the import block above and
+// keep the diff focused.)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _maybeRunWeeklyBackup: (() => void) | null = null;
+function getMaybeRunWeeklyBackup(): () => void {
+  if (_maybeRunWeeklyBackup) return _maybeRunWeeklyBackup;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("./backup") as { maybeRunMonthlyBackup: () => void };
+  _maybeRunWeeklyBackup = mod.maybeRunMonthlyBackup;
+  return _maybeRunWeeklyBackup;
+}
+
+/**
+ * Throttled fire-and-forget background sweep. Used to be a cascade of seven
+ * independent maybe* calls on every chat send AND every dashboard render —
+ * each one read the database to decide whether to fire. Now: one timestamp
+ * check; if more than 5 minutes have passed, run the cascade once. Anything
+ * already-flagged (the per-function guards still exist as a second line of
+ * defence) is also a quick no-op. The net effect is that a flurry of chat
+ * messages or dashboard loads share one sweep instead of paying the cost
+ * each time.
+ */
+export function runMaintenanceSweep(): void {
+  const now = Date.now();
+  if (now - lastMaintenanceAt < MAINTENANCE_INTERVAL_MS) return;
+  lastMaintenanceAt = now;
+  ensureProfileSeed();
+  maybeDistillLocation();
+  maybeGenerateWeeklyInsight();
+  maybeBackfillEmbeddings();
+  maybeBackfillEntryDates();
+  maybeGenerateDailySummaries();
+  try {
+    getMaybeRunWeeklyBackup()();
+  } catch {
+    // best-effort; backup module is optional
+  }
 }
 
 /** The file paths pulled from the discipline repo (for showing what synced). */

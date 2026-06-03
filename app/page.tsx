@@ -1,13 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatLocalTime } from "@/lib/format";
-import {
-  maybeGenerateWeeklyInsight,
-  maybeBackfillEmbeddings,
-  maybeBackfillEntryDates,
-  maybeGenerateDailySummaries,
-} from "@/lib/notes";
-import { maybeRunMonthlyBackup } from "@/lib/backup";
+import { runMaintenanceSweep } from "@/lib/notes";
 
 export const dynamic = "force-dynamic";
 
@@ -26,18 +20,9 @@ type LatestInsight = {
 };
 
 export default function Home() {
-  // Every dashboard load is a chance to write the weekly reflection in the
-  // background if it's been ~7 days. Fire-and-forget — never blocks the render.
-  maybeGenerateWeeklyInsight();
-  // Same idea for filling in semantic embeddings for pages that don't have
-  // one yet (e.g. everything you uploaded before this feature shipped).
-  maybeBackfillEmbeddings();
-  // And the multi-level memory: tag pages with their own diary date and
-  // generate a few missing daily summaries per visit.
-  maybeBackfillEntryDates();
-  maybeGenerateDailySummaries();
-  // ~Monthly off-site backup to a private GitHub repo of yours.
-  maybeRunMonthlyBackup();
+  // One throttled background sweep — same gate the chat path uses, shared
+  // 5-minute window, so dashboard loads and chat sends don't double up.
+  runMaintenanceSweep();
 
   const stats = db()
     .prepare(

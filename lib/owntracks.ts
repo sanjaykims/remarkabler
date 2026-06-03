@@ -92,8 +92,19 @@ function recentStays(days: number): Stay[] {
   return stays;
 }
 
+function cacheKey(lat: number, lng: number): string {
+  return `${lat.toFixed(3)},${lng.toFixed(3)}`;
+}
+
+function cachedPlace(lat: number, lng: number): string | null {
+  const row = db()
+    .prepare(`SELECT place FROM geocode_cache WHERE key = ?`)
+    .get(cacheKey(lat, lng)) as { place: string } | undefined;
+  return row?.place ?? null;
+}
+
 async function geocode(lat: number, lng: number): Promise<string> {
-  const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  const key = cacheKey(lat, lng);
   const cached = db()
     .prepare(`SELECT place FROM geocode_cache WHERE key = ?`)
     .get(key) as { place: string } | undefined;
@@ -139,14 +150,28 @@ function durationLabel(startTst: number, endTst: number): string {
   return h ? `${h}h ${m}m` : `${m}m`;
 }
 
-/** Recent route (stays with dwell) from OwnTracks points, for the chat context. */
-export async function owntracksRouteContext(days = 3): Promise<string> {
+/**
+ * Recent route (stays with dwell) for the chat context. Cached-only by
+ * default: uncached stays appear as raw lat/lng for one cycle, and a
+ * background warm pass (warmOwntracksGeocodes) refills them so they
+ * resolve to real place names next time. This avoids serialising up to
+ * 40 Nominatim fetches before every chat reply.
+ *
+ * Pass { allowNetwork: true } to do the synchronous geocoding fallback
+ * (used by maybeDistillLocation, which runs in the background anyway).
+ */
+export async function owntracksRouteContext(
+  days = 3,
+  opts: { allowNetwork?: boolean } = {}
+): Promise<string> {
   const stays = recentStays(days).slice(-40);
   if (stays.length === 0) return "";
   const lines: string[] = [];
   let day = "";
   for (const s of stays) {
-    const place = await geocode(s.lat, s.lng);
+    const place = opts.allowNetwork
+      ? await geocode(s.lat, s.lng)
+      : cachedPlace(s.lat, s.lng) ?? `${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`;
     const sf = fmtLocal(s.start);
     const ef = fmtLocal(s.end);
     if (sf.date !== day) {
@@ -157,4 +182,35 @@ export async function owntracksRouteContext(days = 3): Promise<string> {
     lines.push(`  - ${place} (${sf.time}–${ef.time}${dur ? `, ${dur}` : ""})`);
   }
   return lines.join("\n");
+}
+
+let warmingGeocodes = false;
+
+/**
+ * Fire-and-forget background pass that resolves any uncached stays from
+ * the last few days. Designed to be called from the chat hot path; the
+ * actual Nominatim fetches happen off the request thread, so the next
+ * chat sees the labels filled in.
+ */
+export function warmOwntracksGeocodes(days = 3): void {
+  if (warmingGeocodes) return;
+  const stays = recentStays(days).slice(-40);
+  const uncached = stays.filter((s) => cachedPlace(s.lat, s.lng) === null);
+  if (uncached.length === 0) return;
+  warmingGeocodes = true;
+  (async () => {
+    try {
+      // Nominatim asks for ~1 req/s. Serial loop, but it's off the user's
+      // chat path now so the latency is invisible.
+      for (const s of uncached) {
+        try {
+          await geocode(s.lat, s.lng);
+        } catch {
+          // best-effort, keep going
+        }
+      }
+    } finally {
+      warmingGeocodes = false;
+    }
+  })();
 }

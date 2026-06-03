@@ -3,19 +3,11 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { db, DATA_DIR } from "@/lib/db";
-import {
-  ensureProfileSeed,
-  maybeDistillLocation,
-  maybeGenerateWeeklyInsight,
-  maybeBackfillEmbeddings,
-  maybeBackfillEntryDates,
-  maybeGenerateDailySummaries,
-} from "@/lib/notes";
-import { maybeRunMonthlyBackup } from "@/lib/backup";
+import { runMaintenanceSweep } from "@/lib/notes";
 import { getCurrentProfile } from "@/lib/profile";
 import { recentLocationsContext, isLocationEnabled } from "@/lib/location";
 import { recentRouteContext } from "@/lib/timeline";
-import { owntracksRouteContext } from "@/lib/owntracks";
+import { owntracksRouteContext, warmOwntracksGeocodes } from "@/lib/owntracks";
 import { chatOverNotes } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
 
@@ -155,36 +147,26 @@ export async function POST(req: NextRequest) {
       .all(conversationId) as Array<{ role: "user" | "assistant"; content: string }>
   ).reverse();
 
-  // Reason over the accumulated profile and let the chat model call tools
-  // (search_diary / get_entries_by_date / list_notebooks / get_notebook /
-  // get_recent_entries) to fetch specific entries on demand. Seed the
-  // profile in the background if it hasn't been built yet.
-  ensureProfileSeed();
-  // Once a week, quietly fold the recent location route into the profile.
-  maybeDistillLocation();
-  // Once a week, quietly write a fresh reflection (Opus).
-  maybeGenerateWeeklyInsight();
-  // Bring older pages' semantic embeddings online (no-op once everything
-  // has an embedding, or when VOYAGE_API_KEY isn't set).
-  maybeBackfillEmbeddings();
-  // Multi-level memory (Phase 2): tag pages with the diary's own date,
-  // then generate daily summaries for any day that doesn't have one yet.
-  // Both run in the background and cap their work per tick.
-  maybeBackfillEntryDates();
-  maybeGenerateDailySummaries();
-  // Monthly off-site backup to a private GitHub repo (no-op when not
-  // configured, or when the last backup is less than 30 days old).
-  maybeRunMonthlyBackup();
+  // One throttled sweep covers profile seed, weekly insight, location
+  // distill, embedding backfill, entry-date backfill, daily summaries, and
+  // the GitHub backup. Re-runs at most every 5 minutes regardless of how
+  // many chats fire in that window. Fire-and-forget.
+  runMaintenanceSweep();
   const profile = getCurrentProfile() || "";
 
   // Prefer the Google Timeline import, then the automatic OwnTracks route,
-  // then the one-tap location log. Suppressed entirely if the user has turned
-  // off the in-app "Share location with Remarkabler" switch.
+  // then the one-tap location log. Suppressed entirely if the user has
+  // turned off the in-app "Share location with Remarkabler" switch. The
+  // OwnTracks call uses cached geocodes only — any uncached stays show as
+  // raw lat/lng for this turn, and a background warmer (fired below) fills
+  // them in so the next chat resolves to real place names. Previously this
+  // serial-awaited up to 40 Nominatim fetches on every send.
   const recentLocations = isLocationEnabled()
     ? recentRouteContext() ||
       (await owntracksRouteContext()) ||
       recentLocationsContext()
     : "";
+  if (isLocationEnabled()) warmOwntracksGeocodes();
 
   let reply: string;
   let replyModel: string;

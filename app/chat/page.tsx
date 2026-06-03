@@ -243,11 +243,22 @@ export default function ChatPage() {
         throw new Error(d.error || "Something went wrong. Please try again.");
       }
       track("chat_message_sent", { hadAttachment: !!attached });
-      // Reload so a saved attachment shows on the message bubbles.
-      const list = await fetch("/api/chat?conversationId=default").then((x) =>
-        x.json()
-      );
-      setMessages(list.messages || []);
+      // Optimistically append the assistant reply from the POST response so
+      // the user sees it the moment the server is done — no extra GET round
+      // trip. Only fall back to a full reload when an attachment was sent,
+      // since that's the case where the message bubble needs the saved
+      // attachment thumbnail filled in.
+      if (attached) {
+        const list = await fetch("/api/chat?conversationId=default").then(
+          (x) => x.json()
+        );
+        setMessages(list.messages || []);
+      } else if (d.reply) {
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", content: d.reply, model: d.model ?? null },
+        ]);
+      }
       if (speakReply && d.reply) speak(d.reply);
     } catch (e) {
       // Drop the optimistic user message and surface the error in the input
