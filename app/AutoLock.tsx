@@ -5,21 +5,19 @@ import LockScreen from "./LockScreen";
 import { isUnlocking, isPickingFile } from "./lockState";
 
 /**
- * Locks the app when it has been backgrounded for longer than a grace window
- * (default 30 seconds), so brief Android tab switches — notification,
- * copy-paste, jumping to another app for one piece of info — don't drag the
- * user through a full re-auth + reload.
+ * Locks the app the moment it's sent to the background — no grace window.
+ * The user opted for strict lock-on-every-switch; even a quick notification
+ * tap will force a fingerprint prompt on return.
  *
- * The "have we been hidden long enough?" decision can't be made by an
- * in-memory setTimeout alone: Android Chrome pauses JavaScript when a tab
- * is backgrounded, so the timer may not fire on time (or at all, if the OS
- * kills the tab). Instead we persist a `hidden_since` timestamp to
- * localStorage on hide, and on every visible event AND every fresh mount we
- * recompute "ms since we were last visible" — if that's past the grace
- * window, we lock immediately. That makes the lock survive every lifecycle
- * the browser might subject the page to.
+ * The "have we been hidden?" decision can't be made by an in-memory
+ * setTimeout alone: Android Chrome pauses JavaScript when a tab is
+ * backgrounded, so any timer may not fire. Instead we persist a
+ * `hidden_since` timestamp to localStorage on hide, and on every visible
+ * event AND every fresh mount we recompute "ms since we were last visible"
+ * — past the grace window (now zero), we lock immediately. That makes the
+ * lock survive every lifecycle the browser might subject the page to.
  */
-const LOCK_GRACE_MS = 30_000;
+const LOCK_GRACE_MS = 0;
 const HIDDEN_KEY = "remarkabler:hidden_since";
 
 function readHiddenSince(): number | null {
