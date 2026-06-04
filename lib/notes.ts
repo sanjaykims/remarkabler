@@ -3,7 +3,7 @@ import fs from "fs";
 import { randomUUID } from "crypto";
 import { db, getSetting, setSetting } from "./db";
 import { ocrNotebookPdf, buildSelfModel, updateSelfModel, generateInsights, generateInsightTitle, summarizeDay } from "./claude";
-import { embedBatch, embeddingsEnabled, encodeEmbedding } from "./embeddings";
+import { embedBatch, embedBatchOrThrow, embeddingsEnabled, encodeEmbedding } from "./embeddings";
 import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
 import { owntracksRouteContext } from "./owntracks";
 import { recentLocationsContext, isLocationEnabled } from "./location";
@@ -404,31 +404,57 @@ export function maybeBackfillEmbeddings(): void {
  * Manual backfill: like maybeBackfillEmbeddings but awaits to completion and
  * returns a summary so a UI button can show progress + a real error message
  * when something fails (instead of the background path's silent break-and-retry).
+ *
+ * Resilience: when a batch fails, falls back to embedding pages one at a
+ * time. Individual pages that throw are recorded as skipped and the loop
+ * keeps going, so one bad page can't stall the whole corpus.
  */
 export async function runEmbeddingBackfillOnce(): Promise<{
   embedded: number;
+  skipped: number;
   remaining: number;
+  skippedSamples: string[];
   error: string | null;
 }> {
   if (!embeddingsEnabled()) {
-    return { embedded: 0, remaining: 0, error: "VOYAGE_API_KEY is not set" };
+    return {
+      embedded: 0,
+      skipped: 0,
+      remaining: 0,
+      skippedSamples: [],
+      error: "VOYAGE_API_KEY is not set",
+    };
   }
   if (backfillingEmbeddings) {
-    return { embedded: 0, remaining: countMissingEmbeddings(), error: "Already running" };
+    return {
+      embedded: 0,
+      skipped: 0,
+      remaining: countMissingEmbeddings(),
+      skippedSamples: [],
+      error: "Already running",
+    };
   }
   backfillingEmbeddings = true;
+  const skippedIds = new Set<string>();
+  const skippedSamples: string[] = [];
   let embedded = 0;
   let error: string | null = null;
   try {
-    embedded = await backfillEmbeddingsLoop((n) => {
-      embedded = n;
+    embedded = await backfillEmbeddingsLoop(skippedIds, (sample) => {
+      if (skippedSamples.length < 3) skippedSamples.push(sample);
     });
   } catch (e) {
     error = (e as Error).message || "Backfill failed";
   } finally {
     backfillingEmbeddings = false;
   }
-  return { embedded, remaining: countMissingEmbeddings(), error };
+  return {
+    embedded,
+    skipped: skippedIds.size,
+    remaining: countMissingEmbeddings(),
+    skippedSamples,
+    error,
+  };
 }
 
 function countMissingEmbeddings(): number {
@@ -447,33 +473,56 @@ function countMissingEmbeddings(): number {
 }
 
 async function backfillEmbeddingsLoop(
-  onProgress?: (embeddedSoFar: number) => void
+  skippedIds: Set<string> = new Set(),
+  onSkip?: (sample: string) => void
 ): Promise<number> {
   const BATCH = 32;
   let total = 0;
+  const upd = db().prepare(`UPDATE pages SET embedding = ? WHERE id = ?`);
   while (true) {
+    // Skip rows we've already failed on this run so the SELECT keeps making
+    // progress; the placeholders are built dynamically since better-sqlite3
+    // doesn't accept arrays in IN(?).
+    const skipList = Array.from(skippedIds);
+    const placeholders = skipList.map(() => "?").join(",");
+    const sql =
+      `SELECT id, ocr_text FROM pages
+       WHERE ocr_text IS NOT NULL AND ocr_text != '' AND embedding IS NULL` +
+      (skipList.length ? ` AND id NOT IN (${placeholders})` : "") +
+      ` LIMIT ?`;
     const rows = db()
-      .prepare(
-        `SELECT id, ocr_text FROM pages
-         WHERE ocr_text IS NOT NULL AND ocr_text != '' AND embedding IS NULL
-         LIMIT ?`
-      )
-      .all(BATCH) as Array<{ id: string; ocr_text: string }>;
+      .prepare(sql)
+      .all(...skipList, BATCH) as Array<{ id: string; ocr_text: string }>;
     if (rows.length === 0) break;
-    const vecs = await embedBatch(rows.map((r) => r.ocr_text), "document");
-    if (!vecs) {
-      // embedBatch swallows Voyage errors and returns null. We want the caller
-      // to know something went wrong, so surface a real error here.
-      throw new Error(
-        `Voyage embedBatch returned null on a batch of ${rows.length} pages (rate limit, network, or bad input?)`
-      );
+
+    let vecs: Float32Array[] | null = null;
+    try {
+      vecs = await embedBatchOrThrow(rows.map((r) => r.ocr_text), "document");
+    } catch {
+      // Batch failed — fall back to per-page so one bad row doesn't kill the rest.
+      vecs = null;
     }
-    const upd = db().prepare(`UPDATE pages SET embedding = ? WHERE id = ?`);
-    for (let i = 0; i < rows.length; i++) {
-      upd.run(encodeEmbedding(vecs[i]), rows[i].id);
+
+    if (vecs) {
+      for (let i = 0; i < rows.length; i++) {
+        upd.run(encodeEmbedding(vecs[i]), rows[i].id);
+      }
+      total += rows.length;
+      continue;
     }
-    total += rows.length;
-    onProgress?.(total);
+
+    // Per-page fallback.
+    for (const row of rows) {
+      try {
+        const one = await embedBatchOrThrow([row.ocr_text], "document");
+        upd.run(encodeEmbedding(one[0]), row.id);
+        total += 1;
+      } catch (e) {
+        skippedIds.add(row.id);
+        const msg = (e as Error).message || "unknown";
+        onSkip?.(`${row.id}: ${msg.slice(0, 120)}`);
+      }
+    }
   }
   return total;
 }

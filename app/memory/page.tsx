@@ -233,15 +233,16 @@ export default function MemoryPage() {
     try {
       const r = await fetch("/api/embeddings/status", { method: "POST" });
       const d = await r.json();
-      if (!r.ok) {
-        setEmbedMsg(d.error || "Backfill failed.");
-      } else if (d.error) {
-        setEmbedMsg(
-          `Embedded ${d.embedded} this pass. ${d.remaining} still missing — ${d.error}`
+      const parts: string[] = [];
+      if (typeof d.embedded === "number") parts.push(`Embedded ${d.embedded} this pass`);
+      if (d.skipped) {
+        parts.push(
+          `${d.skipped} skipped (Voyage rejected — likely empty/oversized)`
         );
-      } else {
-        setEmbedMsg(`Done — embedded ${d.embedded} pages this pass.`);
       }
+      if (d.remaining) parts.push(`${d.remaining} still missing`);
+      if (d.error) parts.push(`Error: ${d.error}`);
+      setEmbedMsg(parts.length ? parts.join(" · ") : "Done.");
       await loadEmbed();
     } catch (e) {
       setEmbedMsg((e as Error).message || "Backfill failed.");

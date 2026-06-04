@@ -92,6 +92,25 @@ export async function embedBatch(
   }
 }
 
+/**
+ * Like embedBatch, but surfaces the Voyage error instead of swallowing it.
+ * Used by the manual backfill so the loop can decide to fall back to
+ * per-page retries and report a real failure.
+ */
+export async function embedBatchOrThrow(
+  texts: string[],
+  inputType: InputType = "document"
+): Promise<Float32Array[]> {
+  if (!embeddingsEnabled()) throw new Error("VOYAGE_API_KEY is not set");
+  if (texts.length === 0) return [];
+  const { embeddings, totalTokens } = await callVoyage(texts, inputType);
+  recordUsage("embeddings", voyageModel(), {
+    input_tokens: totalTokens,
+    output_tokens: 0,
+  });
+  return embeddings.map((e) => new Float32Array(e));
+}
+
 export function encodeEmbedding(vec: Float32Array | number[]): Buffer {
   const arr = vec instanceof Float32Array ? vec : new Float32Array(vec);
   return Buffer.from(arr.buffer.slice(arr.byteOffset, arr.byteOffset + arr.byteLength));
