@@ -75,6 +75,28 @@ export default function MemoryPage() {
   const [embedBusy, setEmbedBusy] = useState(false);
   const [embedMsg, setEmbedMsg] = useState<string | null>(null);
 
+  // Side-by-side OCR comparison ("would Sonnet be good enough?"). Runs the
+  // same notebook PDF through multiple Claude models and shows every output,
+  // including multiple runs per model so you can also see within-model
+  // variance.
+  type CompareNotebook = { id: string; name: string; page_count: number };
+  type CompareRun = {
+    model: string;
+    run: number;
+    durationMs: number;
+    pages?: Array<{ pageIndex: number; text: string }>;
+    error?: string;
+  };
+  type CompareResult = {
+    notebook: { id: string; name: string };
+    runs: CompareRun[];
+  };
+  const [cmpNotebooks, setCmpNotebooks] = useState<CompareNotebook[] | null>(null);
+  const [cmpPicked, setCmpPicked] = useState<string>("");
+  const [cmpBusy, setCmpBusy] = useState(false);
+  const [cmpMsg, setCmpMsg] = useState<string | null>(null);
+  const [cmpResult, setCmpResult] = useState<CompareResult | null>(null);
+
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   async function load() {
@@ -268,6 +290,51 @@ export default function MemoryPage() {
     }
   }
 
+  async function loadCmpNotebooks() {
+    try {
+      const d = await fetch("/api/ocr-compare").then((r) => r.json());
+      setCmpNotebooks(d.notebooks || []);
+      if (!cmpPicked && d.notebooks?.length) {
+        setCmpPicked(d.notebooks[0].id);
+      }
+    } catch {
+      setCmpNotebooks([]);
+    }
+  }
+
+  async function runOcrCompare() {
+    if (cmpBusy || !cmpPicked) return;
+    setCmpBusy(true);
+    setCmpResult(null);
+    setCmpMsg(
+      "Running 4 OCR calls (2× Opus, 2× Sonnet) on the same PDF — this can take a few minutes…"
+    );
+    try {
+      const r = await fetch("/api/ocr-compare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notebookId: cmpPicked,
+          models: ["claude-opus-4-7", "claude-sonnet-4-6"],
+          runsPerModel: 2,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Comparison failed");
+      setCmpResult(d);
+      const errors = (d.runs as CompareRun[]).filter((x) => x.error).length;
+      setCmpMsg(
+        errors === 0
+          ? "Done — scroll down to compare. Cost is on the Cost tab under `ocr_compare`."
+          : `Finished with ${errors} failed run${errors === 1 ? "" : "s"} — others are below.`
+      );
+    } catch (e) {
+      setCmpMsg((e as Error).message || "Couldn't run the comparison.");
+    } finally {
+      setCmpBusy(false);
+    }
+  }
+
   async function setModel(slot: "main" | "chat" | "fallback", value: string) {
     if (modelsBusy) return;
     setModelsBusy(true);
@@ -298,6 +365,7 @@ export default function MemoryPage() {
     loadModels();
     loadBackup();
     loadEmbed();
+    loadCmpNotebooks();
   }, []);
 
   function getPosition(): Promise<GeolocationPosition> {
@@ -760,6 +828,93 @@ export default function MemoryPage() {
             <code>VOYAGE_API_KEY</code> in Railway and redeploy. Embedding
             costs are tiny (cents per thousand pages).
           </p>
+        )}
+      </section>
+
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+        <h2 className="font-medium">Compare OCR models (Opus vs Sonnet)</h2>
+        <p className="text-xs opacity-70">
+          Runs the same PDF through Opus and Sonnet, twice each, so you can
+          see how often Sonnet matches Opus on YOUR actual handwriting. Pick
+          a small notebook (1–3 pages) — each run costs roughly the same as
+          a normal upload on that model, so a 2-page comparison is about{" "}
+          <strong>~$0.40 total</strong> (2 Opus + 2 Sonnet). Cost shows up
+          on the Cost tab under <code>ocr_compare</code>.
+        </p>
+        {cmpNotebooks === null ? (
+          <p className="text-xs opacity-60">Loading notebooks…</p>
+        ) : cmpNotebooks.length === 0 ? (
+          <p className="text-xs opacity-60">
+            No completed notebooks to test on yet.
+          </p>
+        ) : (
+          <>
+            <select
+              value={cmpPicked}
+              onChange={(e) => setCmpPicked(e.target.value)}
+              disabled={cmpBusy}
+              className="w-full rounded border border-stone-300 dark:border-stone-700 bg-transparent p-2 text-sm disabled:opacity-50"
+            >
+              {cmpNotebooks.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.name} ({n.page_count}p)
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={runOcrCompare}
+              disabled={cmpBusy || !cmpPicked}
+              className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {cmpBusy ? "Running…" : "Run comparison (~$0.40)"}
+            </button>
+          </>
+        )}
+        {cmpMsg && (
+          <p className="text-sm opacity-70 whitespace-pre-wrap">{cmpMsg}</p>
+        )}
+        {cmpResult && (
+          <div className="space-y-3 pt-2 border-t border-stone-200 dark:border-stone-800">
+            <p className="text-xs opacity-70">
+              {cmpResult.notebook.name} — {cmpResult.runs.length} runs:
+            </p>
+            {cmpResult.runs.map((run, i) => (
+              <details
+                key={i}
+                className="rounded border border-stone-200 dark:border-stone-800"
+              >
+                <summary className="cursor-pointer px-3 py-2 text-xs list-none">
+                  <span className="font-medium">{run.model}</span> · run {run.run}
+                  {" · "}
+                  {(run.durationMs / 1000).toFixed(1)}s
+                  {run.error ? (
+                    <span className="text-red-600"> · failed</span>
+                  ) : (
+                    <span className="opacity-60">
+                      {" · "}
+                      {run.pages?.length ?? 0} pages
+                    </span>
+                  )}
+                </summary>
+                <div className="px-3 pb-3 border-t border-stone-200 dark:border-stone-800 pt-2">
+                  {run.error ? (
+                    <p className="text-xs text-red-600">{run.error}</p>
+                  ) : (
+                    (run.pages || []).map((p) => (
+                      <div key={p.pageIndex} className="mb-3">
+                        <p className="text-[11px] opacity-50">
+                          page {p.pageIndex + 1}
+                        </p>
+                        <pre className="text-xs whitespace-pre-wrap font-mono opacity-90 leading-relaxed">
+                          {p.text || "(blank)"}
+                        </pre>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </details>
+            ))}
+          </div>
         )}
       </section>
 

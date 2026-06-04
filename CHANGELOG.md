@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-04
+
+### Added
+- **OCR model comparison tool on the Memory tab.** Pick an existing
+  notebook and the app runs the same PDF through Opus and Sonnet, twice
+  each (4 runs total), then displays every transcription so the user can
+  decide for themselves whether Sonnet catches their handwriting well
+  enough to take the per-upload savings. Cost is recorded under a
+  separate `ocr_compare` feature on the Cost tab so it doesn't mix with
+  real uploads.
+- `ocrNotebookPdf` now accepts `{ modelOverride, usageFeature }` options,
+  so callers can pin a model and tag the usage row without flipping the
+  user's saved setting.
+- New endpoint `POST /api/ocr-compare` (and `GET` for the picker list).
+
 ## 2026-06-03
 
 ### Added

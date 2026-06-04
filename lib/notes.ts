@@ -10,7 +10,7 @@ import { recentLocationsContext, isLocationEnabled } from "./location";
 import { parseSqliteUtc } from "./format";
 import { maybeCleanupOrphanAttachments } from "./cleanup";
 
-const FILES_DIR = path.join(
+export const FILES_DIR = path.join(
   process.env.DATA_DIR || path.join(process.cwd(), "data"),
   "files"
 );

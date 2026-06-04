@@ -79,14 +79,24 @@ export type PageOcr = { pageIndex: number; text: string };
  * overflow; if it overflows anyway, we throw instead of silently returning
  * nothing.
  */
-export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
+export async function ocrNotebookPdf(
+  pdfBytes: Uint8Array,
+  opts: { modelOverride?: string; usageFeature?: string } = {}
+): Promise<PageOcr[]> {
   const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
+  // modelOverride lets callers (like the model-comparison tool) pin a
+  // specific model for a single call without flipping the user's saved
+  // setting. usageFeature lets those calls record themselves separately
+  // so the comparison's cost doesn't get attributed to "ocr" alongside
+  // regular uploads on the Cost tab.
+  const model = opts.modelOverride || modelMain();
+  const usageFeature = opts.usageFeature || "ocr";
 
   // Stream the response. The SDK rejects a non-streaming request whose
   // max_tokens is large enough that it could exceed the 10-minute timeout;
   // streaming also keeps the connection alive for a long transcription.
   const stream = client().messages.stream({
-    model: modelMain(),
+    model,
     max_tokens: 32000,
     system: [
       "You transcribe handwritten notebooks from a reMarkable tablet.",
@@ -118,7 +128,7 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
     ],
   });
   const resp = await stream.finalMessage();
-  recordUsage("ocr", modelMain(), resp.usage);
+  recordUsage(usageFeature, model, resp.usage);
 
   if (resp.stop_reason === "max_tokens") {
     throw new Error(
