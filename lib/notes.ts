@@ -393,32 +393,89 @@ export function maybeBackfillEmbeddings(): void {
   backfillingEmbeddings = true;
   (async () => {
     try {
-      const BATCH = 32;
-      // Loop until nothing's missing or we hit a failure.
-      // (Each iteration commits its batch before the next read.)
-
-      while (true) {
-        const rows = db()
-          .prepare(
-            `SELECT id, ocr_text FROM pages
-             WHERE ocr_text IS NOT NULL AND ocr_text != '' AND embedding IS NULL
-             LIMIT ?`
-          )
-          .all(BATCH) as Array<{ id: string; ocr_text: string }>;
-        if (rows.length === 0) break;
-        const vecs = await embedBatch(rows.map((r) => r.ocr_text), "document");
-        if (!vecs) break;
-        const upd = db().prepare(`UPDATE pages SET embedding = ? WHERE id = ?`);
-        for (let i = 0; i < rows.length; i++) {
-          upd.run(encodeEmbedding(vecs[i]), rows[i].id);
-        }
-      }
-    } catch {
-      // best-effort
+      await backfillEmbeddingsLoop();
     } finally {
       backfillingEmbeddings = false;
     }
   })();
+}
+
+/**
+ * Manual backfill: like maybeBackfillEmbeddings but awaits to completion and
+ * returns a summary so a UI button can show progress + a real error message
+ * when something fails (instead of the background path's silent break-and-retry).
+ */
+export async function runEmbeddingBackfillOnce(): Promise<{
+  embedded: number;
+  remaining: number;
+  error: string | null;
+}> {
+  if (!embeddingsEnabled()) {
+    return { embedded: 0, remaining: 0, error: "VOYAGE_API_KEY is not set" };
+  }
+  if (backfillingEmbeddings) {
+    return { embedded: 0, remaining: countMissingEmbeddings(), error: "Already running" };
+  }
+  backfillingEmbeddings = true;
+  let embedded = 0;
+  let error: string | null = null;
+  try {
+    embedded = await backfillEmbeddingsLoop((n) => {
+      embedded = n;
+    });
+  } catch (e) {
+    error = (e as Error).message || "Backfill failed";
+  } finally {
+    backfillingEmbeddings = false;
+  }
+  return { embedded, remaining: countMissingEmbeddings(), error };
+}
+
+function countMissingEmbeddings(): number {
+  try {
+    return (
+      db()
+        .prepare(
+          `SELECT COUNT(*) AS c FROM pages
+           WHERE ocr_text IS NOT NULL AND ocr_text != '' AND embedding IS NULL`
+        )
+        .get() as { c: number }
+    ).c;
+  } catch {
+    return 0;
+  }
+}
+
+async function backfillEmbeddingsLoop(
+  onProgress?: (embeddedSoFar: number) => void
+): Promise<number> {
+  const BATCH = 32;
+  let total = 0;
+  while (true) {
+    const rows = db()
+      .prepare(
+        `SELECT id, ocr_text FROM pages
+         WHERE ocr_text IS NOT NULL AND ocr_text != '' AND embedding IS NULL
+         LIMIT ?`
+      )
+      .all(BATCH) as Array<{ id: string; ocr_text: string }>;
+    if (rows.length === 0) break;
+    const vecs = await embedBatch(rows.map((r) => r.ocr_text), "document");
+    if (!vecs) {
+      // embedBatch swallows Voyage errors and returns null. We want the caller
+      // to know something went wrong, so surface a real error here.
+      throw new Error(
+        `Voyage embedBatch returned null on a batch of ${rows.length} pages (rate limit, network, or bad input?)`
+      );
+    }
+    const upd = db().prepare(`UPDATE pages SET embedding = ? WHERE id = ?`);
+    for (let i = 0; i < rows.length; i++) {
+      upd.run(encodeEmbedding(vecs[i]), rows[i].id);
+    }
+    total += rows.length;
+    onProgress?.(total);
+  }
+  return total;
 }
 
 /**
