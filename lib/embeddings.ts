@@ -19,6 +19,22 @@ export function voyageModel(): string {
 // searching — they ask for different normalisation so retrieval is sharper.
 type InputType = "document" | "query";
 
+// Per-input character cap. voyage-3 accepts up to 32K tokens per single
+// input; Korean / CJK runs at ~1 char/token in the worst case, so we cap at
+// 24K characters to leave headroom even for dense Korean.
+const PER_INPUT_CHAR_CAP = 24_000;
+// Voyage-3's per-request budget is ~120K tokens total. We chunk by an
+// estimated token count (chars / 3, a conservative ratio for mixed scripts)
+// and stop adding inputs before crossing this cap.
+const BATCH_TOKEN_BUDGET = 100_000;
+// Free-tier Voyage allows 3 requests / minute. Spacing calls a touch
+// keeps a backfill from blowing the RPM and bouncing on 429s.
+const INTER_REQUEST_DELAY_MS = 250;
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 3);
+}
+
 async function callVoyage(
   texts: string[],
   inputType: InputType
@@ -26,33 +42,64 @@ async function callVoyage(
   const apiKey = process.env.VOYAGE_API_KEY;
   if (!apiKey) throw new Error("VOYAGE_API_KEY is not set");
 
-  // Voyage caps a single call at 128 inputs; we chunk to be safe.
-  const CHUNK = 64;
+  // Build chunks that respect both a per-input cap (already trimmed) and a
+  // total-token cap per request. The previous CHUNK=64 ignored token totals,
+  // so a batch of large discipline-notebook pages could blow Voyage's
+  // ~120K-token-per-request ceiling and 400 out.
+  const trimmed = texts.map((t) => t.slice(0, PER_INPUT_CHAR_CAP));
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentTokens = 0;
+  for (const t of trimmed) {
+    const est = estimateTokens(t);
+    if (current.length > 0 && currentTokens + est > BATCH_TOKEN_BUDGET) {
+      chunks.push(current);
+      current = [];
+      currentTokens = 0;
+    }
+    current.push(t);
+    currentTokens += est;
+  }
+  if (current.length > 0) chunks.push(current);
+
   const out: number[][] = [];
   let totalTokens = 0;
-  for (let i = 0; i < texts.length; i += CHUNK) {
-    const slice = texts.slice(i, i + CHUNK).map((t) => t.slice(0, 30_000));
-    const resp = await fetch(VOYAGE_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        input: slice,
-        model: voyageModel(),
-        input_type: inputType,
-      }),
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      throw new Error(`Voyage embeddings failed (${resp.status}): ${body.slice(0, 200)}`);
+  for (let c = 0; c < chunks.length; c++) {
+    if (c > 0 && INTER_REQUEST_DELAY_MS > 0) {
+      await new Promise((r) => setTimeout(r, INTER_REQUEST_DELAY_MS));
+    }
+    const slice = chunks[c];
+    let resp: Response | null = null;
+    // One retry on 429 — Voyage's free tier is 3 RPM, easy to trip on a
+    // burst. Honour Retry-After if present, else back off 2s.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      resp = await fetch(VOYAGE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          input: slice,
+          model: voyageModel(),
+          input_type: inputType,
+        }),
+      });
+      if (resp.status !== 429 || attempt === 1) break;
+      const retryAfter = Number(resp.headers.get("retry-after") || "") || 2;
+      await new Promise((r) => setTimeout(r, Math.min(retryAfter, 10) * 1000));
+    }
+    if (!resp || !resp.ok) {
+      const status = resp?.status ?? 0;
+      const body = (await resp?.text().catch(() => "")) || "";
+      throw new Error(
+        `Voyage embeddings failed (${status}): ${body.slice(0, 200)}`
+      );
     }
     const data = (await resp.json()) as {
       data: Array<{ embedding: number[]; index: number }>;
       usage?: { total_tokens?: number };
     };
-    // Voyage returns the chunk in whatever order — sort by index to be safe.
     data.data.sort((a, b) => a.index - b.index);
     for (const d of data.data) out.push(d.embedding);
     totalTokens += data.usage?.total_tokens || 0;
@@ -62,6 +109,7 @@ async function callVoyage(
 
 export async function embed(text: string, inputType: InputType = "query"): Promise<Float32Array | null> {
   if (!embeddingsEnabled()) return null;
+  if (!text || !text.trim()) return null;
   try {
     const { embeddings, totalTokens } = await callVoyage([text], inputType);
     recordUsage("embeddings", voyageModel(), {
@@ -69,7 +117,10 @@ export async function embed(text: string, inputType: InputType = "query"): Promi
       output_tokens: 0,
     });
     return new Float32Array(embeddings[0]);
-  } catch {
+  } catch (e) {
+    // Keep the API stable (callers expect null), but surface the actual
+    // Voyage error in Railway logs so 429s / 400s aren't invisible.
+    console.warn("[voyage] embed failed:", (e as Error).message);
     return null;
   }
 }
@@ -87,7 +138,8 @@ export async function embedBatch(
       output_tokens: 0,
     });
     return embeddings.map((e) => new Float32Array(e));
-  } catch {
+  } catch (e) {
+    console.warn("[voyage] embedBatch failed:", (e as Error).message);
     return null;
   }
 }
@@ -103,6 +155,13 @@ export async function embedBatchOrThrow(
 ): Promise<Float32Array[]> {
   if (!embeddingsEnabled()) throw new Error("VOYAGE_API_KEY is not set");
   if (texts.length === 0) return [];
+  // Voyage 400s on empty / whitespace-only inputs. Surface a clear error
+  // so the per-page fallback knows to skip rather than retry blindly.
+  for (let i = 0; i < texts.length; i++) {
+    if (!texts[i] || !texts[i].trim()) {
+      throw new Error(`Input ${i} is empty or whitespace-only`);
+    }
+  }
   const { embeddings, totalTokens } = await callVoyage(texts, inputType);
   recordUsage("embeddings", voyageModel(), {
     input_tokens: totalTokens,

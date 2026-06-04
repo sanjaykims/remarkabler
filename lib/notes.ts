@@ -485,11 +485,15 @@ async function backfillEmbeddingsLoop(
     // doesn't accept arrays in IN(?).
     const skipList = Array.from(skippedIds);
     const placeholders = skipList.map(() => "?").join(",");
+    // Shortest pages first so small diary entries embed in big batches up
+    // front, and the large discipline-notebook markdown pages either fit
+    // when alone or fail in isolation where per-page fallback handles them.
     const sql =
       `SELECT id, ocr_text FROM pages
        WHERE ocr_text IS NOT NULL AND ocr_text != '' AND embedding IS NULL` +
       (skipList.length ? ` AND id NOT IN (${placeholders})` : "") +
-      ` LIMIT ?`;
+      ` ORDER BY LENGTH(ocr_text) ASC
+        LIMIT ?`;
     const rows = db()
       .prepare(sql)
       .all(...skipList, BATCH) as Array<{ id: string; ocr_text: string }>;
