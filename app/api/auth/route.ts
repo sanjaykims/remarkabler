@@ -17,6 +17,7 @@ import {
 } from "@/lib/webauthn";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 // WebAuthn needs the real public domain. Behind Railway's proxy this comes
 // from the forwarded host headers, never from req.url (which is internal).

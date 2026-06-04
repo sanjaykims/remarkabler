@@ -5,6 +5,7 @@ import { isAuthenticated } from "@/lib/auth";
 import { FileLike, isFileLike, isPdfFile, MAX_UPLOAD_BYTES } from "@/lib/upload";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const LOCKED = () =>
   NextResponse.json({ error: "Locked" }, { status: 401 });

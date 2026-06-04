@@ -97,8 +97,8 @@ export async function processNotebook(id: string): Promise<void> {
             upd.run(encodeEmbedding(vecs[i]), `${id}:${withText[i].pageIndex}`);
           }
         }
-      } catch {
-        // best-effort
+      } catch (e) {
+        console.warn("[notes] post-OCR embed failed:", (e as Error).message);
       }
     }
 
@@ -116,16 +116,17 @@ export async function processNotebook(id: string): Promise<void> {
           : await buildSelfModel({ notesContext: buildNotesContext() });
         saveProfile(updated);
       }
-    } catch {
-      // profile update is best-effort
+    } catch (e) {
+      console.warn("[notes] profile fold failed:", (e as Error).message);
     }
   } catch (err) {
+    console.error("[notes] processNotebook failed:", (err as Error).message);
     try {
       db()
         .prepare(`UPDATE notebooks SET status='error', error=? WHERE id = ?`)
         .run((err as Error).message, id);
-    } catch {
-      // give up silently — the startup sweep will flag a stuck notebook
+    } catch (e) {
+      console.error("[notes] couldn't record processing error:", (e as Error).message);
     }
   }
 }
@@ -755,8 +756,20 @@ function getMaybeRunWeeklyBackup(): () => void {
  */
 export function runMaintenanceSweep(): void {
   const now = Date.now();
+  // In-memory check is the cheap fast path; consult the persisted timestamp
+  // when the in-memory one looks "fresh" (i.e. just started — Railway can
+  // cold-start the process several times a day, which would otherwise reset
+  // lastMaintenanceAt to 0 and refire the entire cascade on each restart).
   if (now - lastMaintenanceAt < MAINTENANCE_INTERVAL_MS) return;
+  if (lastMaintenanceAt === 0) {
+    const stored = Number(getSetting("last_maintenance_at") || "0");
+    if (Number.isFinite(stored) && stored > 0) {
+      lastMaintenanceAt = stored;
+      if (now - lastMaintenanceAt < MAINTENANCE_INTERVAL_MS) return;
+    }
+  }
   lastMaintenanceAt = now;
+  setSetting("last_maintenance_at", String(now));
   ensureProfileSeed();
   maybeDistillLocation();
   maybeGenerateWeeklyInsight();

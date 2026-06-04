@@ -5,20 +5,35 @@ import { generateInsights, generateInsightTitle } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const LOCKED = () =>
   NextResponse.json({ error: "Locked" }, { status: 401 });
 
-// Give a short topic title to any older insight that predates the title
-// feature. Resilient: a failure leaves the entry untitled and is retried on
-// the next load, and never breaks the listing.
+// Throttle title backfill: only one attempt every ~5 minutes, and at most
+// 3 titles per attempt. Previously this fired one Anthropic call PER untitled
+// row in parallel on every Insights page load — at $0.05+ a call, a user
+// refreshing the page a few times a day with a handful of untitled entries
+// could quietly burn $10+/month.
+const TITLE_BACKFILL_INTERVAL_MS = 5 * 60 * 1000;
+const TITLE_BACKFILL_PER_RUN = 3;
+let lastTitleBackfillAt = 0;
+
 async function backfillTitles() {
+  const now = Date.now();
+  if (now - lastTitleBackfillAt < TITLE_BACKFILL_INTERVAL_MS) return;
+  lastTitleBackfillAt = now;
+
   let untitled: Array<{ id: number; content: string }>;
   try {
     untitled = db()
-      .prepare(`SELECT id, content FROM insights WHERE title IS NULL OR title = ''`)
-      .all() as Array<{ id: number; content: string }>;
+      .prepare(
+        `SELECT id, content FROM insights
+         WHERE title IS NULL OR title = ''
+         ORDER BY id DESC LIMIT ?`
+      )
+      .all(TITLE_BACKFILL_PER_RUN) as Array<{ id: number; content: string }>;
   } catch {
     return;
   }
@@ -31,8 +46,10 @@ async function backfillTitles() {
         if (title) {
           db().prepare(`UPDATE insights SET title = ? WHERE id = ?`).run(title, row.id);
         }
-      } catch {
-        // leave untitled; a later load will retry
+      } catch (e) {
+        // Leave untitled; a later run will retry. Log so a persistent
+        // failure shows up in Railway logs.
+        console.warn("[insights] title backfill failed:", (e as Error).message);
       }
     })
   );
@@ -40,7 +57,10 @@ async function backfillTitles() {
 
 export async function GET() {
   if (!isAuthenticated()) return LOCKED();
-  await backfillTitles();
+  // Fire-and-forget — the user shouldn't wait for title backfill on every
+  // page load. The throttle above caps cost; the response still ships the
+  // current state and titles populate over subsequent refreshes.
+  backfillTitles().catch(() => {});
   const insights = db()
     .prepare(`SELECT id, title, content, created_at FROM insights ORDER BY id DESC`)
     .all();

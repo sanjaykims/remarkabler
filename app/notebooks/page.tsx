@@ -17,16 +17,25 @@ type Notebook = {
 
 export default function NotebooksPage() {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function load() {
-    const r = await fetch("/api/notebooks");
-    const d = await r.json();
-    setNotebooks(d.notebooks || []);
+    try {
+      const r = await fetch("/api/notebooks");
+      if (!r.ok) throw new Error(`Couldn't load notebooks (${r.status})`);
+      const d = await r.json();
+      setNotebooks(d.notebooks || []);
+    } catch (e) {
+      setError((e as Error).message || "Couldn't load notebooks.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -90,10 +99,25 @@ export default function NotebooksPage() {
   }
 
   async function remove(id: string, name: string) {
+    if (deletingId) return;
     if (!window.confirm(`Delete "${name}" and its transcription?`)) return;
-    await fetch(`/api/notebooks?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-    track("notebook_deleted");
-    await load();
+    setDeletingId(id);
+    setError(null);
+    try {
+      const r = await fetch(`/api/notebooks?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.error || `Delete failed (${r.status})`);
+      }
+      track("notebook_deleted");
+      await load();
+    } catch (e) {
+      setError((e as Error).message || "Couldn't delete.");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   return (
@@ -146,7 +170,19 @@ export default function NotebooksPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
 
-      {notebooks.length === 0 && (
+      {loading && (
+        // Skeleton so the user doesn't see "No notebooks yet" for a flash
+        // before the fetch resolves on a slow connection.
+        <div className="space-y-1">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-12 rounded border border-stone-200 dark:border-stone-800 animate-pulse opacity-30"
+            />
+          ))}
+        </div>
+      )}
+      {!loading && notebooks.length === 0 && (
         <p className="opacity-60 text-sm">
           No notebooks yet. Upload a PDF exported from your reMarkable.
         </p>
@@ -179,9 +215,10 @@ export default function NotebooksPage() {
                 </p>
                 <button
                   onClick={() => remove(n.id, n.name)}
-                  className="text-xs opacity-60 hover:opacity-100 hover:text-red-600"
+                  disabled={deletingId !== null}
+                  className="text-xs opacity-60 hover:opacity-100 hover:text-red-600 disabled:opacity-30"
                 >
-                  Delete
+                  {deletingId === n.id ? "Deleting…" : "Delete"}
                 </button>
               </div>
             </details>

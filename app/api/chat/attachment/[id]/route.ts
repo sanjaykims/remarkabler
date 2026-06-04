@@ -5,6 +5,7 @@ import { db, DATA_DIR } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const ATTACHMENT_DIR = path.join(DATA_DIR, "chat-attachments");
 

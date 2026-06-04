@@ -6,6 +6,7 @@ import { buildNotesContext } from "@/lib/notes";
 import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });

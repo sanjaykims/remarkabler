@@ -16,6 +16,7 @@ import { getCurrentProfile, saveProfile } from "@/lib/profile";
 import { buildSelfModel, updateSelfModel } from "@/lib/claude";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });

@@ -3,6 +3,7 @@ import { isAuthenticated } from "@/lib/auth";
 import { addLocation, listRecentLocations, isLocationEnabled } from "@/lib/location";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 

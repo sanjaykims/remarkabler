@@ -178,7 +178,17 @@ export function encodeEmbedding(vec: Float32Array | number[]): Buffer {
   return Buffer.from(arr.buffer.slice(arr.byteOffset, arr.byteOffset + arr.byteLength));
 }
 
-export function decodeEmbedding(buf: Buffer): Float32Array {
+export function decodeEmbedding(buf: Buffer): Float32Array | null {
+  // Sanity-check the BLOB length: a Float32 vector must be a multiple of 4
+  // bytes. A truncated / corrupted BLOB would silently produce NaN entries
+  // and zero out every cosine similarity comparison against it. Returning
+  // null lets the caller skip the row and surface a clearer signal.
+  if (buf.byteLength === 0 || buf.byteLength % 4 !== 0) {
+    console.warn(
+      `[embeddings] malformed embedding blob: ${buf.byteLength} bytes`
+    );
+    return null;
+  }
   // Copy to avoid pointing at the shared SQLite buffer.
   const copy = new ArrayBuffer(buf.byteLength);
   new Uint8Array(copy).set(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));

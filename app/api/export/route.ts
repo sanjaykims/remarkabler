@@ -5,6 +5,7 @@ import { getCurrentProfileRow } from "@/lib/profile";
 import { TZ_OFFSET_MIN, parseSqliteUtc } from "@/lib/format";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
