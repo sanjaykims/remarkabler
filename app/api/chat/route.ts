@@ -11,7 +11,8 @@ import { chatOverNotes } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 

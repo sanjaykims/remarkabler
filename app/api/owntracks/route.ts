@@ -9,6 +9,7 @@ import {
 import { isLocationEnabled } from "@/lib/location";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 // Status for the Memory page — gated by the app session (the owner).
 export async function GET() {

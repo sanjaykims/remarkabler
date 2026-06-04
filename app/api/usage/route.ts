@@ -3,6 +3,7 @@ import { isAuthenticated } from "@/lib/auth";
 import { monthlyUsage, dailyUsage, totalUsage } from "@/lib/usage";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   if (!isAuthenticated()) {

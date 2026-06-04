@@ -6,6 +6,7 @@ import { buildNotesContext } from "@/lib/notes";
 import { composeBook } from "@/lib/claude";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 // Composing a chaptered book is a long generation. Streaming inside
 // composeBook keeps the connection alive, but the route itself needs a
 // generous maxDuration too.

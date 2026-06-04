@@ -300,58 +300,74 @@ export async function chatOverNotes(opts: {
     messages.push({ role: "user", content: userText });
   }
 
+  // Static guidance + tool policy. This block is the one we want cached on
+  // every chat turn — it never changes between requests. Keeping it in its
+  // own TextBlock with cache_control lets Anthropic reuse it across turns
+  // and across messages even when the profile / locations differ.
+  const staticGuidance = [
+    "You are this person's personal companion — you know them through",
+    "their diary. Below is your accumulated understanding of who they are,",
+    "built up over time; treat it as your memory of them.",
+    "When they ask you something, think it through in light of everything",
+    "you understand about them, and answer with your honest, thoughtful",
+    "opinion — not a bare summary of their notes.",
+    "",
+    "You have tools to look up specific things on demand:",
+    "- Diary content: search_diary (keyword/theme), get_entries_by_date",
+    "  (specific date), get_recent_entries (\"lately\"/\"this week\"),",
+    "  list_notebooks + get_notebook (whole notebook by id),",
+    "  count_entries_mentioning (\"how often do I write about X?\").",
+    "- Daily / weekly / monthly summaries (auto-generated, cheaper than",
+    "  raw entries): get_day_summary, get_week_summary, get_month_summary.",
+    "  Prefer these for \"how was [date/week/month]?\" — only fall back to",
+    "  get_entries_by_date when you need the raw words.",
+    "- The clock: current_time_kst — call this whenever the user says",
+    "  \"today\", \"yesterday\", \"this week\", \"last month\" etc. You don't",
+    "  know what today is otherwise.",
+    "- Where they've been: get_recent_locations (longer ranges than the",
+    "  3 days already in this prompt).",
+    "- Past conversations + reflections: search_chat_history,",
+    "  get_insights.",
+    "- Writing stats: get_writing_stats (\"how much have I written?\").",
+    "Use tools only when the question genuinely needs a specific lookup —",
+    "many questions are answerable from the profile alone. After fetching,",
+    "answer from what's actually in the result; if it's not there, say so",
+    "honestly and don't guess.",
+    "",
+    "Be warm, direct, and specific. If you genuinely don't know, say so.",
+    "",
+    "Their diary entries carry timestamps written as YYYY-MM-DD-HHMM-KST",
+    "(year-month-day-time-Korea Standard Time, UTC+9).",
+  ].join("\n");
+
+  // Dynamic context — profile + recent locations. Changes whenever a new
+  // notebook is folded into the profile or new OwnTracks stays land, so
+  // it lives in its own block WITHOUT cache_control. The static block above
+  // still gets cached even when this one changes.
+  const dynamicContext = [
+    "=== YOUR UNDERSTANDING OF THEM ===",
+    opts.profile.trim() ||
+      "(No profile yet — use the tools to fetch real entries and answer with care.)",
+    "=== END UNDERSTANDING ===",
+    ...(opts.recentLocations?.trim()
+      ? [
+          "",
+          "=== WHERE THEY'VE BEEN RECENTLY (places they logged) ===",
+          opts.recentLocations,
+          "=== END LOCATIONS ===",
+        ]
+      : []),
+  ].join("\n");
+
   const system: Anthropic.TextBlockParam[] = [
     {
       type: "text",
-      text: [
-        "You are this person's personal companion — you know them through",
-        "their diary. Below is your accumulated understanding of who they are,",
-        "built up over time; treat it as your memory of them.",
-        "When they ask you something, think it through in light of everything",
-        "you understand about them, and answer with your honest, thoughtful",
-        "opinion — not a bare summary of their notes.",
-        "",
-        "You have tools to look up specific things on demand:",
-        "- Diary content: search_diary (keyword/theme), get_entries_by_date",
-        "  (specific date), get_recent_entries (\"lately\"/\"this week\"),",
-        "  list_notebooks + get_notebook (whole notebook by id),",
-        "  count_entries_mentioning (\"how often do I write about X?\").",
-        "- Daily / weekly / monthly summaries (auto-generated, cheaper than",
-        "  raw entries): get_day_summary, get_week_summary, get_month_summary.",
-        "  Prefer these for \"how was [date/week/month]?\" — only fall back to",
-        "  get_entries_by_date when you need the raw words.",
-        "- The clock: current_time_kst — call this whenever the user says",
-        "  \"today\", \"yesterday\", \"this week\", \"last month\" etc. You don't",
-        "  know what today is otherwise.",
-        "- Where they've been: get_recent_locations (longer ranges than the",
-        "  3 days already in this prompt).",
-        "- Past conversations + reflections: search_chat_history,",
-        "  get_insights.",
-        "- Writing stats: get_writing_stats (\"how much have I written?\").",
-        "Use tools only when the question genuinely needs a specific lookup —",
-        "many questions are answerable from the profile alone. After fetching,",
-        "answer from what's actually in the result; if it's not there, say so",
-        "honestly and don't guess.",
-        "",
-        "Be warm, direct, and specific. If you genuinely don't know, say so.",
-        "",
-        "Their diary entries carry timestamps written as YYYY-MM-DD-HHMM-KST",
-        "(year-month-day-time-Korea Standard Time, UTC+9).",
-        "",
-        "=== YOUR UNDERSTANDING OF THEM ===",
-        opts.profile.trim() ||
-          "(No profile yet — use the tools to fetch real entries and answer with care.)",
-        "=== END UNDERSTANDING ===",
-        ...(opts.recentLocations?.trim()
-          ? [
-              "",
-              "=== WHERE THEY'VE BEEN RECENTLY (places they logged) ===",
-              opts.recentLocations,
-              "=== END LOCATIONS ===",
-            ]
-          : []),
-      ].join("\n"),
+      text: staticGuidance,
       cache_control: { type: "ephemeral" },
+    },
+    {
+      type: "text",
+      text: dynamicContext,
     },
   ];
 
@@ -374,8 +390,14 @@ export async function chatOverNotes(opts: {
       const status = (err as { status?: number }).status;
       const overloaded =
         status === 429 || status === 529 || (typeof status === "number" && status >= 500);
-      if (iter === 0 && overloaded && fallback && fallback !== usedModel) {
-        // The chat model is busy — answer this turn on the fallback model.
+      if (overloaded && fallback && fallback !== usedModel) {
+        // The chat model is busy — fall back for the rest of this turn,
+        // including subsequent tool-call iterations. The previous gate
+        // (`iter === 0`) meant a mid-loop 529 surfaced as an error even
+        // when the fallback was available.
+        console.warn(
+          `[chat] ${usedModel} returned ${status}; falling back to ${fallback}`
+        );
         usedModel = fallback;
         resp = await client().messages.create({
           model: usedModel,
@@ -566,8 +588,11 @@ export async function composeBook(opts: {
  * than a trimmed opening sentence.
  */
 export async function generateInsightTitle(content: string): Promise<string> {
+  // Titles are 2-5 words — Opus is overkill. Use the chat model (Sonnet by
+  // default) which is ~5× cheaper and indistinguishable for this task.
+  const model = modelChat();
   const resp = await client().messages.create({
-    model: modelMain(),
+    model,
     max_tokens: 32,
     system: [
       "You write an extremely short topic title for a personal reflection note.",
@@ -577,7 +602,7 @@ export async function generateInsightTitle(content: string): Promise<string> {
     ].join("\n"),
     messages: [{ role: "user", content: content.slice(0, 4000) }],
   });
-  recordUsage("insight_title", modelMain(), resp.usage);
+  recordUsage("insight_title", model, resp.usage);
 
   const block = resp.content.find((b) => b.type === "text");
   const text = block && block.type === "text" ? block.text : "";

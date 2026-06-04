@@ -273,15 +273,22 @@ async function semanticSearch(
         notebook_name: string;
         embedding: Buffer;
       }>;
-    const scored = rows.map((r) => ({
-      page_id: r.page_id,
-      notebook_name: r.notebook_name,
-      text: r.text,
-      score: cosineSimilarity(qVec, decodeEmbedding(r.embedding)),
-    }));
+    const scored = rows
+      .map((r) => {
+        const vec = decodeEmbedding(r.embedding);
+        if (!vec) return null;
+        return {
+          page_id: r.page_id,
+          notebook_name: r.notebook_name,
+          text: r.text,
+          score: cosineSimilarity(qVec, vec),
+        };
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null);
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, limit);
-  } catch {
+  } catch (e) {
+    console.warn("[chatTools] semanticSearch failed:", (e as Error).message);
     return [];
   }
 }

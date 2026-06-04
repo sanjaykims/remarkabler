@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-06-04
+
+### Fixed (10-agent code review pass)
+
+- **Chat system prompt caching.** Split the system prompt into a cached static
+  block (instructions + tool policy) and a dynamic block (profile + recent
+  locations). Previously the cache was invalidated every time the profile or
+  locations changed, paying full price for the ~1.5KB static prefix on every
+  chat turn.
+- **`backfillTitles` was firing Opus on every Insights page load.** Throttled
+  to once per 5 minutes, capped to 3 titles per run, switched from Opus
+  (`modelMain`) to the chat model (Sonnet by default). Potential savings:
+  $10-40/month on heavy use.
+- **Maintenance sweep timestamp now persisted to settings.** Previously
+  `lastMaintenanceAt` lived in module memory; a Railway cold-start refired
+  the entire cascade (Voyage backfills, daily summaries, weekly insight).
+- **Chat fallback model loop fix.** Previously gated by `iter === 0`, so a
+  mid-loop 529 from Anthropic surfaced as an error. Now falls back on any
+  iteration and logs the switch.
+- **API route hygiene.** Added `export const dynamic = "force-dynamic"` to
+  all 15 data-reading routes that were missing it. Bumped `/api/chat`
+  `maxDuration` from 60s → 300s so complex tool-call chains don't get
+  terminated mid-stream.
+- **`COALESCE(SUM(...), 0)` in `lib/usage.ts`** so the Cost tab doesn't crash
+  on days/months with zero usage.
+- **Embedding BLOB length validation.** `decodeEmbedding` now returns null
+  on malformed blobs instead of producing NaN vectors that silently zero out
+  every cosine comparison.
+- **Notebooks UI.** Added a loading skeleton, a real error surface, and a
+  busy-lock on the Delete button so a slow connection doesn't flash "No
+  notebooks yet" or let a double-tap fire two DELETEs.
+- **Insights "Generate" double-tap guard.** Was setting state inside an async
+  function, so a quick double-tap could fire two parallel full-corpus
+  generations against Opus.
+- **Silent catches surfaced.** Replaced bare `} catch {}` with
+  `console.warn`/`console.error` in `processNotebook`, `semanticSearch`, and
+  the post-OCR profile fold. Silent failures now show up in Railway logs.
+
 ## 2026-06-03
 
 ### Added

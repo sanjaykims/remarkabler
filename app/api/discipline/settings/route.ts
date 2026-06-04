@@ -3,6 +3,7 @@ import { isAuthenticated } from "@/lib/auth";
 import { isDisciplineEnabled, setDisciplineEnabled } from "@/lib/notes";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 

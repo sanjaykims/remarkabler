@@ -112,7 +112,9 @@ export function monthlyUsage(month: string, tzMinutes: number) {
   const { start, end } = utcRangeFor(month, tzMinutes);
   const days = db()
     .prepare(
-      `SELECT date(created_at, ?) AS day, SUM(cost_usd) AS cost, COUNT(*) AS calls
+      `SELECT date(created_at, ?) AS day,
+              COALESCE(SUM(cost_usd), 0) AS cost,
+              COUNT(*) AS calls
        FROM api_usage
        WHERE created_at >= ? AND created_at < ?
        GROUP BY day ORDER BY day`
@@ -127,9 +129,12 @@ export function dailyUsage(date: string, tzMinutes: number) {
   const { start, end } = utcRangeFor(date, tzMinutes);
   const byFeature = db()
     .prepare(
-      `SELECT feature, SUM(cost_usd) AS cost, COUNT(*) AS calls,
-              SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
-              SUM(cache_read_tokens) AS cache_read_tokens
+      `SELECT feature,
+              COALESCE(SUM(cost_usd), 0) AS cost,
+              COUNT(*) AS calls,
+              COALESCE(SUM(input_tokens), 0) AS input_tokens,
+              COALESCE(SUM(output_tokens), 0) AS output_tokens,
+              COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens
        FROM api_usage
        WHERE created_at >= ? AND created_at < ?
        GROUP BY feature ORDER BY cost DESC`

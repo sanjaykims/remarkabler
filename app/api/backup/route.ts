@@ -8,6 +8,7 @@ import {
 import { setSetting, clearSetting } from "@/lib/db";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 // Manual backup runs synchronously through the API call. Give it room.
 export const maxDuration = 600;
 

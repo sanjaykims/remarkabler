@@ -41,6 +41,7 @@ export default function InsightsPage() {
   }, []);
 
   async function generate() {
+    if (generating) return;
     setGenerating(true);
     setError(null);
     try {
