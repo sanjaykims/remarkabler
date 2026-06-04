@@ -72,6 +72,8 @@ export default function MemoryPage() {
     lastCallAt: string | null;
   };
   const [embed, setEmbed] = useState<EmbedStatus | null>(null);
+  const [embedBusy, setEmbedBusy] = useState(false);
+  const [embedMsg, setEmbedMsg] = useState<string | null>(null);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -221,6 +223,30 @@ export default function MemoryPage() {
       setEmbed(await fetch("/api/embeddings/status").then((r) => r.json()));
     } catch {
       setEmbed(null);
+    }
+  }
+
+  async function runEmbedBackfill() {
+    if (embedBusy) return;
+    setEmbedBusy(true);
+    setEmbedMsg("Embedding remaining pages — this can take a minute…");
+    try {
+      const r = await fetch("/api/embeddings/status", { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) {
+        setEmbedMsg(d.error || "Backfill failed.");
+      } else if (d.error) {
+        setEmbedMsg(
+          `Embedded ${d.embedded} this pass. ${d.remaining} still missing — ${d.error}`
+        );
+      } else {
+        setEmbedMsg(`Done — embedded ${d.embedded} pages this pass.`);
+      }
+      await loadEmbed();
+    } catch (e) {
+      setEmbedMsg((e as Error).message || "Backfill failed.");
+    } finally {
+      setEmbedBusy(false);
     }
   }
 
@@ -703,11 +729,22 @@ export default function MemoryPage() {
                 : " No calls yet — uploads run this in the background."}
             </p>
             {embed.embeddedPages < embed.totalPages && (
-              <p className="text-xs opacity-60">
-                Remaining pages get embedded automatically the next time the
-                background sweep runs (triggered by chat or upload).
-              </p>
+              <>
+                <p className="text-xs opacity-60">
+                  Remaining pages get embedded automatically the next time the
+                  background sweep runs (triggered by chat or upload). If the
+                  count looks stuck, tap below to run it now.
+                </p>
+                <button
+                  onClick={runEmbedBackfill}
+                  disabled={embedBusy}
+                  className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+                >
+                  {embedBusy ? "Embedding…" : "Backfill now"}
+                </button>
+              </>
             )}
+            {embedMsg && <p className="text-sm opacity-70">{embedMsg}</p>}
           </>
         ) : (
           <p className="text-xs opacity-70 break-words">
