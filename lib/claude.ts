@@ -54,6 +54,16 @@ function modelChatFallback(): string {
     "claude-sonnet-4-6"
   );
 }
+// OCR has no built-in default; if nothing's set, fall back to modelMain
+// (Opus by default). Splitting it off from main means a user can keep Opus
+// for the evolving profile / insights (where accuracy matters most) but
+// route the OCR pass — which is the single most expensive call per upload —
+// to a cheaper model if they want.
+function modelOcr(): string {
+  return (
+    getSetting("model_ocr") || process.env.OCR_MODEL || modelMain()
+  );
+}
 
 let _client: Anthropic | null = null;
 function client(): Anthropic {
@@ -85,8 +95,9 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
   // Stream the response. The SDK rejects a non-streaming request whose
   // max_tokens is large enough that it could exceed the 10-minute timeout;
   // streaming also keeps the connection alive for a long transcription.
+  const ocrModel = modelOcr();
   const stream = client().messages.stream({
-    model: modelMain(),
+    model: ocrModel,
     max_tokens: 32000,
     system: [
       "You transcribe handwritten notebooks from a reMarkable tablet.",
@@ -118,7 +129,7 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
     ],
   });
   const resp = await stream.finalMessage();
-  recordUsage("ocr", modelMain(), resp.usage);
+  recordUsage("ocr", ocrModel, resp.usage);
 
   if (resp.stop_reason === "max_tokens") {
     throw new Error(

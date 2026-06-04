@@ -8,7 +8,7 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 
 type Slot = { key: string; env: string; def: string };
 
-const SLOTS: Record<"main" | "chat" | "fallback", Slot> = {
+const SLOTS: Record<"main" | "chat" | "fallback" | "ocr", Slot> = {
   main: { key: "model_main", env: "CLAUDE_MODEL", def: "claude-opus-4-7" },
   chat: { key: "model_chat", env: "CHAT_MODEL", def: "claude-sonnet-4-6" },
   fallback: {
@@ -16,6 +16,11 @@ const SLOTS: Record<"main" | "chat" | "fallback", Slot> = {
     env: "CHAT_FALLBACK_MODEL",
     def: "claude-sonnet-4-6",
   },
+  // OCR has no env or built-in default — when unset it resolves to
+  // whatever modelMain currently is. That preserves the previous
+  // behavior (handwriting goes through the most accurate model) until
+  // the user explicitly picks a cheaper one here.
+  ocr: { key: "model_ocr", env: "OCR_MODEL", def: "" },
 };
 
 function resolve(s: Slot): { value: string; source: "db" | "env" | "default" } {
@@ -32,6 +37,7 @@ export async function GET() {
     main: resolve(SLOTS.main),
     chat: resolve(SLOTS.chat),
     fallback: resolve(SLOTS.fallback),
+    ocr: resolve(SLOTS.ocr),
   });
 }
 
@@ -54,5 +60,6 @@ export async function POST(req: NextRequest) {
     main: resolve(SLOTS.main),
     chat: resolve(SLOTS.chat),
     fallback: resolve(SLOTS.fallback),
+    ocr: resolve(SLOTS.ocr),
   });
 }

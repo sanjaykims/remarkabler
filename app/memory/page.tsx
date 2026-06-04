@@ -48,6 +48,7 @@ export default function MemoryPage() {
     main: ModelInfo;
     chat: ModelInfo;
     fallback: ModelInfo;
+    ocr: ModelInfo;
   } | null>(null);
   const [modelsBusy, setModelsBusy] = useState(false);
 
@@ -268,7 +269,7 @@ export default function MemoryPage() {
     }
   }
 
-  async function setModel(slot: "main" | "chat" | "fallback", value: string) {
+  async function setModel(slot: "main" | "chat" | "fallback" | "ocr", value: string) {
     if (modelsBusy) return;
     setModelsBusy(true);
     try {
@@ -279,7 +280,7 @@ export default function MemoryPage() {
       });
       const d = await r.json();
       if (r.ok) {
-        setModels({ main: d.main, chat: d.chat, fallback: d.fallback });
+        setModels({ main: d.main, chat: d.chat, fallback: d.fallback, ocr: d.ocr });
       }
     } catch {
       // leave state as-is
@@ -654,10 +655,17 @@ export default function MemoryPage() {
                 },
                 {
                   slot: "main" as const,
-                  label: "OCR & memory",
+                  label: "Memory (profile & insights)",
                   hint:
-                    "Transcribes your handwriting and updates your evolving memory. Opus is most accurate; this is the worst place to cheap out.",
+                    "Updates your evolving memory and writes weekly insights. Opus is most accurate; this is the worst place to cheap out.",
                   info: models.main,
+                },
+                {
+                  slot: "ocr" as const,
+                  label: "OCR (handwriting transcription)",
+                  hint:
+                    "Reads your reMarkable PDFs into text. Each upload runs ONE of these calls and it's usually the biggest single charge per upload. Picking Sonnet here can roughly halve the per-upload cost; Opus catches messier handwriting more reliably. Leave on the first option to keep using your Memory model.",
+                  info: models.ocr,
                 },
                 {
                   slot: "fallback" as const,
@@ -680,12 +688,20 @@ export default function MemoryPage() {
               ) {
                 options.push({ value: info.value, label: `${info.value} (custom)` });
               }
+              // OCR has no built-in default; an empty resolved value means
+              // it currently inherits whatever Memory model is set.
               const sourceLabel =
                 info.source === "env"
                   ? `from Railway: ${info.value}`
                   : info.source === "db"
                     ? `your choice: ${info.value}`
-                    : `default: ${info.value}`;
+                    : slot === "ocr" && !info.value
+                      ? "the Memory model"
+                      : `default: ${info.value}`;
+              const fallbackOptionLabel =
+                slot === "ocr"
+                  ? "— Use the Memory model"
+                  : "— Use Railway / default";
               return (
                 <div
                   key={slot}
@@ -700,7 +716,7 @@ export default function MemoryPage() {
                     disabled={modelsBusy}
                     className="w-full rounded border border-stone-300 dark:border-stone-700 bg-transparent p-2 text-sm disabled:opacity-50"
                   >
-                    <option value="">— Use Railway / default</option>
+                    <option value="">{fallbackOptionLabel}</option>
                     {options.map((m) => (
                       <option key={m.value} value={m.value}>
                         {m.label}

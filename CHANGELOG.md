@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-04
+
+### Added
+- **OCR model is now its own picker on the Memory tab,** separate from the
+  Memory / profile model. OCR is the single biggest charge per notebook
+  upload (one full-PDF call); splitting it off means a user can keep Opus
+  for the memory rebuild (where accuracy matters most) but route OCR to
+  Sonnet for ~half the per-upload cost. New `model_ocr` setting +
+  `OCR_MODEL` env var override; when unset, OCR falls back to whatever the
+  Memory model is set to, so existing deployments behave exactly as before.
+
 ## 2026-06-03
 
 ### Added
