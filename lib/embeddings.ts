@@ -32,7 +32,10 @@ const BATCH_TOKEN_BUDGET = 100_000;
 const INTER_REQUEST_DELAY_MS = 250;
 
 function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 3);
+  // Korean / mixed-CJK text runs much denser than English in Voyage's
+  // tokeniser (often ~1-2 chars/token vs ~4 for English). Use chars/2 as
+  // a safe upper bound that still groups English short pages efficiently.
+  return Math.ceil(text.length / 2);
 }
 
 async function callVoyage(

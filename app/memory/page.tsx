@@ -235,14 +235,17 @@ export default function MemoryPage() {
       const d = await r.json();
       const parts: string[] = [];
       if (typeof d.embedded === "number") parts.push(`Embedded ${d.embedded} this pass`);
-      if (d.skipped) {
-        parts.push(
-          `${d.skipped} skipped (Voyage rejected — likely empty/oversized)`
-        );
-      }
+      if (d.skipped) parts.push(`${d.skipped} skipped`);
       if (d.remaining) parts.push(`${d.remaining} still missing`);
       if (d.error) parts.push(`Error: ${d.error}`);
-      setEmbedMsg(parts.length ? parts.join(" · ") : "Done.");
+      const main = parts.length ? parts.join(" · ") : "Done.";
+      // Show the first real Voyage error so the user knows whether it was
+      // a rate limit, an oversized page, or something else.
+      const samples =
+        Array.isArray(d.skippedSamples) && d.skippedSamples.length > 0
+          ? `\nFirst skip: ${d.skippedSamples[0]}`
+          : "";
+      setEmbedMsg(main + samples);
       await loadEmbed();
     } catch (e) {
       setEmbedMsg((e as Error).message || "Backfill failed.");
@@ -745,7 +748,11 @@ export default function MemoryPage() {
                 </button>
               </>
             )}
-            {embedMsg && <p className="text-sm opacity-70">{embedMsg}</p>}
+            {embedMsg && (
+              <p className="text-sm opacity-70 whitespace-pre-wrap break-words">
+                {embedMsg}
+              </p>
+            )}
           </>
         ) : (
           <p className="text-xs opacity-70 break-words">

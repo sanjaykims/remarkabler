@@ -6,9 +6,11 @@ import { isAuthenticated } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// The full backfill can take a couple of minutes for a large corpus; let
-// Vercel/Railway give us up to 5 minutes before terminating the request.
-export const maxDuration = 300;
+// The full backfill can take several minutes on Voyage's free tier (which
+// rate-limits to ~3 requests/min). Give the request 10 minutes before the
+// platform terminates it. (On self-hosted Node this is informational; on
+// Vercel-style platforms it controls the timeout.)
+export const maxDuration = 600;
 
 export async function GET() {
   if (!isAuthenticated()) {
