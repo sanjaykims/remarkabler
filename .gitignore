@@ -5,6 +5,8 @@ out
 .env.local
 data/*.db
 data/*.db-journal
+data/*.db-shm
+data/*.db-wal
 data/files/
 .DS_Store
 *.tsbuildinfo
