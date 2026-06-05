@@ -113,6 +113,13 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - The PWA share target and the voice features work on Android Chrome only;
   iOS Safari does not support them.
 
+## Session logs
+
+Detailed records of what was decided and validated in past sessions live
+under `docs/sessions/`. Read the most recent ones before starting work on
+related areas (Voyage embeddings, OCR model choice, cost optimization,
+backup behavior) so you don't re-derive answers we already have.
+
 ## Working with this user
 
 - Non-technical; works primarily from an Android phone; communicates with
