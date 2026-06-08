@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-04 (chat attachment extraction)
+
+### Added
+- **Chat attachments: PDF and Word docs are now converted to plain text
+  on the server before being sent to Claude.** Cuts per-chat token cost
+  ~3-5x for typed documents. Uses `pdf-parse` and `mammoth` (Node.js
+  equivalents of MarkItDown's PDF/DOCX paths).
+- **Images skip extraction** (jpg/png/gif/webp) and continue going
+  through Claude as vision blocks — text-extraction tools can't read
+  image content, and Claude's vision is what's wanted there.
+- **Handwritten reMarkable PDFs gracefully fall back** to the raw
+  document block — pdf-parse returns near-empty text on image-based
+  ink, the extractor signals `fallback`, and the original behavior
+  takes over so diary content is never lost.
+
 ## 2026-06-04 (later)
 
 ### Added
