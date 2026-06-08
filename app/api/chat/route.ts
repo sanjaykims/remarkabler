@@ -9,6 +9,7 @@ import { recentLocationsContext, isLocationEnabled } from "@/lib/location";
 import { owntracksRouteContext, warmOwntracksGeocodes } from "@/lib/owntracks";
 import { chatOverNotes } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
+import { extractTextFromAttachment } from "@/lib/extractText";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,6 +76,11 @@ export async function POST(req: NextRequest) {
     | undefined;
   let saved: { kind: "image" | "document"; filename: string; mime: string; stored: string }
     | undefined;
+  // Set when we successfully convert a PDF/Word attachment to plain text on
+  // the server (MarkItDown-style). The extracted text is appended to the
+  // user message and the raw document block is dropped, cutting per-chat
+  // token cost ~3-5x for text-based attachments.
+  let extractedDocText: string | undefined;
 
   if (att && typeof att === "object" && typeof att.dataBase64 === "string") {
     const mime = String(att.mediaType || "");
@@ -129,9 +135,40 @@ export async function POST(req: NextRequest) {
     fs.writeFileSync(path.join(ATTACHMENT_DIR, stored), bytes);
     attachment = { kind, mediaType, dataBase64: att.dataBase64 };
     saved = { kind, filename, mime: mediaType, stored };
+
+    // If this is a text-bearing file (PDF / DOCX / .txt / .md), try to pull
+    // the text out HERE on the server before sending to Claude. A 5-page
+    // typed PDF costs ~7,500 input tokens as a document block but only
+    // ~1,500 as extracted text — a 3-5x savings on every chat with an
+    // attached document. Images skip extraction entirely (no text layer
+    // to pull) and continue going through as vision blocks. Handwritten
+    // reMarkable PDFs also skip — pdf-parse returns near-empty text on
+    // image-based ink, the extractor signals "fallback", and we keep the
+    // raw document block so the diary content isn't lost.
+    if (kind === "document") {
+      const result = await extractTextFromAttachment({
+        mediaType,
+        bytes,
+        filename,
+      });
+      if (result.kind === "text") {
+        // Replace the raw document with extracted text appended to the
+        // user's message. Mark it so Claude knows it's the file contents,
+        // not the user's words.
+        const header = `[Extracted contents of ${filename}${
+          result.numPages ? `, ${result.numPages} pages` : ""
+        }]`;
+        extractedDocText = `${header}\n\n${result.text}`;
+        attachment = undefined;
+      } else {
+        console.warn(
+          `[chat] attachment extraction fallback (${filename}): ${result.reason}`
+        );
+      }
+    }
   }
 
-  if (!userMessage && !attachment) {
+  if (!userMessage && !attachment && !extractedDocText) {
     return NextResponse.json(
       { error: "Please type a message or attach a photo/PDF." },
       { status: 400 }
@@ -165,10 +202,27 @@ export async function POST(req: NextRequest) {
     : "";
   if (isLocationEnabled()) warmOwntracksGeocodes();
 
+  // Compose the message sent to Claude: the user's typed message + (if we
+  // pulled out a document) the extracted text. The stored chat row (below)
+  // keeps just the user's typed message — the extracted text isn't shown
+  // back in chat history because the user attached the file, they didn't
+  // write that content themselves.
+  const messageToClaude = extractedDocText
+    ? userMessage
+      ? `${userMessage}\n\n${extractedDocText}`
+      : extractedDocText
+    : userMessage;
+
   let reply: string;
   let replyModel: string;
   try {
-    const result = await chatOverNotes({ profile, recentLocations, history, userMessage, attachment });
+    const result = await chatOverNotes({
+      profile,
+      recentLocations,
+      history,
+      userMessage: messageToClaude,
+      attachment,
+    });
     reply = result.reply;
     replyModel = result.model;
   } catch (err) {
