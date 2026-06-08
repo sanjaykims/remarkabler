@@ -7,7 +7,11 @@ import { embedBatch, embedBatchOrThrow, embeddingsEnabled, encodeEmbedding } fro
 import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
 import { owntracksRouteContext } from "./owntracks";
 import { recentLocationsContext, isLocationEnabled } from "./location";
-import { parseSqliteUtc } from "./format";
+import { parseSqliteUtc, TZ_OFFSET_MIN } from "./format";
+import {
+  disciplineConfig,
+  fetchRepoTextFiles,
+} from "./github";
 import { maybeCleanupOrphanAttachments } from "./cleanup";
 
 const FILES_DIR = path.join(
@@ -237,6 +241,7 @@ let generatingWeeklyInsight = false;
 let backfillingEmbeddings = false;
 let backfillingEntryDates = false;
 let generatingDailySummaries = false;
+let autoSyncingDiscipline = false;
 
 // Throttle the whole background-maintenance cascade so a chat send isn't
 // paying 7+ guard DB reads (each a COUNT or join over `pages`) on every
@@ -580,6 +585,66 @@ export function maybeDistillLocation(): void {
   })();
 }
 
+// Local-time (KST) date string YYYY-MM-DD for "today" — used to fire the
+// daily discipline auto-sync at most once per local day. We anchor on the
+// user's display timezone so "every day at 00:00" matches what they see.
+function todayLocalDate(): string {
+  const now = Date.now() + TZ_OFFSET_MIN * 60 * 1000;
+  return new Date(now).toISOString().slice(0, 10);
+}
+
+/**
+ * Auto-pull the discipline (GitHub) repo once per local day. Fires from the
+ * 5-minute maintenance sweep, so the first chat/upload/dashboard-load after
+ * KST midnight triggers it. Best-effort, fire-and-forget, never throws.
+ *
+ * Strict 00:00 firing isn't possible without an out-of-process scheduler
+ * (Railway has no built-in cron); this gives the same end-user experience
+ * — "every day, automatic, no taps" — by piggybacking on existing traffic.
+ * If the user doesn't open the app for a day, the sync happens on next use.
+ */
+export function maybeAutoSyncDiscipline(): void {
+  if (autoSyncingDiscipline) return;
+  if (!isDisciplineEnabled()) return;
+  const cfg = disciplineConfig();
+  if (!cfg) return;
+
+  const today = todayLocalDate();
+  const lastSyncDay = getSetting("discipline_auto_sync_day") || "";
+  if (lastSyncDay === today) return;
+
+  autoSyncingDiscipline = true;
+  // Stamp the day BEFORE the actual work so a failing remote (network
+  // blip, GitHub 5xx) doesn't cause this to retry on every sweep tick for
+  // the rest of the day. Manual "Sync now" remains available as the
+  // explicit recovery path.
+  setSetting("discipline_auto_sync_day", today);
+
+  (async () => {
+    try {
+      const files = await fetchRepoTextFiles(cfg);
+      if (files.length === 0) {
+        console.warn("[discipline] auto-sync: repo had no readable text files");
+        return;
+      }
+      const disciplineText = replaceDisciplineNotebook(files);
+      try {
+        const current = getCurrentProfile();
+        const updated = current
+          ? await updateSelfModel({ currentProfile: current, newContent: disciplineText })
+          : await buildSelfModel({ notesContext: buildNotesContext() });
+        saveProfile(updated);
+      } catch (e) {
+        console.warn("[discipline] auto-sync: profile fold failed:", (e as Error).message);
+      }
+    } catch (e) {
+      console.warn("[discipline] auto-sync failed:", (e as Error).message);
+    } finally {
+      autoSyncingDiscipline = false;
+    }
+  })();
+}
+
 /**
  * Once a week, write a fresh on-demand insight in the background so the
  * Insights record grows on its own rather than only when the user remembers
@@ -716,6 +781,10 @@ export function replaceDisciplineNotebook(
     insertFts.run(text, name, pageId, DISCIPLINE_ID);
   });
 
+  // Mark today as synced so the daily auto-sync sweep won't re-fire after a
+  // manual "Sync now" on the same day.
+  setSetting("discipline_auto_sync_day", todayLocalDate());
+
   return files.map((f) => `## ${f.path}\n${f.content}`).join("\n\n");
 }
 
@@ -776,6 +845,8 @@ export function runMaintenanceSweep(): void {
   maybeBackfillEmbeddings();
   maybeBackfillEntryDates();
   maybeGenerateDailySummaries();
+  // Daily-gated: pull the discipline repo once per local-time day.
+  maybeAutoSyncDiscipline();
   // Daily-gated sweep: orphan chat_attachment rows + stray files in the
   // chat-attachments directory whose row was already gone.
   maybeCleanupOrphanAttachments();
