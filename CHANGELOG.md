@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-04 (later)
+
+### Added
+- **Discipline (GitHub) auto-sync.** Pulls your discipline repo once per
+  local-time day, fired from the existing maintenance sweep on first
+  activity after KST midnight. No new infrastructure; piggybacks on
+  chats/uploads. Manual "Sync now" still works and marks the day as
+  done so the auto-sync doesn't double-fire.
+
 ## 2026-06-04
 
 ### Fixed (10-agent code review pass)
