@@ -619,46 +619,70 @@ export async function generateInsights(opts: {
   chatContext: string;
   priorInsights: string[];
 }): Promise<string> {
-  const priorBlock = opts.priorInsights.length
-    ? [
-        "",
-        "=== YOUR PREVIOUS INSIGHTS (most recent first) ===",
-        opts.priorInsights.join("\n\n---\n\n"),
-        "=== END PREVIOUS INSIGHTS ===",
-      ].join("\n")
-    : "";
+  // Split the system prompt into a CACHEABLE static block (instructions +
+  // your big stable diary corpus) and an UNCACHED dynamic block (recent
+  // chats + prior insights — those change between runs).
+  //
+  // Why: the corpus is ~50K tokens and barely changes week-to-week. With
+  // cache_control, a second call within ~5 minutes pays $0.50/M tokens on
+  // that prefix instead of $5/M — 90% off. Helps most when the user taps
+  // "Generate insights" several times in a row (e.g. previewing variants);
+  // the weekly auto-run is too spaced-out to benefit much.
+  //
+  // Identical output to the previous one-string version. Caching is a
+  // billing-layer feature — Claude still reads every token. We just stop
+  // paying full price to re-send the same diary the cache already holds.
+  const staticGuidance = [
+    "You help a person understand themselves by reflecting on their",
+    "handwritten notebooks and their conversations with you.",
+    "Write a concise, specific set of insights about this person:",
+    "recurring themes, what they value, patterns in how they think and feel,",
+    "their goals and worries, and anything notable or worth their attention.",
+    "Their notes are the main source. Their recent chats with you also count —",
+    "what they ask about reveals their current concerns and interests.",
+    "Be warm, honest, and concrete — point to what they actually wrote or asked.",
+    "If previous insights are provided, build on them: note what has changed,",
+    "progressed, or recurred, and do not simply repeat earlier observations.",
+    "Write a few short paragraphs or bullet points. No preamble, no sign-off.",
+    "",
+    "=== THE PERSON'S NOTES ===",
+    opts.notesContext,
+    "=== END NOTES ===",
+  ].join("\n");
 
-  const chatBlock = opts.chatContext.trim()
-    ? [
-        "",
-        "=== THE PERSON'S RECENT CHATS WITH YOU ===",
-        opts.chatContext,
-        "=== END CHATS ===",
-      ].join("\n")
-    : "";
+  const dynamicContext = [
+    ...(opts.chatContext.trim()
+      ? [
+          "=== THE PERSON'S RECENT CHATS WITH YOU ===",
+          opts.chatContext,
+          "=== END CHATS ===",
+          "",
+        ]
+      : []),
+    ...(opts.priorInsights.length
+      ? [
+          "=== YOUR PREVIOUS INSIGHTS (most recent first) ===",
+          opts.priorInsights.join("\n\n---\n\n"),
+          "=== END PREVIOUS INSIGHTS ===",
+        ]
+      : []),
+  ].join("\n");
+
+  const system: Anthropic.TextBlockParam[] = [
+    {
+      type: "text",
+      text: staticGuidance,
+      cache_control: { type: "ephemeral" },
+    },
+    ...(dynamicContext
+      ? [{ type: "text" as const, text: dynamicContext }]
+      : []),
+  ];
 
   const resp = await client().messages.create({
     model: modelMain(),
     max_tokens: 2048,
-    system: [
-      "You help a person understand themselves by reflecting on their",
-      "handwritten notebooks and their conversations with you.",
-      "Write a concise, specific set of insights about this person:",
-      "recurring themes, what they value, patterns in how they think and feel,",
-      "their goals and worries, and anything notable or worth their attention.",
-      "Their notes are the main source. Their recent chats with you also count —",
-      "what they ask about reveals their current concerns and interests.",
-      "Be warm, honest, and concrete — point to what they actually wrote or asked.",
-      "If previous insights are provided, build on them: note what has changed,",
-      "progressed, or recurred, and do not simply repeat earlier observations.",
-      "Write a few short paragraphs or bullet points. No preamble, no sign-off.",
-      "",
-      "=== THE PERSON'S NOTES ===",
-      opts.notesContext,
-      "=== END NOTES ===",
-      chatBlock,
-      priorBlock,
-    ].join("\n"),
+    system,
     messages: [
       {
         role: "user",

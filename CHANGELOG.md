@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-05
+
+### Fixed
+- **`generateInsights` now uses prompt caching.** The ~50K-token diary
+  corpus is split into a cacheable static block + an uncached dynamic
+  block (recent chats + prior insights). Identical output; saves ~90%
+  on input tokens for back-to-back manual runs. Weekly auto-runs are
+  spaced too far apart to hit a warm cache, but cost the same as before
+  for the first call (no penalty).
+
 ## 2026-06-04 (chat attachment extraction)
 
 ### Added
