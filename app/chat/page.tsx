@@ -349,7 +349,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)]">
+    <div className="flex flex-col h-[calc(100dvh-120px)]">
       <div className="flex items-center justify-between gap-2 mb-4">
         <h1 className="text-2xl font-semibold">Chat with your notes</h1>
         {messages.length > 0 && (
@@ -475,7 +475,7 @@ export default function ChatPage() {
             onClick={openFilePicker}
             disabled={busy}
             aria-label="Attach a photo or PDF"
-            className="w-9 h-9 rounded-full border border-stone-300 dark:border-stone-700 flex items-center justify-center disabled:opacity-50"
+            className="w-10 h-10 rounded-full border border-stone-300 dark:border-stone-700 flex items-center justify-center disabled:opacity-50"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M12 5v14M5 12h14" />
@@ -489,7 +489,7 @@ export default function ChatPage() {
                 disabled={busy}
                 aria-label={listening ? "Stop listening" : "Speak"}
                 className={
-                  "w-9 h-9 rounded-full flex items-center justify-center " +
+                  "w-10 h-10 rounded-full flex items-center justify-center " +
                   (listening
                     ? "bg-red-600 text-white"
                     : "border border-stone-300 dark:border-stone-700 disabled:opacity-50")
@@ -505,7 +505,7 @@ export default function ChatPage() {
               type="submit"
               disabled={busy || (!input.trim() && !file)}
               aria-label="Send"
-              className="w-9 h-9 rounded-full bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 flex items-center justify-center disabled:opacity-40"
+              className="w-10 h-10 rounded-full bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 flex items-center justify-center disabled:opacity-40"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 19V5M5 12l7-7 7 7" />

@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-06-05 (mobile display optimization)
+
+### Improved
+- **AMOLED-friendly dark mode** — body background is now pure black
+  (`#000`) so phones with AMOLED screens (Galaxy S, Pixel, modern iPhone)
+  physically turn those pixels off. Better battery + infinite contrast.
+  Light mode unchanged.
+- **Safe-area aware layout** — `viewport-fit=cover` plus
+  `env(safe-area-inset-*)` padding on header and main, so content uses
+  every pixel including around punch-hole cameras and rounded corners.
+- **`themeColor` metadata** — system status bar matches the app
+  (warm-stone in light, true black in dark) instead of showing a jarring
+  white/black stripe at the top of the PWA.
+- **`100dvh` instead of `100vh` for the chat container** — dynamic
+  viewport height handles mobile browser address-bar collapse properly,
+  so the chat input row no longer hides behind the bottom URL bar.
+- **40px minimum tap targets on touch devices** — global CSS rule plus
+  bumped chat input buttons from 36px → 40px. Matches Material / HIG
+  guidance, easier thumb tapping.
+- **Tighter horizontal padding on mobile** — main content was using
+  `px-6` (24px each side); now `px-4 sm:px-6` so phones reclaim ~16px
+  of horizontal real estate without changing desktop spacing.
+- **Smooth scroll + `touch-action: manipulation`** — removes the 300ms
+  tap-zoom delay and gives buttery scrolling on 120Hz screens.
+
 ## 2026-06-05
 
 ### Fixed
