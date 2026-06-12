@@ -13,6 +13,10 @@ Written 2026-06-05, model `claude-opus-4-8`.
 
 ## The big picture
 
+> A pre-rendered image of the diagram below is saved alongside this file at
+> [`claude-harness.png`](./claude-harness.png) (handy where Mermaid doesn't
+> render).
+
 ```mermaid
 flowchart TB
     subgraph ENV["Remote execution environment (Claude Code on the web)"]
