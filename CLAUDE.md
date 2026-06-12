@@ -2,6 +2,11 @@
 
 Guidance for Claude Code working on this repository.
 
+> **New here?** Start with **`AGENTS.md`** at the repo root — a
+> tool-agnostic orientation (structure map, how to work, and what an AI
+> agent can/can't do in this environment) that any AI can read. This file
+> holds the Claude-specific deep detail; `AGENTS.md` is the front door.
+
 ## What this is
 
 "Remarkabler" (formerly "Feed Claude"): a self-hosted Next.js app. The user
