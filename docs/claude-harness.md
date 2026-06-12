@@ -13,9 +13,10 @@ Written 2026-06-05, model `claude-opus-4-8`.
 
 ## The big picture
 
-> A pre-rendered image of the diagram below is saved alongside this file at
-> [`claude-harness.png`](./claude-harness.png) (handy where Mermaid doesn't
-> render).
+> Pre-rendered copies of the diagram are saved alongside this file:
+> [`claude-harness.svg`](./claude-harness.svg) (vector — stays sharp at any
+> zoom, best for reading on a phone) and
+> [`claude-harness.png`](./claude-harness.png) (raster, 10976×10808).
 
 ```mermaid
 flowchart TB
