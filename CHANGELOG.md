@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-06-14 (mind: fix date regex + carry-forward)
+
+### Fixed
+- **Diary header regex was missing every page.** The user's actual format
+  is `YYYY-MM-DD-HH-MM-KST` (a dash between hour and minute, lowercase
+  `kst`); the old pattern expected `YYYY-MM-DD-HHMM-KST` (no separator,
+  uppercase). Updated `extractEntryDate` in `lib/notes.ts` to a tolerant
+  pattern that also handles `YYYY-MM-DD HH:MM KST` and ISO-ish `T`.
+- **Carry-forward within a notebook.** The user writes the timestamp once
+  per session, but a session spans many pages. New `reparseAllEntryDates`
+  walks every notebook in page order and propagates the most recent
+  header to subsequent pages until the next one appears. Idempotent,
+  transactional, no Claude / Voyage calls.
+- **One-time auto-migration.** First GET to `/api/mind` after this deploy
+  runs the reparse once and sets the `mind_dates_reparsed_v2` setting flag
+  so it never repeats. Best-effort — failures are logged but don't break
+  the response (the SQL upload-date fallback still works).
+- **Manual "Re-parse dates" button** on `/mind` for future regex tweaks.
+- New endpoint: `POST /api/mind/reparse-dates`.
+
 ## 2026-06-14 (mind: fallback dates + 3D map)
 
 ### Fixed
