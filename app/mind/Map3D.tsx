@@ -17,7 +17,7 @@
 
 import { Suspense, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Billboard, Text } from "@react-three/drei";
+import { OrbitControls, Billboard, Html, Text } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -125,33 +125,50 @@ function ActiveLabel({ p }: { p: MapPoint }) {
   );
 }
 
-// Floating label at the end of an axis. Billboards so it always faces the
-// camera. Coloured so it doesn't disappear against either light or dark
-// backgrounds.
+// Floating label at the end of an axis. Rendered via drei's <Html> so it
+// uses the page's normal CSS font instead of three.js's SDF text — that
+// matters because Claude's labels can be Korean (or anything else) and the
+// SDF default font doesn't include CJK glyphs, so <Text> would silently
+// render nothing. `center` anchors on the 3D position, `distanceFactor`
+// keeps the pill a reasonable size as the camera moves, and `pointerEvents:
+// "none"` is essential so the label can't block OrbitControls' touch.
 function AxisEndLabel({
   position,
   text,
-  size = 0.06,
+  tone,
 }: {
   position: [number, number, number];
   text: string;
-  size?: number;
+  tone: "warm" | "cool";
 }) {
   if (!text) return null;
   return (
-    <Billboard position={position}>
-      <Text
-        fontSize={size}
-        color="#fef3c7"
-        outlineWidth={0.006}
-        outlineColor="#0c0a09"
-        anchorX="center"
-        anchorY="middle"
-        maxWidth={1.2}
+    <Html
+      position={position}
+      center
+      distanceFactor={6}
+      zIndexRange={[10, 0]}
+      style={{ pointerEvents: "none" }}
+    >
+      <div
+        style={{
+          background:
+            tone === "warm" ? "rgba(120, 53, 15, 0.85)" : "rgba(30, 58, 138, 0.85)",
+          color: "#fef3c7",
+          padding: "3px 8px",
+          borderRadius: 999,
+          fontSize: 12,
+          fontWeight: 500,
+          whiteSpace: "nowrap",
+          fontFamily:
+            "ui-sans-serif, system-ui, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
+          userSelect: "none",
+        }}
       >
         {text}
-      </Text>
-    </Billboard>
+      </div>
+    </Html>
   );
 }
 
@@ -230,14 +247,17 @@ export default function Map3D({
           <Axes />
           {axisLabels && (
             <>
-              {/* Six labels at the tips of the three axes. Positioned just
-                  beyond the visible cluster so they don't overlap dots. */}
-              <AxisEndLabel position={[1.25, 0, 0]} text={axisLabels.pc1.positive} />
-              <AxisEndLabel position={[-1.25, 0, 0]} text={axisLabels.pc1.negative} />
-              <AxisEndLabel position={[0, 1.25, 0]} text={axisLabels.pc2.positive} />
-              <AxisEndLabel position={[0, -1.25, 0]} text={axisLabels.pc2.negative} />
-              <AxisEndLabel position={[0, 0, 1.25]} text={axisLabels.pc3.positive} />
-              <AxisEndLabel position={[0, 0, -1.25]} text={axisLabels.pc3.negative} />
+              {/* Six labels at the axis tips. Positioned just beyond the
+                  cluster (which is normalised to ±1). Positive ends use the
+                  warm tone, negative ends the cool tone — same colour cue
+                  used for sentiment so the visual language stays
+                  consistent. */}
+              <AxisEndLabel position={[1.15, 0, 0]} tone="warm" text={axisLabels.pc1.positive} />
+              <AxisEndLabel position={[-1.15, 0, 0]} tone="cool" text={axisLabels.pc1.negative} />
+              <AxisEndLabel position={[0, 1.15, 0]} tone="warm" text={axisLabels.pc2.positive} />
+              <AxisEndLabel position={[0, -1.15, 0]} tone="cool" text={axisLabels.pc2.negative} />
+              <AxisEndLabel position={[0, 0, 1.15]} tone="warm" text={axisLabels.pc3.positive} />
+              <AxisEndLabel position={[0, 0, -1.15]} tone="cool" text={axisLabels.pc3.negative} />
             </>
           )}
           {points.map((p) => (
