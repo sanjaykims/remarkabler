@@ -171,6 +171,56 @@ export default function ChatPage() {
     });
   }
 
+  // "/raw <query>" or "/raw" — bypass Claude entirely and pull raw diary
+  // entries directly from /api/diary. Free per use, instant, and gives you
+  // the verbatim text without any model interpretation. Examples:
+  //   /raw            → most recent entries
+  //   /raw 2026-04-05 → entries on that date
+  //   /raw 2026-04    → entries in that month
+  //   /raw 가족        → keyword search
+  async function handleRawCommand(rawText: string) {
+    const query = rawText.replace(/^\/raw\b/, "").trim();
+    const params = new URLSearchParams();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(query)) {
+      params.set("date", query);
+    } else if (/^\d{4}-\d{2}$/.test(query)) {
+      // Whole-month: from yyyy-mm-01 to first-of-next-month (exclusive).
+      params.set("from", `${query}-01`);
+      const [y, m] = query.split("-").map(Number);
+      const next =
+        m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+      params.set("to", next);
+    } else if (query) {
+      params.set("q", query);
+    }
+    params.set("limit", "30");
+    const r = await fetch(`/api/diary?${params.toString()}`);
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.error || "Couldn't fetch raw entries.");
+    }
+    const d = (await r.json()) as {
+      entries: Array<{
+        notebook_name: string;
+        page_index: number;
+        entry_date: string | null;
+        ocr_text: string;
+      }>;
+    };
+    if (d.entries.length === 0) {
+      return `(no entries matched "${query || "recent"}")`;
+    }
+    return d.entries
+      .map((e) => {
+        const head = [
+          e.entry_date || "(no date)",
+          `${e.notebook_name} · p${e.page_index + 1}`,
+        ].join(" · ");
+        return `--- ${head} ---\n${e.ocr_text}`;
+      })
+      .join("\n\n");
+  }
+
   async function sendMessage(text: string, speakReply: boolean) {
     const t = text.trim();
     const attached = file;
@@ -193,6 +243,27 @@ export default function ChatPage() {
             : ""),
       },
     ]);
+
+    // /raw shortcut — runs entirely client-side against the free /api/diary
+    // endpoint. No Claude call, no cost. Show the result as if it were a
+    // (non-AI) "raw" reply.
+    if (t.startsWith("/raw")) {
+      try {
+        const raw = await handleRawCommand(t);
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", content: raw, model: "raw (no AI)" },
+        ]);
+      } catch (e) {
+        setMessages((m) => m.slice(0, -1));
+        setError((e as Error).message || "Raw lookup failed.");
+        if (t) updateInput(t);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     try {
       // JSON + base64 — bypasses multipart, which dropped the file part on
       // Samsung Internet (the picture was silently going to /api/chat as
@@ -453,7 +524,7 @@ export default function ChatPage() {
               ? "Thinking…"
               : listening
                 ? "Listening…"
-                : "Ask anything about your notes…"
+                : "Ask anything about your notes…  (tip: /raw for free raw lookup)"
           }
           disabled={busy}
           rows={2}

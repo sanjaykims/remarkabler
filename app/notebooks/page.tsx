@@ -15,6 +15,13 @@ type Notebook = {
   ocr_count: number;
 };
 
+type Page = {
+  id: string;
+  page_index: number;
+  ocr_text: string | null;
+  entry_date: string | null;
+};
+
 export default function NotebooksPage() {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +30,23 @@ export default function NotebooksPage() {
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Lazy-loaded page text per notebook. Fetched only when a notebook
+  // is expanded so the list view stays cheap.
+  const [pagesById, setPagesById] = useState<Record<string, Page[] | "loading" | "error">>({});
   const fileRef = useRef<HTMLInputElement>(null);
+
+  async function loadPages(id: string) {
+    if (pagesById[id] && pagesById[id] !== "error") return; // already loaded / loading
+    setPagesById((s) => ({ ...s, [id]: "loading" }));
+    try {
+      const r = await fetch(`/api/notebooks/${encodeURIComponent(id)}/pages`);
+      if (!r.ok) throw new Error(`Failed (${r.status})`);
+      const d = await r.json();
+      setPagesById((s) => ({ ...s, [id]: d.pages || [] }));
+    } catch {
+      setPagesById((s) => ({ ...s, [id]: "error" }));
+    }
+  }
 
   async function load() {
     try {
@@ -190,39 +213,84 @@ export default function NotebooksPage() {
 
       {notebooks.length > 0 && (
         <div className="space-y-1">
-          {notebooks.map((n) => (
-            <details
-              key={n.id}
-              className="rounded border border-stone-200 dark:border-stone-800"
-            >
-              <summary className="cursor-pointer px-3 py-2 list-none flex flex-col gap-0.5">
-                <span className="text-[11px] opacity-60">
-                  {n.status === "processing" && "Transcribing…"}
-                  {n.status === "done" &&
-                    `✓ ${n.page_count} page${n.page_count === 1 ? "" : "s"}`}
-                  {n.status === "error" && (
-                    <span className="text-red-600">Failed</span>
+          {notebooks.map((n) => {
+            const pages = pagesById[n.id];
+            return (
+              <details
+                key={n.id}
+                onToggle={(e) => {
+                  if ((e.target as HTMLDetailsElement).open && n.status === "done") {
+                    void loadPages(n.id);
+                  }
+                }}
+                className="rounded border border-stone-200 dark:border-stone-800"
+              >
+                <summary className="cursor-pointer px-3 py-2 list-none flex flex-col gap-0.5">
+                  <span className="text-[11px] opacity-60">
+                    {n.status === "processing" && "Transcribing…"}
+                    {n.status === "done" &&
+                      `✓ ${n.page_count} page${n.page_count === 1 ? "" : "s"}`}
+                    {n.status === "error" && (
+                      <span className="text-red-600">Failed</span>
+                    )}
+                  </span>
+                  <span className="text-xs opacity-80">{n.name}</span>
+                </summary>
+                <div className="px-3 pb-3 border-t border-stone-200 dark:border-stone-800 pt-2 space-y-3">
+                  {n.status === "error" && n.error && (
+                    <p className="text-xs text-red-600">{n.error}</p>
                   )}
-                </span>
-                <span className="text-xs opacity-80">{n.name}</span>
-              </summary>
-              <div className="px-3 pb-3 border-t border-stone-200 dark:border-stone-800 pt-2 space-y-2">
-                {n.status === "error" && n.error && (
-                  <p className="text-xs text-red-600">{n.error}</p>
-                )}
-                <p className="text-xs opacity-60">
-                  Uploaded {formatLocalTime(n.synced_at)}
-                </p>
-                <button
-                  onClick={() => remove(n.id, n.name)}
-                  disabled={deletingId !== null}
-                  className="text-xs opacity-60 hover:opacity-100 hover:text-red-600 disabled:opacity-30"
-                >
-                  {deletingId === n.id ? "Deleting…" : "Delete"}
-                </button>
-              </div>
-            </details>
-          ))}
+                  <p className="text-xs opacity-60">
+                    Uploaded {formatLocalTime(n.synced_at)}
+                  </p>
+                  {n.status === "done" && (
+                    <div className="space-y-2 pt-1 border-t border-stone-100 dark:border-stone-900">
+                      {pages === "loading" && (
+                        <p className="text-xs opacity-60 pt-2">Loading pages…</p>
+                      )}
+                      {pages === "error" && (
+                        <p className="text-xs text-red-600 pt-2">
+                          Couldn&rsquo;t load pages.{" "}
+                          <button
+                            onClick={() => loadPages(n.id)}
+                            className="underline"
+                          >
+                            Retry
+                          </button>
+                        </p>
+                      )}
+                      {Array.isArray(pages) && pages.length === 0 && (
+                        <p className="text-xs opacity-60 pt-2">
+                          No transcribed pages.
+                        </p>
+                      )}
+                      {Array.isArray(pages) &&
+                        pages.map((p) => (
+                          <div key={p.id} className="space-y-1 pt-2">
+                            <p className="text-[11px] opacity-50">
+                              page {p.page_index + 1}
+                              {p.entry_date && p.entry_date !== "none"
+                                ? ` · ${p.entry_date}`
+                                : ""}
+                            </p>
+                            <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">
+                              {p.ocr_text || "(blank)"}
+                            </pre>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => remove(n.id, n.name)}
+                    disabled={deletingId !== null}
+                    className="text-xs opacity-60 hover:opacity-100 hover:text-red-600 disabled:opacity-30"
+                  >
+                    {deletingId === n.id ? "Deleting…" : "Delete"}
+                  </button>
+                </div>
+              </details>
+            );
+          })}
         </div>
       )}
     </div>

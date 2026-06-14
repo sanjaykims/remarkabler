@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-06-14
+
+### Added — diary browsing (three ways, all free per check)
+- **New `/diary` tab.** Browse every transcribed page directly from the
+  database, grouped by `entry_date` (newest first), with full-text search
+  (`pages_fts`) and date-range filter. Zero AI calls per view; same
+  tokenisation as the chat `search_diary` tool.
+- **Notebooks tab now shows raw page text inline.** Tapping a notebook
+  expands to reveal each page's OCR transcription, lazy-loaded from a new
+  `GET /api/notebooks/[id]/pages` endpoint so the list view stays light.
+- **Chat `/raw` command.** Typing `/raw`, `/raw 2026-04-05`, `/raw 2026-04`
+  or `/raw <keyword>` bypasses Claude entirely and returns the matching
+  raw entries directly from `/api/diary`. No model call, no token cost.
+  Hint added to the chat input placeholder so the shortcut is
+  discoverable. Replies are marked `model: "raw (no AI)"`.
+
 ## 2026-06-05 (mobile display optimization)
 
 ### Improved
