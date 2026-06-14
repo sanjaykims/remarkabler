@@ -14,6 +14,11 @@ export function db(): Database.Database {
   const dbPath = path.join(DATA_DIR, "app.db");
   _db = new Database(dbPath);
   _db.pragma("journal_mode = WAL");
+  // SQLite ships with foreign keys off by default. We rely on ON DELETE
+  // CASCADE in several tables (chat_attachments → chat_messages,
+  // entry_analysis → pages) so without this pragma cascades are silently
+  // dropped and orphaned rows accumulate.
+  _db.pragma("foreign_keys = ON");
   _db.exec(SCHEMA);
 
   // Migrations for columns added after the initial schema.

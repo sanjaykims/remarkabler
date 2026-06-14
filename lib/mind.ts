@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { analyzeEntryContent } from "@/lib/claude";
 import { decodeEmbedding } from "@/lib/embeddings";
+import { DISCIPLINE_ID } from "@/lib/notes";
 
 // ──────────────────────────────────────────────────────────────────────────
 // Per-entry analysis driver. Pulls pages with OCR text but no row in
@@ -15,61 +16,43 @@ import { decodeEmbedding } from "@/lib/embeddings";
 export const ANALYZE_DEFAULT_LIMIT = 25;
 export const ANALYZE_MAX_LIMIT = 200;
 
-// "Discipline" notebook (synced from GitHub) is excluded from analysis: it
-// reflects external rules, not the user's own diary entries, and skewing
-// the theme cloud / mood line with it would be misleading.
-function disciplineNotebookId(): string | null {
-  try {
-    const row = db()
-      .prepare(
-        `SELECT id FROM notebooks WHERE name = 'discipline' LIMIT 1`
-      )
-      .get() as { id: string } | undefined;
-    return row?.id ?? null;
-  } catch {
-    return null;
-  }
+// "Discipline" notebook (synced from a GitHub repo) is excluded from
+// analysis: it reflects external rules / reading material, not the user's
+// own diary, and would skew the theme cloud and mood timeline if included.
+// The notebook's ID is the fixed sentinel DISCIPLINE_ID — earlier versions
+// of this file matched on `name = 'discipline'`, which never hit because
+// the row is stored with a label like "Discipline (owner/repo)".
+function disciplineNotebookId(): string {
+  return DISCIPLINE_ID;
 }
 
-function pendingPagesSql(excludeId: string | null, limit: number) {
-  const where = [
-    "p.ocr_text IS NOT NULL",
-    "p.ocr_text != ''",
-    "a.page_id IS NULL",
-  ];
-  const params: Array<string | number> = [];
-  if (excludeId) {
-    where.push("p.notebook_id != ?");
-    params.push(excludeId);
-  }
-  params.push(limit);
+function pendingPagesSql(excludeId: string, limit: number) {
   return {
     sql: `SELECT p.id, p.ocr_text
             FROM pages p
             LEFT JOIN entry_analysis a ON a.page_id = p.id
-            WHERE ${where.join(" AND ")}
+            WHERE p.ocr_text IS NOT NULL
+              AND p.ocr_text != ''
+              AND a.page_id IS NULL
+              AND p.notebook_id != ?
             ORDER BY p.entry_date IS NULL ASC, p.entry_date DESC, p.id DESC
             LIMIT ?`,
-    params,
+    params: [excludeId, limit] as Array<string | number>,
   };
 }
 
 export function countPending(): number {
-  const exc = disciplineNotebookId();
-  const params: string[] = [];
-  let extra = "";
-  if (exc) {
-    extra = " AND p.notebook_id != ?";
-    params.push(exc);
-  }
   const row = db()
     .prepare(
       `SELECT COUNT(*) AS c
          FROM pages p
          LEFT JOIN entry_analysis a ON a.page_id = p.id
-         WHERE p.ocr_text IS NOT NULL AND p.ocr_text != '' AND a.page_id IS NULL${extra}`
+         WHERE p.ocr_text IS NOT NULL
+           AND p.ocr_text != ''
+           AND a.page_id IS NULL
+           AND p.notebook_id != ?`
     )
-    .get(...params) as { c: number };
+    .get(disciplineNotebookId()) as { c: number };
   return row.c;
 }
 
@@ -80,57 +63,101 @@ export function countAnalyzed(): number {
   return row.c;
 }
 
+// Module-level in-flight guard. better-sqlite3 is synchronous so DB-level
+// races are limited, but the async Claude calls between SELECT and UPSERT
+// create a window where two overlapping callers (e.g. the upload-triggered
+// auto-analysis + a user click on "Analyse next 25") could each pick the
+// same rows and double-bill Claude for them. Reject the second caller
+// quickly instead of letting it duplicate work.
+let analyzePendingInFlight = false;
+
 export async function analyzePending(
   limit: number = ANALYZE_DEFAULT_LIMIT
-): Promise<{ analyzed: number; failed: number; remaining: number }> {
-  const n = Math.max(1, Math.min(ANALYZE_MAX_LIMIT, Math.floor(limit)));
-  const exc = disciplineNotebookId();
-  const { sql, params } = pendingPagesSql(exc, n);
-  const rows = db().prepare(sql).all(...params) as Array<{
-    id: string;
-    ocr_text: string;
-  }>;
+): Promise<{
+  analyzed: number;
+  failed: number;
+  remaining: number;
+  skipped?: "in-flight";
+}> {
+  if (analyzePendingInFlight) {
+    return {
+      analyzed: 0,
+      failed: 0,
+      remaining: countPending(),
+      skipped: "in-flight",
+    };
+  }
+  analyzePendingInFlight = true;
+  try {
+    const n = Math.max(1, Math.min(ANALYZE_MAX_LIMIT, Math.floor(limit)));
+    const { sql, params } = pendingPagesSql(disciplineNotebookId(), n);
+    const rows = db().prepare(sql).all(...params) as Array<{
+      id: string;
+      ocr_text: string;
+    }>;
 
-  const upsert = db().prepare(
-    `INSERT INTO entry_analysis
-       (page_id, themes, sentiment, summary, model, analyzed_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(page_id) DO UPDATE SET
-       themes      = excluded.themes,
-       sentiment   = excluded.sentiment,
-       summary     = excluded.summary,
-       model       = excluded.model,
-       analyzed_at = excluded.analyzed_at`
-  );
+    const upsert = db().prepare(
+      `INSERT INTO entry_analysis
+         (page_id, themes, sentiment, summary, model, analyzed_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(page_id) DO UPDATE SET
+         themes      = excluded.themes,
+         sentiment   = excluded.sentiment,
+         summary     = excluded.summary,
+         model       = excluded.model,
+         analyzed_at = excluded.analyzed_at`
+    );
 
-  // Process serially so we don't fan out parallel Claude calls (the SDK is
-  // fine with concurrency but the rate-limit accounting is not, and burning
-  // through tokens 10x at once is exactly the kind of cost surprise that
-  // motivated /raw).
-  let analyzed = 0;
-  let failed = 0;
-  const model = process.env.CHAT_MODEL || "claude-sonnet-4-6";
-  for (const row of rows) {
-    try {
-      const result = await analyzeEntryContent(row.ocr_text);
+    // Process serially so we don't fan out parallel Claude calls (the SDK is
+    // fine with concurrency but the rate-limit accounting is not, and burning
+    // through tokens 10x at once is exactly the kind of cost surprise that
+    // motivated /raw).
+    let analyzed = 0;
+    let failed = 0;
+    const model = process.env.CHAT_MODEL || "claude-sonnet-4-6";
+    for (const row of rows) {
+      let result: Awaited<ReturnType<typeof analyzeEntryContent>> = null;
+      try {
+        result = await analyzeEntryContent(row.ocr_text);
+      } catch (e) {
+        // Claude error (network, 5xx, parse). Skip this page, continue the
+        // loop — one bad page should never abort an entire backfill.
+        console.warn(
+          "[mind] analyze (claude) failed:",
+          row.id,
+          (e as Error).message
+        );
+        failed++;
+        continue;
+      }
       if (!result) {
         failed++;
         continue;
       }
-      upsert.run(
-        row.id,
-        JSON.stringify(result.themes),
-        result.sentiment,
-        result.summary || null,
-        model
-      );
-      analyzed++;
-    } catch (e) {
-      console.warn("[mind] analyze failed:", row.id, (e as Error).message);
-      failed++;
+      try {
+        upsert.run(
+          row.id,
+          JSON.stringify(result.themes),
+          result.sentiment,
+          result.summary || null,
+          model
+        );
+        analyzed++;
+      } catch (e) {
+        // DB write failed (busy / locked / FK violation if the page was just
+        // deleted). Don't kill the loop — log and move on.
+        console.warn(
+          "[mind] analyze (db) failed:",
+          row.id,
+          (e as Error).message
+        );
+        failed++;
+      }
     }
+    return { analyzed, failed, remaining: countPending() };
+  } finally {
+    analyzePendingInFlight = false;
   }
-  return { analyzed, failed, remaining: countPending() };
 }
 
 // ──────────────────────────────────────────────────────────────────────────

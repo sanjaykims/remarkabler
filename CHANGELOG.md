@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-06-14 (mind: review-pass fixes)
+
+After fanning out 11 parallel review agents (security / cost / PCA math /
+API contract / schema / concurrency / frontend / a11y / perf / privacy /
+robustness), addressed the real findings:
+
+- **FK pragma now enabled.** `_db.pragma("foreign_keys = ON")` in db.ts.
+  Previously, every `ON DELETE CASCADE` in the schema was silently dropped
+  by SQLite. Notebook deletes now properly cascade through pages →
+  entry_analysis, and message deletes cascade to attachments.
+- **Discipline notebook now actually excluded.** The lookup matched on
+  `name = 'discipline'`, which never hit — the row's ID is the fixed
+  sentinel `DISCIPLINE_ID = 'github-discipline'`. Importing it from
+  lib/notes.ts so theme/sentiment aggregates aren't polluted by synced
+  GitHub content.
+- **Concurrency: in-flight guard on `analyzePending`.** Two overlapping
+  callers (upload auto-analysis + user clicking "Analyse next 25") could
+  each pick the same rows and double-bill Claude. Second caller now
+  returns `{ skipped: "in-flight" }` immediately; the UI shows a clear
+  message.
+- **DB writes inside the analyse loop wrapped in try/catch.** A single
+  SQLite-locked / FK-violation (e.g. page deleted mid-batch) used to kill
+  the entire batch; now it's logged and the loop continues.
+- **Heatmap timezone fix.** Was using `toISOString().slice(0,10)` (UTC),
+  causing the grid to shift by a day for users away from UTC. Now uses
+  local date components.
+- **Embedding-map touch targets.** Visible circles slightly larger (r=4 →
+  r=5) and wrapped in a 24px transparent hit area so tapping works on a
+  phone.
+
 ## 2026-06-14 (mind visualizations)
 
 ### Added — `/mind` tab: four ways to see your patterns

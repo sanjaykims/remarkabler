@@ -67,11 +67,17 @@ export default function MindPage() {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Failed");
-      setAnalyzeMsg(
-        `Analysed ${d.analyzed} entries${
-          d.failed ? ` (${d.failed} failed)` : ""
-        }. ${d.remaining} pending.`
-      );
+      if (d.skipped === "in-flight") {
+        setAnalyzeMsg(
+          "Another analysis is already running (probably from a recent upload). Try again in a moment."
+        );
+      } else {
+        setAnalyzeMsg(
+          `Analysed ${d.analyzed} entries${
+            d.failed ? ` (${d.failed} failed)` : ""
+          }. ${d.remaining} pending.`
+        );
+      }
       await load();
     } catch (e) {
       setAnalyzeMsg((e as Error).message || "Analyse failed.");
@@ -178,11 +184,22 @@ function Heatmap({ data }: { data: HeatmapBucket[] }) {
   const byDate = new Map(data.map((d) => [d.date, d]));
   const maxPages = data.reduce((m, d) => Math.max(m, d.pages), 0) || 1;
 
+  // Build the ISO date from LOCAL components (not toISOString, which would
+  // convert to UTC and shift the cell by a day for users away from UTC).
+  // The diary's entry_date strings are themselves wall-clock dates (parsed
+  // from KST timestamps the user writes), so matching against the local
+  // calendar date is what makes the grid line up with how the user thinks
+  // about "today".
+  const localIso = (dt: Date) =>
+    `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(
+      dt.getDate()
+    ).padStart(2, "0")}`;
+
   const cells: Array<{ date: string; pages: number; row: number; col: number }> = [];
   for (let i = 0; i < weeks * 7; i++) {
     const dt = new Date(start);
     dt.setDate(start.getDate() + i);
-    const iso = dt.toISOString().slice(0, 10);
+    const iso = localIso(dt);
     const b = byDate.get(iso);
     cells.push({
       date: iso,
@@ -546,27 +563,37 @@ function EmbeddingMap({
             opacity={0.02}
           />
           {data.map((p) => (
-            <circle
+            <g
               key={p.page_id}
-              cx={toX(p.x)}
-              cy={toY(p.y)}
-              r={4}
-              fill={color(p.sentiment)}
-              stroke={active?.page_id === p.page_id ? "currentColor" : "none"}
-              strokeWidth={1.5}
-              style={{ cursor: "pointer" }}
               onClick={(e) => {
                 e.stopPropagation();
                 setActive(p);
               }}
+              style={{ cursor: "pointer" }}
             >
+              {/* Larger transparent hit area for finger taps — Material Design
+                  recommends 48dp, the visible dot is much smaller. */}
+              <circle
+                cx={toX(p.x)}
+                cy={toY(p.y)}
+                r={12}
+                fill="transparent"
+              />
+              <circle
+                cx={toX(p.x)}
+                cy={toY(p.y)}
+                r={5}
+                fill={color(p.sentiment)}
+                stroke={active?.page_id === p.page_id ? "currentColor" : "none"}
+                strokeWidth={1.5}
+              />
               <title>
                 {p.entry_date || "(no date)"} — {p.notebook_name} · p
                 {p.page_index + 1}
                 {p.themes.length > 0 ? `\n${p.themes.join(", ")}` : ""}
                 {p.summary ? `\n${p.summary}` : ""}
               </title>
-            </circle>
+            </g>
           ))}
         </svg>
       </div>
