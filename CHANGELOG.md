@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-06-14 (mind: fallback dates + 3D map)
+
+### Fixed
+- **Heatmap and mood timeline now populate even when entries lack a parsed
+  diary date.** Both `getHeatmap` and `getSentimentSeries` now use
+  `COALESCE(NULLIF(entry_date, 'none'), date(notebook.synced_at))`, so when
+  the user didn't write a `YYYY-MM-DD-HHMM-KST` timestamp on every page
+  (which is most of them — the regex only matches the session header),
+  entries fall back to the upload date and the charts show useful signal
+  immediately. Subtitle updated to call this out.
+
+### Added — 3D interactive embedding map
+- PCA refactored from 2-component to N-component (`pcaNd`) with the same
+  textbook deflation. Returns `[x, y, z]` per entry.
+- New `app/mind/Map3D.tsx` renders the cloud with three.js +
+  `@react-three/fiber` + `@react-three/drei`'s `OrbitControls`:
+  - one-finger drag → rotate
+  - two-finger pinch → zoom
+  - two-finger drag → pan
+- Loaded with `next/dynamic` (`ssr: false`) so the three.js bundle only
+  ships when the Mind page is open — other pages stay unaffected.
+- Active point pulses; a billboarded date label hovers above it so the user
+  doesn't lose context while rotating. Subtle axis lines for orientation.
+- Tap a point → existing detail panel below the canvas (date / notebook /
+  themes / sentiment / summary / preview).
+
+### Dependencies
+- Added: `three`, `@react-three/fiber`, `@react-three/drei`, `@types/three`.
+
 ## 2026-06-14 (mind: review-pass fixes)
 
 After fanning out 11 parallel review agents (security / cost / PCA math /
