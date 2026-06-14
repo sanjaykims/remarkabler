@@ -6,9 +6,14 @@
 //   - one-finger drag → rotate
 //   - two-finger pinch → zoom
 //   - two-finger drag → pan
-// Touch handling is the default from drei's controls, which is the whole
-// reason we pull in r3f instead of hand-rolling WebGL — every other piece
-// of UX (gimbal lock, momentum, pinch ratios) is solved already.
+//
+// Touch interaction gotcha: r3f mesh handlers like onPointerDown fire on
+// the very first touch event, and if we call e.stopPropagation() there
+// it eats the touch before OrbitControls can interpret it as a rotate
+// gesture — so once the user's finger lands on a point, rotation breaks
+// for the rest of the session. The fix is to use onClick (r3f synthesises
+// it from down+up without significant movement), so dragging across a
+// point still rotates the camera, and only a clean tap selects it.
 
 import { Suspense, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
@@ -70,7 +75,12 @@ function Point({
     <mesh
       ref={ref}
       position={[p.x, p.y, p.z]}
-      onPointerDown={(e: ThreeEvent<PointerEvent>) => {
+      onClick={(e: ThreeEvent<MouseEvent>) => {
+        // onClick fires only when the pointer goes down and back up on
+        // the same mesh without significant movement, i.e. a tap. A drag
+        // that happens to pass over a point still goes to OrbitControls
+        // for rotation. e.stopPropagation here prevents the click from
+        // also triggering the canvas-level "deselect" handler below.
         e.stopPropagation();
         onSelect(p);
       }}
@@ -156,12 +166,20 @@ export default function Map3D({ data }: { data: MapPoint[] }) {
     <div className="space-y-2">
       <div
         className="w-full rounded border border-stone-200 dark:border-stone-800 overflow-hidden bg-stone-50 dark:bg-stone-950"
+        // touchAction:none is set on BOTH the wrapper and the Canvas to keep
+        // mobile browsers from stealing one-finger drags as page scrolls.
+        // The wrapper covers the gap if the Canvas hasn't mounted yet; the
+        // inline style on Canvas covers the inner <canvas> element itself.
         style={{ height: 480, touchAction: "none" }}
       >
         <Canvas
           camera={{ position: [1.6, 1.4, 1.8], fov: 50 }}
+          // Clicking empty space (canvas with no mesh under the pointer)
+          // clears the active selection. With onClick on meshes also
+          // calling stopPropagation, this only fires for real misses.
           onPointerMissed={() => setActive(null)}
           dpr={[1, 2]}
+          style={{ touchAction: "none" }}
         >
           {/* Hemisphere + soft directional gives the spheres dimensionality
               without making the dark theme washed-out. */}
@@ -189,6 +207,13 @@ export default function Map3D({ data }: { data: MapPoint[] }) {
             rotateSpeed={0.7}
             zoomSpeed={0.8}
             panSpeed={0.6}
+            // Pin the gestures so one finger always rotates and two fingers
+            // always zoom+pan, regardless of which order OrbitControls'
+            // internal state-machine ended up in after a previous gesture.
+            touches={{
+              ONE: THREE.TOUCH.ROTATE,
+              TWO: THREE.TOUCH.DOLLY_PAN,
+            }}
             makeDefault
           />
         </Canvas>

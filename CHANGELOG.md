@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-06-14 (mind: 3D map touch fix)
+
+### Fixed
+- **3D map was breaking after the first touch.** When the user's finger
+  landed on a point, the mesh's `onPointerDown` handler called
+  `e.stopPropagation()` on the very first touch event, eating it before
+  OrbitControls could interpret it as a rotate gesture. Rotation then
+  stopped working for the rest of the session. Switched to `onClick`,
+  which r3f only fires for a clean tap (no significant movement) — so
+  dragging across a point still rotates the camera, and only an
+  intentional tap selects it.
+- **Pinned the touch gesture mapping**: one finger → rotate, two fingers
+  → dolly + pan, so the controls don't end up in a weird state after a
+  previous gesture sequence.
+- **`touch-action: none` on the Canvas itself**, not just the wrapper —
+  some Android Chrome paths ignored the wrapper rule for the inner
+  `<canvas>` element and treated one-finger drags as page scrolls.
+
 ## 2026-06-14 (mind: fix date regex + carry-forward)
 
 ### Fixed
