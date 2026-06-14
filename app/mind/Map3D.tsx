@@ -35,6 +35,12 @@ export type MapPoint = {
   preview: string;
 };
 
+export type AxisLabels = {
+  pc1: { positive: string; negative: string };
+  pc2: { positive: string; negative: string };
+  pc3: { positive: string; negative: string };
+};
+
 function sentimentColour(s: number | null): string {
   if (s == null) return "#78716c"; // stone-500
   if (s > 0) {
@@ -119,6 +125,36 @@ function ActiveLabel({ p }: { p: MapPoint }) {
   );
 }
 
+// Floating label at the end of an axis. Billboards so it always faces the
+// camera. Coloured so it doesn't disappear against either light or dark
+// backgrounds.
+function AxisEndLabel({
+  position,
+  text,
+  size = 0.06,
+}: {
+  position: [number, number, number];
+  text: string;
+  size?: number;
+}) {
+  if (!text) return null;
+  return (
+    <Billboard position={position}>
+      <Text
+        fontSize={size}
+        color="#fef3c7"
+        outlineWidth={0.006}
+        outlineColor="#0c0a09"
+        anchorX="center"
+        anchorY="middle"
+        maxWidth={1.2}
+      >
+        {text}
+      </Text>
+    </Billboard>
+  );
+}
+
 // Three thin lines through the origin so the user has a stable orientation
 // reference while rotating. Subtle — not the focus, just a frame.
 function Axes() {
@@ -156,7 +192,13 @@ function Axes() {
   );
 }
 
-export default function Map3D({ data }: { data: MapPoint[] }) {
+export default function Map3D({
+  data,
+  axisLabels,
+}: {
+  data: MapPoint[];
+  axisLabels?: AxisLabels | null;
+}) {
   const [active, setActive] = useState<MapPoint | null>(null);
 
   // Memoise so the per-point objects don't churn React on every re-render.
@@ -186,6 +228,18 @@ export default function Map3D({ data }: { data: MapPoint[] }) {
           <hemisphereLight args={["#f5f5f4", "#1c1917", 0.7]} />
           <directionalLight position={[3, 4, 2]} intensity={0.6} />
           <Axes />
+          {axisLabels && (
+            <>
+              {/* Six labels at the tips of the three axes. Positioned just
+                  beyond the visible cluster so they don't overlap dots. */}
+              <AxisEndLabel position={[1.25, 0, 0]} text={axisLabels.pc1.positive} />
+              <AxisEndLabel position={[-1.25, 0, 0]} text={axisLabels.pc1.negative} />
+              <AxisEndLabel position={[0, 1.25, 0]} text={axisLabels.pc2.positive} />
+              <AxisEndLabel position={[0, -1.25, 0]} text={axisLabels.pc2.negative} />
+              <AxisEndLabel position={[0, 0, 1.25]} text={axisLabels.pc3.positive} />
+              <AxisEndLabel position={[0, 0, -1.25]} text={axisLabels.pc3.negative} />
+            </>
+          )}
           {points.map((p) => (
             <Point
               key={p.page_id}

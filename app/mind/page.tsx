@@ -37,11 +37,18 @@ type MapPoint = {
   preview: string;
 };
 
+type AxisLabels = {
+  pc1: { positive: string; negative: string };
+  pc2: { positive: string; negative: string };
+  pc3: { positive: string; negative: string };
+};
+
 type MindData = {
   heatmap: HeatmapBucket[];
   themes: ThemeBucket[];
   sentiment: SentimentPoint[];
   embeddingMap: MapPoint[];
+  axisLabels: AxisLabels | null;
   counts: { analyzed: number; pending: number };
   embeddingsEnabled: boolean;
 };
@@ -99,6 +106,31 @@ export default function MindPage() {
       setAnalyzeMsg((e as Error).message || "Analyse failed.");
     } finally {
       setAnalyzing(false);
+    }
+  }
+
+  const [labelling, setLabelling] = useState(false);
+  async function labelAxes() {
+    setLabelling(true);
+    setAnalyzeMsg(null);
+    try {
+      const r = await fetch("/api/mind/axis-labels", { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed");
+      if (d.skipped === "in-flight") {
+        setAnalyzeMsg("Labelling is already running. Try again in a moment.");
+      } else if (d.error) {
+        setAnalyzeMsg(d.error);
+      } else {
+        setAnalyzeMsg(
+          `Labelled the 3 axes from ${d.n_entries} entries. Open the map to see them.`
+        );
+      }
+      await load();
+    } catch (e) {
+      setAnalyzeMsg((e as Error).message || "Labelling failed.");
+    } finally {
+      setLabelling(false);
     }
   }
 
@@ -168,6 +200,18 @@ export default function MindPage() {
           >
             {reparsing ? "Re-parsing…" : "Re-parse dates"}
           </button>
+          <button
+            disabled={labelling || analyzing}
+            onClick={labelAxes}
+            title="Sends a few extreme entries from each axis of the 3D map to Claude for short labels (e.g. 'family life ↔ business'). One Claude call total."
+            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+          >
+            {labelling
+              ? "Labelling…"
+              : data?.axisLabels
+              ? "Re-label axes"
+              : "Label axes"}
+          </button>
         </div>
         {analyzeMsg && (
           <p className="text-xs opacity-70">{analyzeMsg}</p>
@@ -199,6 +243,7 @@ export default function MindPage() {
           <EmbeddingMap
             data={data.embeddingMap}
             embeddingsEnabled={data.embeddingsEnabled}
+            axisLabels={data.axisLabels}
           />
         </>
       )}
@@ -544,9 +589,11 @@ function SentimentChart({ data }: { data: SentimentPoint[] }) {
 function EmbeddingMap({
   data,
   embeddingsEnabled,
+  axisLabels,
 }: {
   data: MapPoint[];
   embeddingsEnabled: boolean;
+  axisLabels: AxisLabels | null;
 }) {
   if (!embeddingsEnabled) {
     return (
@@ -572,9 +619,13 @@ function EmbeddingMap({
   return (
     <Section
       title="Map of your mind"
-      subtitle={`${data.length} entries projected to 3D (PCA on Voyage embeddings). Drag to rotate, pinch to zoom. Closer = more similar in meaning. Orange = positive, blue = negative, grey = un-analysed.`}
+      subtitle={`${data.length} entries projected to 3D (PCA on Voyage embeddings). Drag to rotate, pinch to zoom. Closer = more similar in meaning. ${
+        axisLabels
+          ? "Axis labels are short summaries Claude wrote for the extreme entries at each end."
+          : "Tap 'Label axes' above to have Claude name what each direction represents."
+      } Orange = positive, blue = negative, grey = un-analysed.`}
     >
-      <Map3D data={data} />
+      <Map3D data={data} axisLabels={axisLabels} />
     </Section>
   );
 }
