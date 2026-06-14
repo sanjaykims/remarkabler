@@ -1,6 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+
+// The 3D map uses three.js / react-three-fiber which need `window`, so it
+// must be client-only. next/dynamic with ssr:false defers the chunk load
+// until this page is open — no cost to other tabs in the app.
+const Map3D = dynamic(() => import("./Map3D"), {
+  ssr: false,
+  loading: () => (
+    <div
+      className="h-[480px] rounded border border-stone-200 dark:border-stone-800 animate-pulse opacity-30"
+      role="status"
+      aria-label="Loading 3D map"
+    />
+  ),
+});
 
 // All four visualisations on one page. Each section is self-contained so a
 // failure in one (e.g. embeddings disabled) doesn't blank the rest.
@@ -12,6 +27,7 @@ type MapPoint = {
   page_id: string;
   x: number;
   y: number;
+  z: number;
   entry_date: string | null;
   notebook_name: string;
   page_index: number;
@@ -243,8 +259,9 @@ function Heatmap({ data }: { data: HeatmapBucket[] }) {
     return (
       <Section title="When you write">
         <p className="opacity-60 text-sm">
-          No dated entries yet. Once your diary pages have parsed dates, they
-          show up here.
+          No entries to plot yet. Upload a notebook and they&rsquo;ll appear
+          here on either the diary date you wrote at the top of the page, or
+          the day you uploaded it.
         </p>
       </Section>
     );
@@ -253,7 +270,7 @@ function Heatmap({ data }: { data: HeatmapBucket[] }) {
   return (
     <Section
       title="When you write"
-      subtitle={`Last 52 weeks. Each cell is one day; darker = more pages. ${data.length} day${data.length === 1 ? "" : "s"} with entries.`}
+      subtitle={`Last 52 weeks. Each cell is one day; darker = more pages. ${data.length} day${data.length === 1 ? "" : "s"} with entries. (Uses your diary date when present, else the day you uploaded.)`}
     >
       <div className="overflow-x-auto -mx-3 px-3">
         <svg
@@ -491,8 +508,10 @@ function SentimentChart({ data }: { data: SentimentPoint[] }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 4. Embedding map — 2D scatter of every entry, points coloured by sentiment
-// when known. Tap a point to see the tooltip.
+// 4. Embedding map — 3D scatter of every entry. The actual three.js scene is
+// in ./Map3D.tsx (loaded via next/dynamic). This wrapper handles the empty /
+// disabled states so we don't pull in the three.js bundle when there's
+// nothing to render.
 // ──────────────────────────────────────────────────────────────────────────
 
 function EmbeddingMap({
@@ -502,8 +521,6 @@ function EmbeddingMap({
   data: MapPoint[];
   embeddingsEnabled: boolean;
 }) {
-  const [active, setActive] = useState<MapPoint | null>(null);
-
   if (!embeddingsEnabled) {
     return (
       <Section title="Map of your mind">
@@ -525,105 +542,12 @@ function EmbeddingMap({
     );
   }
 
-  const w = 700;
-  const h = 460;
-  const pad = 18;
-  const innerW = w - pad * 2;
-  const innerH = h - pad * 2;
-  // Points come in [-1, +1]; map to inner box.
-  const toX = (x: number) => pad + ((x + 1) / 2) * innerW;
-  const toY = (y: number) => pad + ((1 - (y + 1) / 2)) * innerH;
-
-  const color = (s: number | null) => {
-    if (s == null) return "rgb(120,113,108)"; // stone-500
-    if (s > 0) return `rgba(217,119,6,${Math.min(1, 0.35 + s * 0.5)})`;
-    return `rgba(70,90,180,${Math.min(1, 0.35 + Math.abs(s) * 0.5)})`;
-  };
-
   return (
     <Section
       title="Map of your mind"
-      subtitle={`${data.length} entries projected to 2D (PCA on Voyage embeddings). Closer = more similar in meaning. Colour: orange = positive, blue = negative, grey = un-analysed.`}
+      subtitle={`${data.length} entries projected to 3D (PCA on Voyage embeddings). Drag to rotate, pinch to zoom. Closer = more similar in meaning. Orange = positive, blue = negative, grey = un-analysed.`}
     >
-      <div className="overflow-x-auto -mx-3 px-3">
-        <svg
-          width="100%"
-          viewBox={`0 0 ${w} ${h}`}
-          role="img"
-          aria-label="Embedding map of diary entries"
-          onClick={() => setActive(null)}
-          preserveAspectRatio="xMidYMid meet"
-        >
-          <rect
-            x={0}
-            y={0}
-            width={w}
-            height={h}
-            fill="currentColor"
-            opacity={0.02}
-          />
-          {data.map((p) => (
-            <g
-              key={p.page_id}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActive(p);
-              }}
-              style={{ cursor: "pointer" }}
-            >
-              {/* Larger transparent hit area for finger taps — Material Design
-                  recommends 48dp, the visible dot is much smaller. */}
-              <circle
-                cx={toX(p.x)}
-                cy={toY(p.y)}
-                r={12}
-                fill="transparent"
-              />
-              <circle
-                cx={toX(p.x)}
-                cy={toY(p.y)}
-                r={5}
-                fill={color(p.sentiment)}
-                stroke={active?.page_id === p.page_id ? "currentColor" : "none"}
-                strokeWidth={1.5}
-              />
-              <title>
-                {p.entry_date || "(no date)"} — {p.notebook_name} · p
-                {p.page_index + 1}
-                {p.themes.length > 0 ? `\n${p.themes.join(", ")}` : ""}
-                {p.summary ? `\n${p.summary}` : ""}
-              </title>
-            </g>
-          ))}
-        </svg>
-      </div>
-      {active && (
-        <div className="mt-2 rounded border border-stone-200 dark:border-stone-800 p-2 text-xs space-y-1">
-          <p className="opacity-60">
-            {active.entry_date || "(no date)"} · {active.notebook_name} · page{" "}
-            {active.page_index + 1}
-            {active.sentiment != null && (
-              <> · sentiment {active.sentiment.toFixed(2)}</>
-            )}
-          </p>
-          {active.themes.length > 0 && (
-            <p className="opacity-90">
-              {active.themes.map((t) => (
-                <span
-                  key={t}
-                  className="inline-block mr-1 mb-1 rounded bg-stone-200 dark:bg-stone-800 px-1.5 py-0.5"
-                >
-                  {t}
-                </span>
-              ))}
-            </p>
-          )}
-          {active.summary && <p>{active.summary}</p>}
-          {!active.summary && active.preview && (
-            <p className="opacity-70 whitespace-pre-wrap">{active.preview}…</p>
-          )}
-        </div>
-      )}
+      <Map3D data={data} />
     </Section>
   );
 }

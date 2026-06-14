@@ -167,17 +167,31 @@ export async function analyzePending(
 
 export type HeatmapBucket = { date: string; pages: number; chars: number };
 
+// The diary's own entry_date is parsed from a "YYYY-MM-DD-HHMM-KST" timestamp
+// the user writes at the top of each session, so only the first page of a
+// session has it — every other page falls back to the sentinel 'none' and
+// would never show on a heatmap of writing volume. To make the chart useful
+// out of the box, we COALESCE to the notebook's upload date when entry_date
+// is missing. That means the heatmap reflects "writing days" rather than
+// strictly "diary days", which is a more forgiving signal.
+const EFFECTIVE_DATE_SQL = `
+  COALESCE(
+    NULLIF(p.entry_date, 'none'),
+    date(n.synced_at)
+  )`;
+
 export function getHeatmap(): HeatmapBucket[] {
   return db()
     .prepare(
-      `SELECT entry_date AS date,
-              COUNT(*)   AS pages,
-              SUM(LENGTH(ocr_text)) AS chars
-         FROM pages
-         WHERE ocr_text IS NOT NULL AND ocr_text != ''
-           AND entry_date IS NOT NULL AND entry_date != 'none'
-         GROUP BY entry_date
-         ORDER BY entry_date ASC`
+      `SELECT ${EFFECTIVE_DATE_SQL} AS date,
+              COUNT(*)               AS pages,
+              SUM(LENGTH(p.ocr_text)) AS chars
+         FROM pages p
+         JOIN notebooks n ON n.id = p.notebook_id
+         WHERE p.ocr_text IS NOT NULL AND p.ocr_text != ''
+           AND ${EFFECTIVE_DATE_SQL} IS NOT NULL
+         GROUP BY ${EFFECTIVE_DATE_SQL}
+         ORDER BY date ASC`
     )
     .all() as HeatmapBucket[];
 }
@@ -242,17 +256,20 @@ export type SentimentPoint = {
 };
 
 export function getSentimentSeries(): SentimentPoint[] {
+  // Same fallback story as the heatmap — when no diary-date is parsable,
+  // attribute the mood to the upload day so the line shows something.
   return db()
     .prepare(
-      `SELECT p.entry_date AS date,
-              AVG(a.sentiment) AS avg_sentiment,
-              COUNT(*) AS n
+      `SELECT ${EFFECTIVE_DATE_SQL} AS date,
+              AVG(a.sentiment)       AS avg_sentiment,
+              COUNT(*)               AS n
          FROM pages p
+         JOIN notebooks n ON n.id = p.notebook_id
          JOIN entry_analysis a ON a.page_id = p.id
          WHERE a.sentiment IS NOT NULL
-           AND p.entry_date IS NOT NULL AND p.entry_date != 'none'
-         GROUP BY p.entry_date
-         ORDER BY p.entry_date ASC`
+           AND ${EFFECTIVE_DATE_SQL} IS NOT NULL
+         GROUP BY ${EFFECTIVE_DATE_SQL}
+         ORDER BY date ASC`
     )
     .all() as SentimentPoint[];
 }
@@ -270,6 +287,7 @@ export type MapPoint = {
   page_id: string;
   x: number;
   y: number;
+  z: number;
   entry_date: string | null;
   notebook_name: string;
   page_index: number;
@@ -312,11 +330,18 @@ function powerIterTopEigenvector(
   return v;
 }
 
-function pca2d(vectors: Float32Array[]): Array<[number, number]> | null {
+// PCA reducing to k dimensions via repeated power-iteration with deflation.
+// Each successive principal component is found on the residual after
+// projecting out the previous PCs (X' = X − Xv₁v₁ᵀ → X'ᵀX' = XᵀX − λ₁v₁v₁ᵀ),
+// which is the textbook deflation and stays well-conditioned in Float32 for
+// the dim (1024) × n (≤500) regime this app sees.
+function pcaNd(vectors: Float32Array[], k: number): Array<number[]> | null {
   const n = vectors.length;
   if (n === 0) return [];
   const dim = vectors[0].length;
   if (dim === 0) return null;
+  const components = Math.min(k, dim, n);
+  if (components === 0) return vectors.map(() => []);
 
   // Centre.
   const mean = new Float32Array(dim);
@@ -325,70 +350,62 @@ function pca2d(vectors: Float32Array[]): Array<[number, number]> | null {
   }
   for (let i = 0; i < dim; i++) mean[i] /= n;
 
-  const centred: Float32Array[] = vectors.map((v) => {
+  // `working` is the running residual — starts at the centred data, gets
+  // deflated in-place after each PC so memory stays at O(n · dim) rather
+  // than O(k · n · dim).
+  const working: Float32Array[] = vectors.map((v) => {
     const c = new Float32Array(dim);
     for (let i = 0; i < dim; i++) c[i] = v[i] - mean[i];
     return c;
   });
 
-  // Matrix-vector product: (X^T X) v. We never form the dim×dim matrix —
-  // for a 1024-dim, 200-row dataset that'd be 4MB of work per iteration.
-  // Instead each step is two passes over the data: y = X v, then result = X^T y.
-  const matMulVec = (v: Vec): Vec => {
+  // Matrix-vector product (XᵀX) v computed implicitly: y = X v, then result
+  // = Xᵀy. Never materialises the dim×dim covariance.
+  const makeXtx = (mat: Float32Array[]) => (v: Vec): Vec => {
     const y = new Float32Array(n);
     for (let r = 0; r < n; r++) {
-      const row = centred[r];
+      const row = mat[r];
       let s = 0;
       for (let i = 0; i < dim; i++) s += row[i] * v[i];
       y[r] = s;
     }
     const out = new Float32Array(dim);
     for (let r = 0; r < n; r++) {
-      const row = centred[r];
+      const row = mat[r];
       const yr = y[r];
       for (let i = 0; i < dim; i++) out[i] += row[i] * yr;
     }
     return out;
   };
 
-  const pc1 = powerIterTopEigenvector(matMulVec, dim);
-
-  // Deflate: remove pc1 component from each centred vector so the next
-  // power iteration finds the orthogonal direction. Mutates a fresh copy.
-  const deflated: Float32Array[] = centred.map((c) => {
-    const proj = c.reduce((s, x, i) => s + x * pc1[i], 0);
-    const out = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) out[i] = c[i] - proj * pc1[i];
-    return out;
-  });
-  const matMulVec2 = (v: Float32Array): Float32Array => {
-    const y = new Float32Array(n);
+  const pcs: Float32Array[] = [];
+  for (let kk = 0; kk < components; kk++) {
+    const pc = powerIterTopEigenvector(makeXtx(working), dim);
+    pcs.push(pc);
+    // Deflate: subtract the rank-1 projection onto pc from every row.
     for (let r = 0; r < n; r++) {
-      const row = deflated[r];
+      const row = working[r];
+      let proj = 0;
+      for (let i = 0; i < dim; i++) proj += row[i] * pc[i];
+      for (let i = 0; i < dim; i++) row[i] -= proj * pc[i];
+    }
+  }
+
+  // Project each centred-from-original vector onto each principal component.
+  // (working has been deflated in place, so recompute centred for projection.)
+  const points: Array<number[]> = [];
+  for (let r = 0; r < n; r++) {
+    const centred = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) centred[i] = vectors[r][i] - mean[i];
+    const coords: number[] = new Array(components);
+    for (let c = 0; c < components; c++) {
+      const pc = pcs[c];
       let s = 0;
-      for (let i = 0; i < dim; i++) s += row[i] * v[i];
-      y[r] = s;
+      for (let i = 0; i < dim; i++) s += centred[i] * pc[i];
+      coords[c] = s;
     }
-    const out = new Float32Array(dim);
-    for (let r = 0; r < n; r++) {
-      const row = deflated[r];
-      const yr = y[r];
-      for (let i = 0; i < dim; i++) out[i] += row[i] * yr;
-    }
-    return out;
-  };
-  const pc2 = powerIterTopEigenvector(matMulVec2, dim);
-
-  // Project each centred vector onto pc1 / pc2.
-  const points: Array<[number, number]> = centred.map((c) => {
-    let x = 0;
-    let y = 0;
-    for (let i = 0; i < dim; i++) {
-      x += c[i] * pc1[i];
-      y += c[i] * pc2[i];
-    }
-    return [x, y];
-  });
+    points.push(coords);
+  }
   return points;
 }
 
@@ -442,20 +459,25 @@ export function getEmbeddingMap(limit: number = 500): MapPoint[] {
   }
   if (usable.length < 2) return [];
 
-  const reduced = pca2d(usable.map((u) => u.vec));
+  const reduced = pcaNd(
+    usable.map((u) => u.vec),
+    3
+  );
   if (!reduced) return [];
 
-  // Normalise to roughly [-1, +1] so the front-end can scale to canvas size
-  // without knowing the original variance.
+  // Normalise to roughly [-1, +1] across all three axes so the front-end can
+  // scale to canvas/scene size without knowing the original variance.
   let maxAbs = 0;
-  for (const [x, y] of reduced) {
-    const a = Math.max(Math.abs(x), Math.abs(y));
-    if (a > maxAbs) maxAbs = a;
+  for (const coords of reduced) {
+    for (const v of coords) {
+      const a = Math.abs(v);
+      if (a > maxAbs) maxAbs = a;
+    }
   }
   const scale = maxAbs > 0 ? 1 / maxAbs : 1;
 
   return usable.map((u, i) => {
-    const [rx, ry] = reduced[i];
+    const [rx, ry, rz] = reduced[i];
     let themes: string[] = [];
     if (u.row.themes) {
       try {
@@ -473,6 +495,7 @@ export function getEmbeddingMap(limit: number = 500): MapPoint[] {
       page_id: u.row.page_id,
       x: rx * scale,
       y: ry * scale,
+      z: (rz ?? 0) * scale,
       entry_date: u.row.entry_date,
       notebook_name: u.row.notebook_name,
       page_index: u.row.page_index,
