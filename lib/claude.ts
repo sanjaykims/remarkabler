@@ -459,6 +459,86 @@ export async function chatOverNotes(opts: {
  * weeks and months are aggregated from these. Runs on the cheaper main
  * model so daily generation stays inexpensive even at scale.
  */
+/**
+ * Per-entry semantic analysis used by /mind: extract a small set of concrete
+ * themes (1–3 word noun phrases), an overall sentiment in [-1, +1], and a
+ * one-line summary. Runs on the chat (cheap) model — themes/sentiment don't
+ * need Opus reasoning, and we want a low marginal cost per entry so a
+ * 200-page backfill stays under a dollar.
+ *
+ * Returns null on parse failure rather than throwing, so the batch loop can
+ * skip and keep going.
+ */
+export async function analyzeEntryContent(text: string): Promise<{
+  themes: string[];
+  sentiment: number | null;
+  summary: string;
+} | null> {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  // Cap input — Sonnet handles 200K context but a single diary page rarely
+  // exceeds a few thousand characters, and trimming bounds worst-case cost
+  // on a runaway-large OCR'd page.
+  const input = trimmed.length > 8000 ? trimmed.slice(0, 8000) : trimmed;
+
+  const resp = await client().messages.create({
+    model: modelChat(),
+    max_tokens: 400,
+    system: [
+      "You analyse one diary entry and return STRICT JSON, nothing else.",
+      "No preamble, no Markdown fence, no explanation — just the JSON object.",
+      "",
+      "Schema:",
+      "{",
+      '  "themes": [string, ...],  // 2 to 5 concrete topics, each 1-3 words, in the entry\'s language. Specific, not generic — "family dinner", "work stress", "running form", "사업 아이디어" — NOT "life", "feelings", "thoughts".',
+      '  "sentiment": number,      // overall emotional valence, -1.0 very negative ↔ +1.0 very positive, 0 for neutral. One decimal place is fine.',
+      '  "summary": string         // one short sentence (≤25 words) in the entry\'s language, describing what the person wrote about.',
+      "}",
+      "",
+      "If the entry is too short or empty to analyse, return:",
+      '{"themes": [], "sentiment": null, "summary": ""}',
+    ].join("\n"),
+    messages: [{ role: "user", content: input }],
+  });
+  recordUsage("entry_analysis", modelChat(), resp.usage);
+
+  const block = resp.content.find((b) => b.type === "text");
+  const raw = block && block.type === "text" ? block.text.trim() : "";
+  if (!raw) return null;
+
+  // Tolerate occasional ```json fences even though we asked for none.
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripped);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const p = parsed as Record<string, unknown>;
+
+  const themesRaw = Array.isArray(p.themes) ? p.themes : [];
+  const themes = themesRaw
+    .filter((t): t is string => typeof t === "string")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0 && t.length <= 60)
+    .slice(0, 8);
+
+  let sentiment: number | null = null;
+  if (typeof p.sentiment === "number" && Number.isFinite(p.sentiment)) {
+    sentiment = Math.max(-1, Math.min(1, p.sentiment));
+  }
+
+  const summaryRaw = typeof p.summary === "string" ? p.summary.trim() : "";
+  const summary = summaryRaw.length > 400 ? summaryRaw.slice(0, 400) : summaryRaw;
+
+  return { themes, sentiment, summary };
+}
+
 export async function summarizeDay(opts: {
   date: string;
   entries: string;

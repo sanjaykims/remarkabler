@@ -123,6 +123,18 @@ export async function processNotebook(id: string): Promise<void> {
     } catch (e) {
       console.warn("[notes] profile fold failed:", (e as Error).message);
     }
+
+    // Per-entry analysis for /mind (themes / sentiment / summary). Cheap
+    // (chat-tier model), cached, and best-effort — never let a Claude
+    // hiccup mark the notebook as failed. Bounded by the per-notebook
+    // page count so a single upload can't trigger a runaway pass.
+    try {
+      const { analyzePending } = await import("./mind");
+      const cap = Math.min(50, pages.filter((p) => p.text && p.text.trim()).length);
+      if (cap > 0) await analyzePending(cap);
+    } catch (e) {
+      console.warn("[notes] mind analysis failed:", (e as Error).message);
+    }
   } catch (err) {
     console.error("[notes] processNotebook failed:", (err as Error).message);
     try {
