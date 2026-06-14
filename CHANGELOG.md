@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-06-14 (mind visualizations)
+
+### Added — `/mind` tab: four ways to see your patterns
+- **Calendar heatmap** of writing volume — last 52 weeks, GitHub-style. Pure
+  SQL over `pages.entry_date`. Free.
+- **Theme cloud** — top topics Claude extracted from each entry, sized by
+  frequency.
+- **Mood timeline** — per-day average sentiment as an SVG line chart, with
+  a 3-day rolling-mean trend overlay.
+- **Embedding map** — every entry projected to 2D via PCA on the existing
+  Voyage embeddings stored on `pages.embedding`. Pure-JS PCA via power
+  iteration with deflation; no new dependency. Tap a point for tooltip
+  (date / notebook / themes / summary).
+
+### Infra
+- New `entry_analysis` table (`page_id`, `themes JSON`, `sentiment REAL`,
+  `summary`, `model`, `analyzed_at`) caches one Claude call per page so the
+  visualisations are free to view.
+- `analyzeEntryContent` in `lib/claude.ts` uses the chat-tier model (Sonnet)
+  with strict JSON output and tolerant parsing (handles stray code fences,
+  bounds-checks themes/sentiment).
+- `analyzePending(limit)` in `lib/mind.ts` is bounded (max 200), serial
+  (no parallel Claude calls), and best-effort per entry — one failure
+  doesn't poison the batch.
+- Hooked into `processNotebook`: after OCR + profile fold, freshly OCR'd
+  pages are auto-analysed (capped at 50 per upload).
+- `POST /api/mind/analyze?limit=N` lets the user backfill older entries
+  from the page; `GET /api/mind` returns all four datasets in one trip.
+
 ## 2026-06-14 (later)
 
 ### Removed

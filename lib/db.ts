@@ -78,6 +78,26 @@ export function db(): Database.Database {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  // Per-page semantic analysis used by the /mind visualisations: extracted
+  // themes (JSON array), an overall sentiment in [-1, +1], and a one-line
+  // summary. Populated lazily — pages without a row are simply not yet
+  // analysed and the UI shows a backfill button. ON DELETE CASCADE keeps
+  // the table in sync when a notebook (and its pages) is removed.
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS entry_analysis (
+      page_id TEXT PRIMARY KEY,
+      themes TEXT NOT NULL DEFAULT '[]',
+      sentiment REAL,
+      summary TEXT,
+      model TEXT,
+      analyzed_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
+    )
+  `);
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_entry_analysis_analyzed_at
+       ON entry_analysis(analyzed_at)`
+  );
   // Drop columns that have been confirmed dead — written but never read by
   // any current code path. Idempotent (SQLite raises "no such column" once
   // the drop has already happened, and the try/catch swallows it).

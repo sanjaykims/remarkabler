@@ -44,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <Link href="/" className="font-semibold">Remarkabler</Link>
                   <Link href="/notebooks" className="opacity-70 hover:opacity-100">Notebooks</Link>
                   <Link href="/chat" className="opacity-70 hover:opacity-100">Chat</Link>
+                  <Link href="/mind" className="opacity-70 hover:opacity-100">Mind</Link>
                   <Link href="/insights" className="opacity-70 hover:opacity-100">Insights</Link>
                   <Link href="/memory" className="opacity-70 hover:opacity-100">Memory</Link>
                   <Link href="/usage" className="opacity-70 hover:opacity-100">Cost</Link>
