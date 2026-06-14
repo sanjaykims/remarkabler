@@ -539,6 +539,113 @@ export async function analyzeEntryContent(text: string): Promise<{
   return { themes, sentiment, summary };
 }
 
+/**
+ * Label the three PCA axes of the diary embedding map. The caller supplies a
+ * handful of entries from the positive and negative extreme of each axis;
+ * Claude returns a 2-3 word noun phrase summarising what each direction
+ * seems to represent (e.g. "family life" ↔ "business strategy").
+ *
+ * One call total, not per-entry, so the cost is fixed regardless of corpus
+ * size. Returns null on parse failure — caller can show the map without
+ * labels in that case.
+ */
+export type AxisExtremeEntry = {
+  themes: string[];
+  summary: string;
+};
+export type AxisLabels = {
+  pc1: { positive: string; negative: string };
+  pc2: { positive: string; negative: string };
+  pc3: { positive: string; negative: string };
+};
+
+export async function labelEmbeddingAxes(opts: {
+  pc1Positive: AxisExtremeEntry[];
+  pc1Negative: AxisExtremeEntry[];
+  pc2Positive: AxisExtremeEntry[];
+  pc2Negative: AxisExtremeEntry[];
+  pc3Positive: AxisExtremeEntry[];
+  pc3Negative: AxisExtremeEntry[];
+}): Promise<AxisLabels | null> {
+  const format = (es: AxisExtremeEntry[]) =>
+    es
+      .map((e, i) => {
+        const t = e.themes.length ? `[${e.themes.join(", ")}] ` : "";
+        return `${i + 1}. ${t}${e.summary || "(no summary)"}`;
+      })
+      .join("\n");
+
+  const userText = [
+    "Three PCA axes from a person's diary entries. For each axis, you have",
+    "the entries at the high-positive end and the high-negative end. Give a",
+    "short, vivid label (2-3 words, English, noun phrase) for what each",
+    "direction seems to be about. Make the positive and negative labels",
+    "contrast clearly — they should feel like two ends of the same spectrum.",
+    "",
+    "AXIS 1 — positive end:",
+    format(opts.pc1Positive),
+    "",
+    "AXIS 1 — negative end:",
+    format(opts.pc1Negative),
+    "",
+    "AXIS 2 — positive end:",
+    format(opts.pc2Positive),
+    "",
+    "AXIS 2 — negative end:",
+    format(opts.pc2Negative),
+    "",
+    "AXIS 3 — positive end:",
+    format(opts.pc3Positive),
+    "",
+    "AXIS 3 — negative end:",
+    format(opts.pc3Negative),
+  ].join("\n");
+
+  const resp = await client().messages.create({
+    model: modelChat(),
+    max_tokens: 300,
+    system: [
+      "Return STRICT JSON only, no preamble, no Markdown fence:",
+      "{",
+      '  "pc1": { "positive": "label", "negative": "label" },',
+      '  "pc2": { "positive": "label", "negative": "label" },',
+      '  "pc3": { "positive": "label", "negative": "label" }',
+      "}",
+      "Labels: 2-3 words each, English, lowercase or title case, no quotes.",
+    ].join("\n"),
+    messages: [{ role: "user", content: userText }],
+  });
+  recordUsage("axis_labels", modelChat(), resp.usage);
+
+  const block = resp.content.find((b) => b.type === "text");
+  const raw = block && block.type === "text" ? block.text.trim() : "";
+  if (!raw) return null;
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+  try {
+    const p = JSON.parse(stripped) as AxisLabels;
+    // Light validation — every axis must have both ends populated.
+    for (const k of ["pc1", "pc2", "pc3"] as const) {
+      if (
+        !p[k] ||
+        typeof p[k].positive !== "string" ||
+        typeof p[k].negative !== "string" ||
+        !p[k].positive.trim() ||
+        !p[k].negative.trim()
+      ) {
+        return null;
+      }
+      p[k].positive = p[k].positive.trim().slice(0, 40);
+      p[k].negative = p[k].negative.trim().slice(0, 40);
+    }
+    return p;
+  } catch {
+    return null;
+  }
+}
+
 export async function summarizeDay(opts: {
   date: string;
   entries: string;

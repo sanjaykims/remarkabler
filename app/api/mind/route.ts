@@ -7,6 +7,7 @@ import {
   getEmbeddingMap,
   countAnalyzed,
   countPending,
+  getStoredAxisLabels,
 } from "@/lib/mind";
 import { embeddingsEnabled } from "@/lib/embeddings";
 import { reparseAllEntryDates } from "@/lib/notes";
@@ -56,6 +57,7 @@ export async function GET() {
       themes: getThemes(80),
       sentiment: getSentimentSeries(),
       embeddingMap: embeddingsEnabled() ? getEmbeddingMap(500) : [],
+      axisLabels: getStoredAxisLabels(),
       counts: {
         analyzed: countAnalyzed(),
         pending: countPending(),

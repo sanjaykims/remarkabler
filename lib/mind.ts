@@ -1,7 +1,74 @@
-import { db } from "@/lib/db";
-import { analyzeEntryContent } from "@/lib/claude";
-import { decodeEmbedding } from "@/lib/embeddings";
+import { db, getSetting, setSetting } from "@/lib/db";
+import {
+  analyzeEntryContent,
+  labelEmbeddingAxes,
+  type AxisLabels,
+  type AxisExtremeEntry,
+} from "@/lib/claude";
+import {
+  decodeEmbedding,
+  encodeEmbedding,
+} from "@/lib/embeddings";
 import { DISCIPLINE_ID } from "@/lib/notes";
+
+// ──────────────────────────────────────────────────────────────────────────
+// Stored PCA axes for the embedding map. Persisted to settings so the labels
+// the user generates today still apply tomorrow — PCA eigenvectors are only
+// unique up to sign, so if we re-derived them on every page load the "+x"
+// label could end up on the −x side of a fresh map.
+//
+// Layout in settings.value JSON:
+//   { dim, mean: base64-Float32, pcs: [b64, b64, b64], labels, n_entries, generated_at }
+// ──────────────────────────────────────────────────────────────────────────
+
+const AXES_SETTING_KEY = "mind_pca_axes";
+
+type StoredAxes = {
+  dim: number;
+  mean: string;
+  pcs: string[];
+  labels: AxisLabels;
+  n_entries: number;
+  generated_at: string;
+};
+
+const encodeVec = (v: Float32Array): string =>
+  encodeEmbedding(v).toString("base64");
+const decodeVec = (s: string, expectedDim: number): Float32Array | null => {
+  try {
+    const buf = Buffer.from(s, "base64");
+    const v = decodeEmbedding(buf);
+    if (!v || v.length !== expectedDim) return null;
+    return v;
+  } catch {
+    return null;
+  }
+};
+
+function getStoredAxes(): StoredAxes | null {
+  const raw = getSetting(AXES_SETTING_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as StoredAxes;
+    if (!parsed || typeof parsed !== "object") return null;
+    if (
+      typeof parsed.dim !== "number" ||
+      !Array.isArray(parsed.pcs) ||
+      parsed.pcs.length < 3 ||
+      typeof parsed.mean !== "string"
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function getStoredAxisLabels(): AxisLabels | null {
+  const a = getStoredAxes();
+  return a?.labels ?? null;
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Per-entry analysis driver. Pulls pages with OCR text but no row in
@@ -459,10 +526,37 @@ export function getEmbeddingMap(limit: number = 500): MapPoint[] {
   }
   if (usable.length < 2) return [];
 
-  const reduced = pcaNd(
-    usable.map((u) => u.vec),
-    3
-  );
+  // If the user has generated axis labels, reuse the persisted PC vectors so
+  // their labels still line up with the current map. Only re-derive PCA when
+  // no saved axes exist or the embedding dim has changed (e.g. they swapped
+  // the Voyage model). This also makes the map faster to render after the
+  // first run — PCA is by far the heaviest step.
+  const stored = getStoredAxes();
+  let reduced: Array<number[]> | null;
+  if (stored && stored.dim === expectedDim) {
+    const mean = decodeVec(stored.mean, expectedDim);
+    const pc1 = decodeVec(stored.pcs[0], expectedDim);
+    const pc2 = decodeVec(stored.pcs[1], expectedDim);
+    const pc3 = decodeVec(stored.pcs[2], expectedDim);
+    if (mean && pc1 && pc2 && pc3) {
+      reduced = usable.map(({ vec }) => {
+        let x = 0;
+        let y = 0;
+        let z = 0;
+        for (let i = 0; i < expectedDim; i++) {
+          const c = vec[i] - mean[i];
+          x += c * pc1[i];
+          y += c * pc2[i];
+          z += c * pc3[i];
+        }
+        return [x, y, z];
+      });
+    } else {
+      reduced = pcaNd(usable.map((u) => u.vec), 3);
+    }
+  } else {
+    reduced = pcaNd(usable.map((u) => u.vec), 3);
+  }
   if (!reduced) return [];
 
   // Normalise to roughly [-1, +1] across all three axes so the front-end can
@@ -505,4 +599,198 @@ export function getEmbeddingMap(limit: number = 500): MapPoint[] {
       preview: u.row.ocr_text.slice(0, 200),
     };
   });
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Axis labelling: run PCA fresh, find the entries at each extreme on each
+// axis, hand them to Claude for short noun-phrase labels, persist both the
+// PC vectors AND the labels so subsequent map renders project onto the
+// same axes and the labels remain meaningful.
+// ──────────────────────────────────────────────────────────────────────────
+
+// Module-level guard so a double-click doesn't fire two parallel Claude
+// calls and double-bill.
+let labellingInFlight = false;
+
+export type AxisLabelsResult = {
+  labels: AxisLabels;
+  n_entries: number;
+};
+
+export async function generateAxisLabels(): Promise<
+  | AxisLabelsResult
+  | { skipped: "in-flight"; labels: AxisLabels | null }
+  | { error: string; labels: AxisLabels | null }
+> {
+  if (labellingInFlight) {
+    return { skipped: "in-flight", labels: getStoredAxisLabels() };
+  }
+  labellingInFlight = true;
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT p.id         AS page_id,
+                p.embedding  AS embedding,
+                a.themes     AS themes,
+                a.summary    AS summary
+           FROM pages p
+           LEFT JOIN entry_analysis a ON a.page_id = p.id
+           WHERE p.embedding IS NOT NULL
+             AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
+             AND p.notebook_id != ?`
+      )
+      .all(DISCIPLINE_ID) as Array<{
+      page_id: string;
+      embedding: Buffer;
+      themes: string | null;
+      summary: string | null;
+    }>;
+
+    const usable: Array<{
+      row: (typeof rows)[number];
+      vec: Float32Array;
+    }> = [];
+    let dim = 0;
+    for (const r of rows) {
+      const v = decodeEmbedding(r.embedding);
+      if (!v) continue;
+      if (dim === 0) dim = v.length;
+      if (v.length !== dim) continue;
+      usable.push({ row: r, vec: v });
+    }
+    if (usable.length < 6) {
+      return {
+        error: "Need at least 6 entries with embeddings to label axes.",
+        labels: getStoredAxisLabels(),
+      };
+    }
+
+    // Fresh PCA over the whole usable corpus. We need the *vectors*
+    // (not just projections) to persist them, so we recompute mean +
+    // pcs here rather than reusing pcaNd's output.
+    const mean = new Float32Array(dim);
+    for (const { vec } of usable) {
+      for (let i = 0; i < dim; i++) mean[i] += vec[i];
+    }
+    for (let i = 0; i < dim; i++) mean[i] /= usable.length;
+
+    // Working copy of the centred data, deflated in-place per PC.
+    const working: Float32Array[] = usable.map(({ vec }) => {
+      const c = new Float32Array(dim);
+      for (let i = 0; i < dim; i++) c[i] = vec[i] - mean[i];
+      return c;
+    });
+
+    const pcs: Float32Array[] = [];
+    const xtx = (mat: Float32Array[]) => (v: Float32Array): Float32Array => {
+      const y = new Float32Array(mat.length);
+      for (let r = 0; r < mat.length; r++) {
+        const row = mat[r];
+        let s = 0;
+        for (let i = 0; i < dim; i++) s += row[i] * v[i];
+        y[r] = s;
+      }
+      const out = new Float32Array(dim);
+      for (let r = 0; r < mat.length; r++) {
+        const row = mat[r];
+        const yr = y[r];
+        for (let i = 0; i < dim; i++) out[i] += row[i] * yr;
+      }
+      return out;
+    };
+    for (let k = 0; k < 3; k++) {
+      // Local power iteration so this function doesn't depend on the
+      // private helper above.
+      let v: Float32Array = new Float32Array(dim);
+      for (let i = 0; i < dim; i++) {
+        v[i] = ((i * 2654435761) >>> 0) / 0xffffffff - 0.5;
+      }
+      let n = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
+      for (let i = 0; i < dim; i++) v[i] /= n;
+      for (let it = 0; it < 80; it++) {
+        const w = xtx(working)(v);
+        n = Math.sqrt(w.reduce((s, x) => s + x * x, 0));
+        if (n === 0) break;
+        for (let i = 0; i < dim; i++) w[i] /= n;
+        v = w;
+      }
+      pcs.push(v);
+      // Deflate.
+      for (let r = 0; r < working.length; r++) {
+        const row = working[r];
+        let proj = 0;
+        for (let i = 0; i < dim; i++) proj += row[i] * v[i];
+        for (let i = 0; i < dim; i++) row[i] -= proj * v[i];
+      }
+    }
+
+    // Project each centred entry onto each PC. Re-centre from original
+    // vectors because `working` has been deflated.
+    const projected: number[][] = usable.map(({ vec }) => {
+      const out: number[] = [0, 0, 0];
+      for (let k = 0; k < 3; k++) {
+        const pc = pcs[k];
+        let s = 0;
+        for (let i = 0; i < dim; i++) s += (vec[i] - mean[i]) * pc[i];
+        out[k] = s;
+      }
+      return out;
+    });
+
+    // For each axis, pick the EXTREME_N entries with the highest /
+    // lowest projection. Use the cached themes/summary for the prompt
+    // — the actual diary text is not sent again, keeping the call
+    // small and the cost fixed.
+    const EXTREME_N = 5;
+    const extreme = (axis: 0 | 1 | 2, sign: 1 | -1): AxisExtremeEntry[] => {
+      const sorted = usable
+        .map((u, i) => ({ u, score: sign * projected[i][axis] }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, EXTREME_N);
+      return sorted.map(({ u }) => {
+        let themes: string[] = [];
+        if (u.row.themes) {
+          try {
+            const t = JSON.parse(u.row.themes);
+            if (Array.isArray(t)) {
+              themes = t
+                .filter((x): x is string => typeof x === "string")
+                .slice(0, 4);
+            }
+          } catch {
+            // ignore
+          }
+        }
+        return { themes, summary: u.row.summary || "" };
+      });
+    };
+
+    const labels = await labelEmbeddingAxes({
+      pc1Positive: extreme(0, 1),
+      pc1Negative: extreme(0, -1),
+      pc2Positive: extreme(1, 1),
+      pc2Negative: extreme(1, -1),
+      pc3Positive: extreme(2, 1),
+      pc3Negative: extreme(2, -1),
+    });
+    if (!labels) {
+      return {
+        error: "Claude returned an unexpected response — try again.",
+        labels: getStoredAxisLabels(),
+      };
+    }
+
+    const stored: StoredAxes = {
+      dim,
+      mean: encodeVec(mean),
+      pcs: pcs.map(encodeVec),
+      labels,
+      n_entries: usable.length,
+      generated_at: new Date().toISOString(),
+    };
+    setSetting(AXES_SETTING_KEY, JSON.stringify(stored));
+    return { labels, n_entries: usable.length };
+  } finally {
+    labellingInFlight = false;
+  }
 }

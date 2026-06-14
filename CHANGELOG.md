@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-06-14 (mind: axis labels)
+
+### Added
+- **3D map axes are now labelled.** New "Label axes" button on /mind
+  picks the five entries at each extreme of each PC axis, sends their
+  cached themes + summaries to Claude in one call (~$0.003 total), and
+  gets back six short noun phrases like "family life ↔ business
+  strategy". Labels render as floating, billboarded text at the tips of
+  the three axes inside the 3D scene.
+- **Persisted PC vectors.** Because PCA eigenvectors are only unique up
+  to sign, naively re-deriving them on every page load would drift the
+  labels onto the wrong side. `generateAxisLabels` now stores the mean +
+  three PC vectors (base64-encoded Float32) in the settings table;
+  `getEmbeddingMap` reuses them so the map's coordinates stay aligned
+  with whatever Claude named.
+- New endpoint: `POST /api/mind/axis-labels`. In-flight guard so a
+  double-click doesn't double-bill.
+
 ## 2026-06-14 (mind: 3D map touch fix)
 
 ### Fixed
