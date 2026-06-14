@@ -43,7 +43,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <nav className="mx-auto max-w-5xl px-4 py-3 flex items-center gap-x-3 text-xs whitespace-nowrap overflow-x-auto">
                   <Link href="/" className="font-semibold">Remarkabler</Link>
                   <Link href="/notebooks" className="opacity-70 hover:opacity-100">Notebooks</Link>
-                  <Link href="/diary" className="opacity-70 hover:opacity-100">Diary</Link>
                   <Link href="/chat" className="opacity-70 hover:opacity-100">Chat</Link>
                   <Link href="/insights" className="opacity-70 hover:opacity-100">Insights</Link>
                   <Link href="/memory" className="opacity-70 hover:opacity-100">Memory</Link>

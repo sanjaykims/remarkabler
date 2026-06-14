@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-14 (later)
+
+### Removed
+- **`/diary` tab.** Not pulling its weight — the Notebooks tab (now with
+  inline page text) and the chat `/raw` command cover the same browse /
+  search needs without a third top-nav destination. The `/api/diary`
+  endpoint stays (it backs `/raw`).
+
 ## 2026-06-14
 
 ### Added — diary browsing (three ways, all free per check)
