@@ -268,8 +268,67 @@ let lastMaintenanceAt = 0;
 // the date they happened to upload the notebook.
 export function extractEntryDate(text: string): string | null {
   if (!text) return null;
-  const m = text.match(/(\d{4})-(\d{2})-(\d{2})-\d{4}-KST/);
+  // Match the diary header in all the forms the user actually writes /
+  // Claude's OCR produces:
+  //   2026-06-14-22-30-kst   ← the user's handwritten format (hour and
+  //                            minute split by a dash, lowercase kst)
+  //   2026-06-14-2230-KST    ← legacy compact form
+  //   2026-06-14 22:30 KST   ← occasional reformat
+  // KST is matched case-insensitively. We anchor near the top of the page
+  // by accepting any preceding whitespace / hyphen separators.
+  const m = text.match(
+    /(\d{4})-(\d{2})-(\d{2})[\s\-T]\d{2}[\s\-:]?\d{2}[\s\-]*kst/i
+  );
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+/**
+ * Re-parse entry_date for every page in the database, walking each notebook
+ * in page order and carrying the most recently seen date forward to pages
+ * that have no header of their own. The user writes a timestamp once per
+ * session — every page within that session should inherit it.
+ *
+ * Safe to call any time: runs in a single transaction, idempotent, and only
+ * UPDATEs rows whose stored value actually changes.
+ */
+export function reparseAllEntryDates(): { updated: number; total: number } {
+  const rows = db()
+    .prepare(
+      `SELECT id, notebook_id, page_index, ocr_text, entry_date
+         FROM pages
+         WHERE ocr_text IS NOT NULL AND ocr_text != ''
+         ORDER BY notebook_id ASC, page_index ASC`
+    )
+    .all() as Array<{
+    id: string;
+    notebook_id: string;
+    page_index: number;
+    ocr_text: string;
+    entry_date: string | null;
+  }>;
+
+  const upd = db().prepare(`UPDATE pages SET entry_date = ? WHERE id = ?`);
+  let updated = 0;
+  let currentNotebook: string | null = null;
+  let carryDate: string | null = null;
+
+  db().transaction(() => {
+    for (const row of rows) {
+      if (row.notebook_id !== currentNotebook) {
+        currentNotebook = row.notebook_id;
+        carryDate = null;
+      }
+      const parsed = extractEntryDate(row.ocr_text);
+      if (parsed) carryDate = parsed;
+      const newDate = carryDate || "none";
+      if (newDate !== row.entry_date) {
+        upd.run(newDate, row.id);
+        updated++;
+      }
+    }
+  })();
+
+  return { updated, total: rows.length };
 }
 
 /**

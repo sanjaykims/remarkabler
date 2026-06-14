@@ -9,6 +9,27 @@ import {
   countPending,
 } from "@/lib/mind";
 import { embeddingsEnabled } from "@/lib/embeddings";
+import { reparseAllEntryDates } from "@/lib/notes";
+import { getSetting, setSetting } from "@/lib/db";
+
+// One-time migration: the old extractEntryDate regex expected
+// yyyy-mm-dd-hhmm-KST (no separator between hour/minute, uppercase). The
+// user's actual handwritten format is yyyy-mm-dd-hh-mm-kst, so every page
+// was stored with entry_date='none'. The new regex matches both. Run a
+// single reparse pass the first time /api/mind is hit after this deploy so
+// the heatmap and mood timeline light up without the user touching a button.
+const REPARSE_FLAG = "mind_dates_reparsed_v2";
+function reparseIfNeeded(): void {
+  if (getSetting(REPARSE_FLAG)) return;
+  try {
+    reparseAllEntryDates();
+    setSetting(REPARSE_FLAG, new Date().toISOString());
+  } catch (e) {
+    // Don't block the GET — if reparse fails the heatmap just keeps using
+    // the upload-date fallback.
+    console.warn("[mind] one-time reparse failed:", (e as Error).message);
+  }
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +50,7 @@ export async function GET() {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   try {
+    reparseIfNeeded();
     return NextResponse.json({
       heatmap: getHeatmap(),
       themes: getThemes(80),

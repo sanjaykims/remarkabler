@@ -102,6 +102,25 @@ export default function MindPage() {
     }
   }
 
+  const [reparsing, setReparsing] = useState(false);
+  async function reparseDates() {
+    setReparsing(true);
+    setAnalyzeMsg(null);
+    try {
+      const r = await fetch("/api/mind/reparse-dates", { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed");
+      setAnalyzeMsg(
+        `Re-parsed entry dates: ${d.updated} of ${d.total} pages updated.`
+      );
+      await load();
+    } catch (e) {
+      setAnalyzeMsg((e as Error).message || "Re-parse failed.");
+    } finally {
+      setReparsing(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header className="space-y-1">
@@ -141,6 +160,14 @@ export default function MindPage() {
           {data && data.counts.pending === 0 && data.counts.analyzed > 0 && (
             <span className="text-[11px] opacity-50">All caught up.</span>
           )}
+          <button
+            disabled={reparsing || analyzing}
+            onClick={reparseDates}
+            title="Re-runs the YYYY-MM-DD-HH-MM-KST regex over every page and carries dates forward within each notebook."
+            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+          >
+            {reparsing ? "Re-parsing…" : "Re-parse dates"}
+          </button>
         </div>
         {analyzeMsg && (
           <p className="text-xs opacity-70">{analyzeMsg}</p>
