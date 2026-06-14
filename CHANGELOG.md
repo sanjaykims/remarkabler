@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-14 (mind: axis labels render in any language)
+
+### Fixed
+- **3D axis labels weren't visible.** They were rendered with drei's
+  `<Text>` component, which uses an SDF font that doesn't include CJK
+  glyphs — so labels Claude wrote in Korean silently rendered as
+  nothing. Switched to drei's `<Html>` overlay, which uses the page's
+  normal CSS font (and the system Korean font as a fallback) and works
+  for any language. Positive ends use a warm amber pill, negative ends
+  a cool blue one, with `pointerEvents:'none'` so they don't block
+  OrbitControls' touch.
+
 ## 2026-06-14 (mind: axis labels)
 
 ### Added
