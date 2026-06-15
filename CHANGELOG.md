@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-15 (mind: guaranteed-visible axis legend)
+
+### Changed
+- Axis labels now also render as a **static legend below the canvas**,
+  not just as a 3D overlay inside it. Three rows (X / Y / Z), each
+  showing the positive label (amber pill) ↔ the negative label (blue
+  pill). Plain HTML, no three.js dependency — guaranteed to show as
+  long as the labels exist in the DB. The in-canvas 3D overlay stays
+  as a nice-to-have on devices where it works.
+
 ## 2026-06-15 (heatmap: 6-month window)
 
 ### Changed
