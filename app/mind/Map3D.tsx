@@ -293,6 +293,31 @@ export default function Map3D({
         </Canvas>
       </div>
 
+      {/* Guaranteed-visible static legend of the axis labels. Lives outside
+          the WebGL canvas so it renders regardless of font / Html overlay
+          behaviour inside three.js. Shown only when labels actually exist. */}
+      {axisLabels && (
+        <div className="rounded border border-stone-200 dark:border-stone-800 p-2 text-xs space-y-1.5">
+          <p className="text-[11px] opacity-50 uppercase tracking-wide">
+            Axes
+          </p>
+          {(["pc1", "pc2", "pc3"] as const).map((k, i) => (
+            <p key={k} className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono opacity-40 text-[10px]">
+                {["X", "Y", "Z"][i]}
+              </span>
+              <span className="rounded-full bg-amber-900/80 text-amber-100 px-2 py-0.5">
+                {axisLabels[k].positive}
+              </span>
+              <span className="opacity-40">↔</span>
+              <span className="rounded-full bg-blue-900/80 text-blue-100 px-2 py-0.5">
+                {axisLabels[k].negative}
+              </span>
+            </p>
+          ))}
+        </div>
+      )}
+
       {active ? (
         <div className="rounded border border-stone-200 dark:border-stone-800 p-2 text-xs space-y-1">
           <p className="opacity-60">
