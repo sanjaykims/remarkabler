@@ -216,18 +216,6 @@ export default function MindPage() {
           >
             {reparsing ? "Re-parsing…" : "Re-parse dates"}
           </button>
-          <button
-            disabled={labelling || analyzing}
-            onClick={labelAxes}
-            title="Sends a few extreme entries from each axis of the 3D map to Claude for short labels (e.g. 'family life ↔ business'). One Claude call total."
-            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
-          >
-            {labelling
-              ? "Labelling…"
-              : data?.axisLabels
-              ? "Re-label axes"
-              : "Label axes"}
-          </button>
         </div>
         {labelDebug && (labelDebug.labels || labelDebug.raw || labelDebug.error) && (
           <details className="rounded border border-stone-200 dark:border-stone-800 p-2 text-[11px] space-y-1">
@@ -299,6 +287,8 @@ export default function MindPage() {
             data={data.embeddingMap}
             embeddingsEnabled={data.embeddingsEnabled}
             axisLabels={data.axisLabels}
+            labelling={labelling}
+            onLabelAxes={labelAxes}
           />
         </>
       )}
@@ -657,10 +647,14 @@ function EmbeddingMap({
   data,
   embeddingsEnabled,
   axisLabels,
+  labelling,
+  onLabelAxes,
 }: {
   data: MapPoint[];
   embeddingsEnabled: boolean;
   axisLabels: AxisLabels | null;
+  labelling: boolean;
+  onLabelAxes: () => void;
 }) {
   if (!embeddingsEnabled) {
     return (
@@ -689,9 +683,23 @@ function EmbeddingMap({
       subtitle={`${data.length} entries projected to 3D (PCA on Voyage embeddings). Drag to rotate, pinch to zoom. Closer = more similar in meaning. ${
         axisLabels
           ? "Axis labels are short summaries Claude wrote for the extreme entries at each end."
-          : "Tap 'Label axes' above to have Claude name what each direction represents."
+          : "Tap 'Label axes' below to have Claude name what each direction represents."
       } Orange = positive, blue = negative, grey = un-analysed.`}
     >
+      <div className="flex justify-end pb-2">
+        <button
+          disabled={labelling}
+          onClick={onLabelAxes}
+          title="Sends a few extreme entries from each axis of the 3D map to Claude for short labels (e.g. 'family life ↔ business'). One Claude call total."
+          className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+        >
+          {labelling
+            ? "Labelling…"
+            : axisLabels
+            ? "Re-label axes"
+            : "Label axes"}
+        </button>
+      </div>
       <Map3D data={data} axisLabels={axisLabels} />
     </Section>
   );
