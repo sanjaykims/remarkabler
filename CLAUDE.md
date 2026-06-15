@@ -58,30 +58,70 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 
 ## Architecture
 
-- `lib/db.ts` — SQLite connection, schema, migrations. Tables: `settings`,
-  `notebooks`, `pages`, `pages_fts`, `chat_messages`, `insights`,
-  `credentials`, `chat_attachments`, `api_usage`, `profile`.
+> Keep this in sync with the structure map in `AGENTS.md`; the two should
+> agree. When you add a lib, table, route, or page, update both.
+
+- `lib/db.ts` — SQLite connection, schema, migrations. `foreign_keys` pragma
+  is ON (so `ON DELETE CASCADE` actually fires). Tables: `settings`,
+  `notebooks`, `pages`, `pages_fts` (FTS5 virtual), `chat_messages`,
+  `insights`, `credentials`, `chat_attachments`, `api_usage`, `profile`,
+  `daily_summaries`, `entry_analysis` (per-entry themes/sentiment/summary
+  cache for `/mind`), `locations`, `location_points`, `route_stops`,
+  `geocode_cache`. Some durable state also lives in `settings` rows, e.g.
+  `mind_pca_axes` (persisted PCA mean + PC vectors + axis labels) and the
+  `backup_last_*` markers.
 - `lib/claude.ts` — Anthropic API calls: `ocrNotebookPdf`, `chatOverNotes`,
-  `generateInsights`, `generateInsightTitle`, and the evolving-memory pair
-  `buildSelfModel` / `updateSelfModel`. Each records token usage + an
-  estimated cost via `recordUsage` from `lib/usage.ts`.
+  `generateInsights`, `generateInsightTitle`, the evolving-memory pair
+  `buildSelfModel` / `updateSelfModel`, `summarizeDay`, `composeBook`, and the
+  `/mind` helpers `analyzeEntryContent` (themes/sentiment/summary, English),
+  `labelEmbeddingAxes` + the pure `parseAxisLabels`. Each records token usage +
+  an estimated cost via `recordUsage` from `lib/usage.ts`.
 - `lib/usage.ts` — `recordUsage` (per-call cost from list prices) plus
   `monthlyUsage` / `dailyUsage` / `totalUsage` aggregation (timezone-aware).
+- `lib/embeddings.ts` — Voyage embeddings (`embed`, `embedBatch`,
+  `encodeEmbedding`/`decodeEmbedding` Float32-BLOB codec, `cosineSimilarity`).
+  Stored per-page on `pages.embedding`; gated by `VOYAGE_API_KEY`.
+- `lib/chatTools.ts` — the tools Claude calls during chat (`search_diary`,
+  `get_entries_by_date`, `get_day_summary`, …), dispatched on demand.
+- `lib/mind.ts` — `/mind` analytics, all free per view (cached): `getHeatmap`,
+  `getThemes`, `getSentimentSeries`, `getEmbeddingMap`; the one shared PCA
+  (`computePca` + `projectOnto`); the per-entry analysis driver
+  (`analyzePending`, bounded/serial/guarded); and axis labelling
+  (`generateAxisLabels`, persists axes to the `mind_pca_axes` setting). The
+  discipline notebook is excluded everywhere here, same as themes/sentiment.
 - `lib/profile.ts` — the evolving "profile of you" (`profile` table, versioned):
   `getCurrentProfile`, `getCurrentProfileRow`, `hasProfile`, `saveProfile`.
-  Surfaced/edited via `app/memory` + `app/api/memory` (view, save edits,
-  rebuild from all notes).
 - `lib/notes.ts` — `createNotebook` (fast: save PDF + DB row), `processNotebook`
-  (background OCR, then folds the entry into the profile via
-  `build`/`updateSelfModel`), `deleteNotebook`, `buildNotesContext`,
-  `buildChatContext`, `ensureProfileSeed`. (Chat retrieval now lives in
-  `lib/chatTools.ts` as the `search_diary` tool, dispatched by Claude.)
-- `app/api/notebooks` — upload (POST) / list (GET) / delete; `app/api/chat`;
-  `app/api/insights`; `app/api/usage` (cost aggregation).
-- `app/notebooks`, `app/chat`, `app/insights`, `app/usage` (cost calendar) — UI
-  pages.
+  (background OCR → embed → fold into profile → auto-analyse fresh pages for
+  `/mind`), `deleteNotebook`, `buildNotesContext`, `buildChatContext`,
+  `ensureProfileSeed`, `extractEntryDate` / `reparseAllEntryDates` (diary-date
+  parsing + carry-forward), and the GitHub "discipline" sync (`DISCIPLINE_ID`).
+- `lib/backup.ts` — weekly tar.gz backup of `DATA_DIR` to a private GitHub repo
+  (`maybeRunWeeklyBackup`, with a failure backoff so a broken backup doesn't
+  retry every sweep; manual `runBackup` via `/api/backup` ignores the backoff).
+- `lib/location.ts` + `lib/owntracks.ts` — OwnTracks ingestion, stay
+  clustering, reverse-geocoding; `lib/github.ts` — discipline repo fetch;
+  `lib/cleanup.ts`, `lib/upload.ts`, `lib/extractText.ts`, `lib/format.ts` —
+  support utilities; `lib/auth.ts` + `lib/webauthn.ts` — passkey/passcode lock.
+- API routes (`app/api/*`): `auth`, `notebooks`, `chat`, `insights`, `usage`,
+  `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
+  `mind/axis-labels`, `mind/reparse-dates`), `embeddings`, `backup`,
+  `discipline`, `location`, `owntracks`, `export`, `settings`.
+- UI pages (`app/*`): `notebooks`, `chat`, `insights`, `mind` (heatmap, theme
+  cloud, mood timeline, 3D embedding map — `app/mind/Map3D.tsx`), `memory`,
+  `usage` (cost calendar).
 - `app/share/route.ts` — PWA Web Share Target; `public/manifest.json` — PWA
   manifest.
+
+## Tests
+
+`npm test` runs Vitest over `test/*.test.ts` — pure-logic units only (no
+network, throwaway SQLite for the one DB-backed test). Covers `extractEntryDate`
+formats, the PCA invariants (orthonormality, variance ordering, reconstruction,
+direction match *up to sign* — never absolute coordinates, since PCA sign is
+arbitrary), `parseAxisLabels` leniency, and the `/mind` discipline-exclusion
+filter. `npm run build` is still the integration safety net; Claude/Voyage
+features need the deployed instance to fully verify.
 
 ## Hard-won rules — do not regress these
 
@@ -132,7 +172,8 @@ backup behavior) so you don't re-derive answers we already have.
 - Their vision: Claude continuously fed their reMarkable notes to "help my
   life in every way." Plausible next steps: turning notes into calendar
   events / todos, proactive weekly digests.
-- Verify with `npm run build` before claiming a task is done. The
+- Verify with `npm run build` (and `npm test` when you touch pure logic like
+  date parsing, PCA, or cost math) before claiming a task is done. The
   Claude-powered features (OCR, chat, insights) need `ANTHROPIC_API_KEY` and
   can only be fully tested on the deployed Railway instance — say so honestly
   rather than claiming they were verified locally.

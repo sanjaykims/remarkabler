@@ -30,6 +30,11 @@ export async function POST() {
       { status: 400 }
     );
   }
+  // Manual backup runs immediately (no backoff gate), but still records the
+  // attempt time so the automatic sweep's backoff window stays in sync — a
+  // manual run that just failed shouldn't be instantly re-attempted by the
+  // next sweep either.
+  setSetting("backup_last_attempt_at", new Date().toISOString());
   try {
     const size = await runBackup();
     setSetting("backup_last_at", new Date().toISOString());

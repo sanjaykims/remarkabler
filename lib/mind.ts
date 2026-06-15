@@ -397,18 +397,34 @@ function powerIterTopEigenvector(
   return v;
 }
 
-// PCA reducing to k dimensions via repeated power-iteration with deflation.
+// A fitted PCA: the data mean plus the top-k principal component vectors.
+// Persisting this (rather than re-deriving on every render) is what keeps the
+// embedding map's coordinates aligned with the axis labels Claude wrote.
+export type PcaModel = { mean: Float32Array; pcs: Float32Array[] };
+
+// Fit PCA to `k` components via repeated power-iteration with deflation.
 // Each successive principal component is found on the residual after
 // projecting out the previous PCs (X' = X − Xv₁v₁ᵀ → X'ᵀX' = XᵀX − λ₁v₁v₁ᵀ),
 // which is the textbook deflation and stays well-conditioned in Float32 for
 // the dim (1024) × n (≤500) regime this app sees.
-function pcaNd(vectors: Float32Array[], k: number): Array<number[]> | null {
+//
+// This is the ONE PCA implementation — both the embedding map (fresh-fallback
+// path) and the axis labeller fit through here, so the map and its labels can
+// never drift onto different math.
+export function computePca(
+  vectors: Float32Array[],
+  k: number
+): PcaModel | null {
   const n = vectors.length;
-  if (n === 0) return [];
+  if (n === 0) return null;
   const dim = vectors[0].length;
   if (dim === 0) return null;
-  const components = Math.min(k, dim, n);
-  if (components === 0) return vectors.map(() => []);
+  // Centred data has rank at most n-1, so there are at most n-1 meaningful
+  // components — asking for more would deflate to a ~zero residual and return
+  // an arbitrary noise direction. Cap accordingly. (n=1 → 0 → null, since a
+  // single point has no variance to decompose.)
+  const components = Math.min(k, dim, n - 1);
+  if (components <= 0) return null;
 
   // Centre.
   const mean = new Float32Array(dim);
@@ -458,28 +474,29 @@ function pcaNd(vectors: Float32Array[], k: number): Array<number[]> | null {
     }
   }
 
-  // Project each centred-from-original vector onto each principal component.
-  // (working has been deflated in place, so recompute centred for projection.)
-  const points: Array<number[]> = [];
-  for (let r = 0; r < n; r++) {
-    const centred = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) centred[i] = vectors[r][i] - mean[i];
-    const coords: number[] = new Array(components);
-    for (let c = 0; c < components; c++) {
-      const pc = pcs[c];
-      let s = 0;
-      for (let i = 0; i < dim; i++) s += centred[i] * pc[i];
-      coords[c] = s;
-    }
-    points.push(coords);
-  }
-  return points;
+  return { mean, pcs };
+}
+
+// Project one vector onto a fitted PCA model → one coordinate per component.
+export function projectOnto(vec: Float32Array, model: PcaModel): number[] {
+  const dim = model.mean.length;
+  return model.pcs.map((pc) => {
+    let s = 0;
+    for (let i = 0; i < dim; i++) s += (vec[i] - model.mean[i]) * pc[i];
+    return s;
+  });
 }
 
 export function getEmbeddingMap(limit: number = 500): MapPoint[] {
   // Pull pages with both an embedding and (preferably) an analysis row so the
   // tooltip has something to show. The map is informative without analysis,
   // so we LEFT JOIN and just hide themes/summary when missing.
+  //
+  // The discipline notebook (synced GitHub content) is excluded — exactly as
+  // it is in getThemes / getSentimentSeries / generateAxisLabels — so the map
+  // shows "your mind", and crucially so the map's point set matches the point
+  // set the axis labels were derived from. Without this filter the dots would
+  // include synced content the labels never saw.
   const rows = db()
     .prepare(
       `SELECT p.id          AS page_id,
@@ -496,10 +513,11 @@ export function getEmbeddingMap(limit: number = 500): MapPoint[] {
          LEFT JOIN entry_analysis a ON a.page_id = p.id
          WHERE p.embedding IS NOT NULL
            AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
+           AND p.notebook_id != ?
          ORDER BY p.entry_date IS NULL ASC, p.entry_date DESC, p.id DESC
          LIMIT ?`
     )
-    .all(Math.max(1, Math.min(2000, limit))) as Array<{
+    .all(disciplineNotebookId(), Math.max(1, Math.min(2000, limit))) as Array<{
     page_id: string;
     embedding: Buffer;
     entry_date: string | null;
@@ -526,38 +544,33 @@ export function getEmbeddingMap(limit: number = 500): MapPoint[] {
   }
   if (usable.length < 2) return [];
 
-  // If the user has generated axis labels, reuse the persisted PC vectors so
-  // their labels still line up with the current map. Only re-derive PCA when
-  // no saved axes exist or the embedding dim has changed (e.g. they swapped
-  // the Voyage model). This also makes the map faster to render after the
-  // first run — PCA is by far the heaviest step.
+  // Build the projection model. Prefer the persisted axes (so the map stays
+  // aligned with the labels Claude wrote); only fit fresh PCA when no saved
+  // axes exist or the embedding dim changed (e.g. a different Voyage model).
+  // Either way the projection goes through the same projectOnto, so the
+  // fresh-fallback and stored paths can't diverge.
+  let model: PcaModel | null = null;
   const stored = getStoredAxes();
-  let reduced: Array<number[]> | null;
   if (stored && stored.dim === expectedDim) {
     const mean = decodeVec(stored.mean, expectedDim);
-    const pc1 = decodeVec(stored.pcs[0], expectedDim);
-    const pc2 = decodeVec(stored.pcs[1], expectedDim);
-    const pc3 = decodeVec(stored.pcs[2], expectedDim);
-    if (mean && pc1 && pc2 && pc3) {
-      reduced = usable.map(({ vec }) => {
-        let x = 0;
-        let y = 0;
-        let z = 0;
-        for (let i = 0; i < expectedDim; i++) {
-          const c = vec[i] - mean[i];
-          x += c * pc1[i];
-          y += c * pc2[i];
-          z += c * pc3[i];
-        }
-        return [x, y, z];
-      });
-    } else {
-      reduced = pcaNd(usable.map((u) => u.vec), 3);
+    const pcs = stored.pcs
+      .map((p) => decodeVec(p, expectedDim))
+      .filter((p): p is Float32Array => !!p);
+    if (mean && pcs.length === stored.pcs.length && pcs.length > 0) {
+      model = { mean, pcs };
     }
-  } else {
-    reduced = pcaNd(usable.map((u) => u.vec), 3);
   }
-  if (!reduced) return [];
+  if (!model) {
+    model = computePca(usable.map((u) => u.vec), 3);
+  }
+  if (!model) return [];
+
+  // Project every point onto the (≤3) components. Pad to 3 so the front-end
+  // always gets an [x, y, z] even if PCA produced fewer (tiny corpus).
+  const reduced: number[][] = usable.map(({ vec }) => {
+    const coords = projectOnto(vec, model!);
+    return [coords[0] ?? 0, coords[1] ?? 0, coords[2] ?? 0];
+  });
 
   // Normalise to roughly [-1, +1] across all three axes so the front-end can
   // scale to canvas/scene size without knowing the original variance.
@@ -666,77 +679,20 @@ export async function generateAxisLabels(): Promise<
       };
     }
 
-    // Fresh PCA over the whole usable corpus. We need the *vectors*
-    // (not just projections) to persist them, so we recompute mean +
-    // pcs here rather than reusing pcaNd's output.
-    const mean = new Float32Array(dim);
-    for (const { vec } of usable) {
-      for (let i = 0; i < dim; i++) mean[i] += vec[i];
-    }
-    for (let i = 0; i < dim; i++) mean[i] /= usable.length;
-
-    // Working copy of the centred data, deflated in-place per PC.
-    const working: Float32Array[] = usable.map(({ vec }) => {
-      const c = new Float32Array(dim);
-      for (let i = 0; i < dim; i++) c[i] = vec[i] - mean[i];
-      return c;
-    });
-
-    const pcs: Float32Array[] = [];
-    const xtx = (mat: Float32Array[]) => (v: Float32Array): Float32Array => {
-      const y = new Float32Array(mat.length);
-      for (let r = 0; r < mat.length; r++) {
-        const row = mat[r];
-        let s = 0;
-        for (let i = 0; i < dim; i++) s += row[i] * v[i];
-        y[r] = s;
-      }
-      const out = new Float32Array(dim);
-      for (let r = 0; r < mat.length; r++) {
-        const row = mat[r];
-        const yr = y[r];
-        for (let i = 0; i < dim; i++) out[i] += row[i] * yr;
-      }
-      return out;
-    };
-    for (let k = 0; k < 3; k++) {
-      // Local power iteration so this function doesn't depend on the
-      // private helper above.
-      let v: Float32Array = new Float32Array(dim);
-      for (let i = 0; i < dim; i++) {
-        v[i] = ((i * 2654435761) >>> 0) / 0xffffffff - 0.5;
-      }
-      let n = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
-      for (let i = 0; i < dim; i++) v[i] /= n;
-      for (let it = 0; it < 80; it++) {
-        const w = xtx(working)(v);
-        n = Math.sqrt(w.reduce((s, x) => s + x * x, 0));
-        if (n === 0) break;
-        for (let i = 0; i < dim; i++) w[i] /= n;
-        v = w;
-      }
-      pcs.push(v);
-      // Deflate.
-      for (let r = 0; r < working.length; r++) {
-        const row = working[r];
-        let proj = 0;
-        for (let i = 0; i < dim; i++) proj += row[i] * v[i];
-        for (let i = 0; i < dim; i++) row[i] -= proj * v[i];
-      }
+    // Fit PCA with the shared implementation, so the axes we label and store
+    // are the exact same math the embedding map projects onto.
+    const model = computePca(usable.map((u) => u.vec), 3);
+    if (!model || model.pcs.length < 3) {
+      return {
+        error: "Couldn't fit 3 principal components from these entries.",
+        labels: getStoredAxisLabels(),
+      };
     }
 
-    // Project each centred entry onto each PC. Re-centre from original
-    // vectors because `working` has been deflated.
-    const projected: number[][] = usable.map(({ vec }) => {
-      const out: number[] = [0, 0, 0];
-      for (let k = 0; k < 3; k++) {
-        const pc = pcs[k];
-        let s = 0;
-        for (let i = 0; i < dim; i++) s += (vec[i] - mean[i]) * pc[i];
-        out[k] = s;
-      }
-      return out;
-    });
+    // Project each entry onto the three components to find the extremes.
+    const projected: number[][] = usable.map(({ vec }) =>
+      projectOnto(vec, model)
+    );
 
     // For each axis, pick the EXTREME_N entries with the highest /
     // lowest projection. Use the cached themes/summary for the prompt
@@ -788,8 +744,8 @@ export async function generateAxisLabels(): Promise<
 
     const stored: StoredAxes = {
       dim,
-      mean: encodeVec(mean),
-      pcs: pcs.map(encodeVec),
+      mean: encodeVec(model.mean),
+      pcs: model.pcs.map(encodeVec),
       labels: result.labels,
       n_entries: usable.length,
       generated_at: new Date().toISOString(),
