@@ -169,6 +169,33 @@ export default function MindPage() {
     }
   }
 
+  const [reanalyzing, setReanalyzing] = useState(false);
+  async function reanalyzeAll() {
+    if (
+      !confirm(
+        "Re-analyse all entries in English? This clears the cached themes / mood / summaries and re-runs Claude on every entry. Roughly $0.10–0.30 in total. Continue?"
+      )
+    ) {
+      return;
+    }
+    setReanalyzing(true);
+    setAnalyzeMsg(null);
+    try {
+      const r = await fetch("/api/mind/reanalyze", { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed");
+      setAnalyzeMsg(
+        d.message ||
+          "Re-analysis started in the background. Refresh in a minute or two."
+      );
+      await load();
+    } catch (e) {
+      setAnalyzeMsg((e as Error).message || "Re-analyse failed.");
+    } finally {
+      setReanalyzing(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header className="space-y-1">
@@ -215,6 +242,14 @@ export default function MindPage() {
             className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
           >
             {reparsing ? "Re-parsing…" : "Re-parse dates"}
+          </button>
+          <button
+            disabled={reanalyzing || analyzing}
+            onClick={reanalyzeAll}
+            title="Wipes the cached themes / mood / summaries and re-analyses every entry from scratch with English-only prompts. Costs roughly $0.10–0.30 in total. Runs in the background."
+            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+          >
+            {reanalyzing ? "Re-analysing…" : "Re-analyse in English"}
           </button>
         </div>
         {labelDebug && (labelDebug.labels || labelDebug.raw || labelDebug.error) && (
