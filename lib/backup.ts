@@ -10,6 +10,14 @@ import { db, DATA_DIR, getSetting, setSetting, clearSetting } from "./db";
 // so this is the smallest reasonable surface for off-site durability.
 
 const BACKUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // ~weekly
+// When an automatic backup FAILS (revoked token, oversized tarball, network
+// policy change…), back off before the maintenance sweep retries. Without
+// this, a persistently-failing backup retries on every sweep — and the sweep
+// runs every ~5 minutes — burning CPU, API calls, and filling the logs. Six
+// hours is long enough to stop the loop but short enough that a transient
+// outage still recovers the same day. Manual "Backup now" ignores this and
+// retries immediately.
+const BACKUP_FAILURE_BACKOFF_MS = 6 * 60 * 60 * 1000; // 6 hours
 // Keep the last N snapshots in the repo. Older ones are pruned via the
 // GitHub API after each successful backup, so the repo never balloons
 // indefinitely. 12 ≈ 3 months of weekly snapshots — plenty to roll back
@@ -25,6 +33,7 @@ export type BackupStatus = {
   configured: boolean;
   repo: string | null;
   lastAt: string | null;
+  lastAttemptAt: string | null;
   lastError: string | null;
   lastSizeBytes: number | null;
 };
@@ -35,6 +44,7 @@ export function backupStatus(): BackupStatus {
     configured: backupConfigured(),
     repo: process.env.BACKUP_REPO || null,
     lastAt: getSetting("backup_last_at"),
+    lastAttemptAt: getSetting("backup_last_attempt_at"),
     lastError: getSetting("backup_last_error"),
     lastSizeBytes: sizeStr ? Number(sizeStr) || null : null,
   };
@@ -242,14 +252,34 @@ export async function runBackup(): Promise<number> {
 export function maybeRunWeeklyBackup(): void {
   if (runningBackup) return;
   if (!backupConfigured()) return;
+  const now = Date.now();
+
+  // Schedule gate: skip if a backup succeeded within the weekly interval.
   const last = getSetting("backup_last_at");
   if (last) {
     const lastAt = Date.parse(last);
-    if (!Number.isNaN(lastAt) && Date.now() - lastAt < BACKUP_INTERVAL_MS) {
+    if (!Number.isNaN(lastAt) && now - lastAt < BACKUP_INTERVAL_MS) {
       return;
     }
   }
+
+  // Backoff gate: skip if we attempted recently, regardless of outcome. This
+  // is what stops a persistently-failing backup from retrying every 5-minute
+  // sweep — the attempt timestamp is written below before the (possibly slow,
+  // possibly failing) upload runs. After a SUCCESS the weekly gate above
+  // dominates, so the backoff never delays the normal cadence.
+  const lastAttempt = getSetting("backup_last_attempt_at");
+  if (lastAttempt) {
+    const attemptAt = Date.parse(lastAttempt);
+    if (!Number.isNaN(attemptAt) && now - attemptAt < BACKUP_FAILURE_BACKOFF_MS) {
+      return;
+    }
+  }
+
   runningBackup = true;
+  // Record the attempt up-front so a crash or a slow failure mid-upload still
+  // counts against the backoff window.
+  setSetting("backup_last_attempt_at", new Date().toISOString());
   (async () => {
     try {
       const size = await runBackup();

@@ -626,19 +626,39 @@ export async function labelEmbeddingAxes(opts: {
 
   const block = resp.content.find((b) => b.type === "text");
   const raw = block && block.type === "text" ? block.text.trim() : "";
-  if (!raw) return { labels: null, raw: "", parseError: "Empty response from Claude" };
+  const parsed = parseAxisLabels(raw);
+  if (!parsed.labels) {
+    return { labels: null, raw, parseError: parsed.parseError };
+  }
+  return { labels: parsed.labels, raw };
+}
 
-  // Be lenient — Claude sometimes wraps in fences, adds a preamble, or
-  // returns slightly nested JSON. Walk through several extraction
-  // strategies before giving up.
+/**
+ * Pure parser for the axis-label JSON Claude returns. Extracted from
+ * labelEmbeddingAxes so it can be unit-tested without an API call. Lenient by
+ * design — Claude (especially the cheaper chat-tier model) sometimes wraps the
+ * object in a Markdown fence, adds a preamble, nests it under an "axes" /
+ * "labels" key, or leaves a trailing comma. We try to salvage a valid object
+ * before giving up, and accept partial axes (synthesising "(missing)") so one
+ * malformed field can't discard five good labels.
+ */
+export function parseAxisLabels(raw: string): {
+  labels: AxisLabels | null;
+  parseError: string;
+} {
+  const text = (raw || "").trim();
+  if (!text) return { labels: null, parseError: "Empty response from Claude" };
+
+  // Build candidate strings to attempt JSON.parse on, in priority order.
   const candidates: string[] = [];
-  const stripped = raw
+  const stripped = text
     .replace(/^```(?:json|javascript)?\s*/i, "")
     .replace(/```\s*$/i, "")
     .trim();
   candidates.push(stripped);
-  // Greedy match: outermost {...} block anywhere in the response.
-  const greedy = raw.match(/\{[\s\S]*\}/);
+  // Greedy match: outermost {...} block anywhere in the response (handles a
+  // preamble before the JSON).
+  const greedy = text.match(/\{[\s\S]*\}/);
   if (greedy && greedy[0] !== stripped) candidates.push(greedy[0]);
   // Strip JS-style trailing commas as a last resort.
   candidates.push(stripped.replace(/,\s*([}\]])/g, "$1"));
@@ -655,18 +675,24 @@ export async function labelEmbeddingAxes(opts: {
     }
   }
   if (!parsed || typeof parsed !== "object") {
-    return { labels: null, raw, parseError: parseError || "Could not parse JSON" };
+    return { labels: null, parseError: parseError || "Could not parse JSON" };
   }
+
   // Unwrap a single "axes" / "labels" key if Claude nested the result.
   const top = parsed as Record<string, unknown>;
   const candidate =
     top.pc1 && typeof top.pc1 === "object"
       ? top
-      : (top.axes && typeof top.axes === "object" ? (top.axes as Record<string, unknown>) : null) ||
-        (top.labels && typeof top.labels === "object" ? (top.labels as Record<string, unknown>) : null);
+      : (top.axes && typeof top.axes === "object"
+          ? (top.axes as Record<string, unknown>)
+          : null) ||
+        (top.labels && typeof top.labels === "object"
+          ? (top.labels as Record<string, unknown>)
+          : null);
   if (!candidate) {
-    return { labels: null, raw, parseError: "Response missing pc1/pc2/pc3 keys" };
+    return { labels: null, parseError: "Response missing pc1/pc2/pc3 keys" };
   }
+
   const out: AxisLabels = {
     pc1: { positive: "", negative: "" },
     pc2: { positive: "", negative: "" },
@@ -675,21 +701,16 @@ export async function labelEmbeddingAxes(opts: {
   for (const k of ["pc1", "pc2", "pc3"] as const) {
     const v = candidate[k] as Record<string, unknown> | undefined;
     if (!v || typeof v !== "object") {
-      return { labels: null, raw, parseError: `Missing ${k}` };
+      return { labels: null, parseError: `Missing ${k}` };
     }
     const pos = typeof v.positive === "string" ? v.positive.trim() : "";
     const neg = typeof v.negative === "string" ? v.negative.trim() : "";
-    if (!pos || !neg) {
-      // Be lenient — accept whichever side Claude produced and synthesise a
-      // placeholder for the missing one so the user at least sees something.
-      out[k].positive = pos || "(missing)";
-      out[k].negative = neg || "(missing)";
-    } else {
-      out[k].positive = pos.slice(0, 40);
-      out[k].negative = neg.slice(0, 40);
-    }
+    // Lenient — accept whichever side Claude produced and synthesise a
+    // placeholder for the missing one so the user at least sees something.
+    out[k].positive = (pos || "(missing)").slice(0, 40);
+    out[k].negative = (neg || "(missing)").slice(0, 40);
   }
-  return { labels: out, raw };
+  return { labels: out, parseError: "" };
 }
 
 export async function summarizeDay(opts: {

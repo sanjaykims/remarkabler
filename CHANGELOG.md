@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-06-15 (Codex review follow-through)
+
+### Fixed
+- **`/mind` discipline-filter inconsistency (the bug Codex found).**
+  `getEmbeddingMap` did not exclude the discipline notebook while
+  `generateAxisLabels` did — so the 3D map could include synced GitHub
+  content the axis labels were never derived from. The map now applies the
+  same `notebook_id != DISCIPLINE_ID` filter as themes / sentiment / labels,
+  so the map's point set matches the label-eligible set. Covered by a new
+  integration test.
+- **Backup retry loop.** A persistently-failing automatic backup retried on
+  every ~5-minute maintenance sweep (failure path never recorded a
+  timestamp). Now records `backup_last_attempt_at` up-front and applies a
+  6-hour backoff to the automatic sweep. Manual "Backup now" still retries
+  immediately. `backupStatus()` gained `lastAttemptAt`. (Long-standing known
+  issue from the 2026-06-04 session log.)
+
+### Changed
+- **Single PCA implementation.** The embedding map and the axis labeller used
+  to each run their own copy of power-iteration + deflation. Unified into one
+  exported `computePca` + `projectOnto`; both paths now fit through it, so the
+  map and its labels can't drift onto different math. PCA also now caps
+  components at `min(k, dim, n-1)` (centred-data rank) instead of `min(k, dim,
+  n)`, avoiding a meaningless noise component for tiny inputs.
+- **Axis-label JSON parsing extracted** into a pure, exported `parseAxisLabels`
+  (was inline in `labelEmbeddingAxes`) so it's unit-testable.
+
+### Added
+- **Test harness (`npm test`, Vitest).** First suites: `extractEntryDate`
+  header formats, PCA invariants (orthonormality / variance ordering /
+  reconstruction / direction match up to sign — no brittle coordinate
+  assertions), `parseAxisLabels` leniency, and the `/mind` discipline
+  exclusion (throwaway SQLite). 36 tests.
+
+### Docs
+- `CLAUDE.md` architecture section brought up to date with current modules,
+  tables, routes and pages (mind, embeddings, backup, location, discipline,
+  `entry_analysis`, `mind_pca_axes`, the FK pragma) and a new Tests section;
+  cross-referenced with `AGENTS.md`.
+
 ## 2026-06-15 (mind: bulletproof label visibility + diagnostics)
 
 After running 8 parallel review agents on the label flow, two real fragility
