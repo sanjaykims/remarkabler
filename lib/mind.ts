@@ -615,12 +615,13 @@ let labellingInFlight = false;
 export type AxisLabelsResult = {
   labels: AxisLabels;
   n_entries: number;
+  raw?: string;
 };
 
 export async function generateAxisLabels(): Promise<
   | AxisLabelsResult
   | { skipped: "in-flight"; labels: AxisLabels | null }
-  | { error: string; labels: AxisLabels | null }
+  | { error: string; labels: AxisLabels | null; raw?: string }
 > {
   if (labellingInFlight) {
     return { skipped: "in-flight", labels: getStoredAxisLabels() };
@@ -765,7 +766,7 @@ export async function generateAxisLabels(): Promise<
       });
     };
 
-    const labels = await labelEmbeddingAxes({
+    const result = await labelEmbeddingAxes({
       pc1Positive: extreme(0, 1),
       pc1Negative: extreme(0, -1),
       pc2Positive: extreme(1, 1),
@@ -773,10 +774,15 @@ export async function generateAxisLabels(): Promise<
       pc3Positive: extreme(2, 1),
       pc3Negative: extreme(2, -1),
     });
-    if (!labels) {
+    if (!result.labels) {
+      // Surface BOTH the prior labels (so the UI keeps showing whatever it
+      // had) AND the raw Claude response, so the user can see what actually
+      // came back when generation failed. That's the most honest debug aid
+      // when nothing seems to work.
       return {
-        error: "Claude returned an unexpected response — try again.",
+        error: `Couldn't parse the labels Claude returned: ${result.parseError}`,
         labels: getStoredAxisLabels(),
+        raw: result.raw,
       };
     }
 
@@ -784,12 +790,23 @@ export async function generateAxisLabels(): Promise<
       dim,
       mean: encodeVec(mean),
       pcs: pcs.map(encodeVec),
-      labels,
+      labels: result.labels,
       n_entries: usable.length,
       generated_at: new Date().toISOString(),
     };
     setSetting(AXES_SETTING_KEY, JSON.stringify(stored));
-    return { labels, n_entries: usable.length };
+    // Verify the round-trip — if for any reason the read-back returns null
+    // (corrupt JSON, validation rejection), surface that to the caller
+    // instead of pretending the labels are saved.
+    const verify = getStoredAxisLabels();
+    if (!verify) {
+      return {
+        error: "Labels generated but failed to persist — settings table may have rejected the write.",
+        labels: result.labels,
+        raw: result.raw,
+      };
+    }
+    return { labels: result.labels, n_entries: usable.length, raw: result.raw };
   } finally {
     labellingInFlight = false;
   }

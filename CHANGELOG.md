@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-06-15 (mind: bulletproof label visibility + diagnostics)
+
+After running 8 parallel review agents on the label flow, two real fragility
+points surfaced + the most likely silent failure mode was identified:
+
+### More tolerant Claude parser
+- `labelEmbeddingAxes` previously returned `null` on any JSON deviation.
+  Now it tries 3 extraction strategies (fence-strip → greedy outermost
+  `{...}` → trailing-comma strip), unwraps `{axes: ...}` or
+  `{labels: ...}` nesting if Claude wrapped, and accepts partial labels
+  (synthesises `"(missing)"` for blank sides instead of discarding the
+  whole pass). Return type changed from `AxisLabels | null` to
+  `AxisLabelResult` carrying the labels (or null), the raw response,
+  and a parseError string.
+- Prompt updated to explicitly allow Korean labels (matching the user's
+  diary language) rather than forcing English.
+
+### Persistence verification
+- `generateAxisLabels` now reads its own write back via
+  `getStoredAxisLabels()` and reports a clear error if the round-trip
+  fails — so a silent settings-table rejection can no longer leave the
+  user staring at "no labels" with no explanation.
+
+### User-visible diagnostics
+- Success message now lists the actual six labels inline ("X: family
+  ↔ business · Y: …") so the user doesn't need to scroll/orbit to
+  confirm anything happened.
+- Collapsible **"Last label attempt"** panel shows the raw Claude
+  response + any parse error from the most recent run. Tapping it
+  reveals exactly what came back, which is the right debug surface
+  when the in-canvas overlay misbehaves on a particular device.
+
 ## 2026-06-15 (mind: guaranteed-visible axis legend)
 
 ### Changed

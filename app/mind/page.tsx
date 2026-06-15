@@ -110,21 +110,37 @@ export default function MindPage() {
   }
 
   const [labelling, setLabelling] = useState(false);
+  // Last-attempt label result, surfaced so the user can see exactly what
+  // came back instead of guessing why nothing rendered.
+  const [labelDebug, setLabelDebug] = useState<{
+    labels?: AxisLabels | null;
+    raw?: string;
+    error?: string;
+  } | null>(null);
   async function labelAxes() {
     setLabelling(true);
     setAnalyzeMsg(null);
+    setLabelDebug(null);
     try {
       const r = await fetch("/api/mind/axis-labels", { method: "POST" });
       const d = await r.json();
+      // Stash whatever came back so we can render it below the buttons.
+      setLabelDebug({ labels: d.labels, raw: d.raw, error: d.error });
       if (!r.ok) throw new Error(d.error || "Failed");
       if (d.skipped === "in-flight") {
         setAnalyzeMsg("Labelling is already running. Try again in a moment.");
       } else if (d.error) {
         setAnalyzeMsg(d.error);
-      } else {
+      } else if (d.labels) {
+        // Show the six labels directly in the message — no map navigation
+        // needed to confirm Claude actually answered.
+        const fmt = (k: "pc1" | "pc2" | "pc3", axis: string) =>
+          `${axis}: ${d.labels[k].positive} ↔ ${d.labels[k].negative}`;
         setAnalyzeMsg(
-          `Labelled the 3 axes from ${d.n_entries} entries. Open the map to see them.`
+          `Labelled ${d.n_entries} entries · ${fmt("pc1", "X")} · ${fmt("pc2", "Y")} · ${fmt("pc3", "Z")}`
         );
+      } else {
+        setAnalyzeMsg("Labelling returned no labels — see details below.");
       }
       await load();
     } catch (e) {
@@ -213,6 +229,45 @@ export default function MindPage() {
               : "Label axes"}
           </button>
         </div>
+        {labelDebug && (labelDebug.labels || labelDebug.raw || labelDebug.error) && (
+          <details className="rounded border border-stone-200 dark:border-stone-800 p-2 text-[11px] space-y-1">
+            <summary className="cursor-pointer opacity-70">
+              Last label attempt — tap to inspect
+            </summary>
+            {labelDebug.labels && (
+              <div className="pt-1 space-y-0.5">
+                <p className="opacity-60">Parsed labels:</p>
+                {(["pc1", "pc2", "pc3"] as const).map((k, i) =>
+                  labelDebug.labels?.[k] ? (
+                    <p key={k}>
+                      <span className="font-mono opacity-50">{["X", "Y", "Z"][i]}</span>{" "}
+                      <span className="text-amber-600 dark:text-amber-400">
+                        {labelDebug.labels[k].positive}
+                      </span>{" "}
+                      ↔{" "}
+                      <span className="text-blue-600 dark:text-blue-400">
+                        {labelDebug.labels[k].negative}
+                      </span>
+                    </p>
+                  ) : null
+                )}
+              </div>
+            )}
+            {labelDebug.error && (
+              <p className="text-red-600 dark:text-red-400 pt-1">
+                Error: {labelDebug.error}
+              </p>
+            )}
+            {labelDebug.raw && (
+              <div className="pt-1">
+                <p className="opacity-60">Raw Claude response:</p>
+                <pre className="whitespace-pre-wrap break-words opacity-80 bg-stone-100 dark:bg-stone-900 p-2 rounded">
+                  {labelDebug.raw}
+                </pre>
+              </div>
+            )}
+          </details>
+        )}
         {analyzeMsg && (
           <p className="text-xs opacity-70">{analyzeMsg}</p>
         )}
