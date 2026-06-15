@@ -559,6 +559,10 @@ export type AxisLabels = {
   pc3: { positive: string; negative: string };
 };
 
+export type AxisLabelResult =
+  | { labels: AxisLabels; raw: string }
+  | { labels: null; raw: string; parseError: string };
+
 export async function labelEmbeddingAxes(opts: {
   pc1Positive: AxisExtremeEntry[];
   pc1Negative: AxisExtremeEntry[];
@@ -566,7 +570,7 @@ export async function labelEmbeddingAxes(opts: {
   pc2Negative: AxisExtremeEntry[];
   pc3Positive: AxisExtremeEntry[];
   pc3Negative: AxisExtremeEntry[];
-}): Promise<AxisLabels | null> {
+}): Promise<AxisLabelResult> {
   const format = (es: AxisExtremeEntry[]) =>
     es
       .map((e, i) => {
@@ -578,9 +582,10 @@ export async function labelEmbeddingAxes(opts: {
   const userText = [
     "Three PCA axes from a person's diary entries. For each axis, you have",
     "the entries at the high-positive end and the high-negative end. Give a",
-    "short, vivid label (2-3 words, English, noun phrase) for what each",
-    "direction seems to be about. Make the positive and negative labels",
-    "contrast clearly — they should feel like two ends of the same spectrum.",
+    "short, vivid label (2-3 words) for what each direction seems to be",
+    "about. Make the positive and negative labels contrast clearly — they",
+    "should feel like two ends of the same spectrum. Labels may be in the",
+    "language the entries are written in (English or Korean both fine).",
     "",
     "AXIS 1 — positive end:",
     format(opts.pc1Positive),
@@ -603,15 +608,16 @@ export async function labelEmbeddingAxes(opts: {
 
   const resp = await client().messages.create({
     model: modelChat(),
-    max_tokens: 300,
+    max_tokens: 400,
     system: [
-      "Return STRICT JSON only, no preamble, no Markdown fence:",
+      "Return ONLY a single JSON object — no preamble, no commentary, no",
+      "Markdown fence. Shape exactly:",
       "{",
       '  "pc1": { "positive": "label", "negative": "label" },',
       '  "pc2": { "positive": "label", "negative": "label" },',
       '  "pc3": { "positive": "label", "negative": "label" }',
       "}",
-      "Labels: 2-3 words each, English, lowercase or title case, no quotes.",
+      "Every field must be a non-empty short string (2-3 words).",
     ].join("\n"),
     messages: [{ role: "user", content: userText }],
   });
@@ -619,31 +625,70 @@ export async function labelEmbeddingAxes(opts: {
 
   const block = resp.content.find((b) => b.type === "text");
   const raw = block && block.type === "text" ? block.text.trim() : "";
-  if (!raw) return null;
+  if (!raw) return { labels: null, raw: "", parseError: "Empty response from Claude" };
+
+  // Be lenient — Claude sometimes wraps in fences, adds a preamble, or
+  // returns slightly nested JSON. Walk through several extraction
+  // strategies before giving up.
+  const candidates: string[] = [];
   const stripped = raw
-    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/^```(?:json|javascript)?\s*/i, "")
     .replace(/```\s*$/i, "")
     .trim();
-  try {
-    const p = JSON.parse(stripped) as AxisLabels;
-    // Light validation — every axis must have both ends populated.
-    for (const k of ["pc1", "pc2", "pc3"] as const) {
-      if (
-        !p[k] ||
-        typeof p[k].positive !== "string" ||
-        typeof p[k].negative !== "string" ||
-        !p[k].positive.trim() ||
-        !p[k].negative.trim()
-      ) {
-        return null;
-      }
-      p[k].positive = p[k].positive.trim().slice(0, 40);
-      p[k].negative = p[k].negative.trim().slice(0, 40);
+  candidates.push(stripped);
+  // Greedy match: outermost {...} block anywhere in the response.
+  const greedy = raw.match(/\{[\s\S]*\}/);
+  if (greedy && greedy[0] !== stripped) candidates.push(greedy[0]);
+  // Strip JS-style trailing commas as a last resort.
+  candidates.push(stripped.replace(/,\s*([}\]])/g, "$1"));
+
+  let parsed: unknown = null;
+  let parseError = "";
+  for (const c of candidates) {
+    try {
+      parsed = JSON.parse(c);
+      parseError = "";
+      break;
+    } catch (e) {
+      parseError = (e as Error).message;
     }
-    return p;
-  } catch {
-    return null;
   }
+  if (!parsed || typeof parsed !== "object") {
+    return { labels: null, raw, parseError: parseError || "Could not parse JSON" };
+  }
+  // Unwrap a single "axes" / "labels" key if Claude nested the result.
+  const top = parsed as Record<string, unknown>;
+  const candidate =
+    top.pc1 && typeof top.pc1 === "object"
+      ? top
+      : (top.axes && typeof top.axes === "object" ? (top.axes as Record<string, unknown>) : null) ||
+        (top.labels && typeof top.labels === "object" ? (top.labels as Record<string, unknown>) : null);
+  if (!candidate) {
+    return { labels: null, raw, parseError: "Response missing pc1/pc2/pc3 keys" };
+  }
+  const out: AxisLabels = {
+    pc1: { positive: "", negative: "" },
+    pc2: { positive: "", negative: "" },
+    pc3: { positive: "", negative: "" },
+  };
+  for (const k of ["pc1", "pc2", "pc3"] as const) {
+    const v = candidate[k] as Record<string, unknown> | undefined;
+    if (!v || typeof v !== "object") {
+      return { labels: null, raw, parseError: `Missing ${k}` };
+    }
+    const pos = typeof v.positive === "string" ? v.positive.trim() : "";
+    const neg = typeof v.negative === "string" ? v.negative.trim() : "";
+    if (!pos || !neg) {
+      // Be lenient — accept whichever side Claude produced and synthesise a
+      // placeholder for the missing one so the user at least sees something.
+      out[k].positive = pos || "(missing)";
+      out[k].negative = neg || "(missing)";
+    } else {
+      out[k].positive = pos.slice(0, 40);
+      out[k].negative = neg.slice(0, 40);
+    }
+  }
+  return { labels: out, raw };
 }
 
 export async function summarizeDay(opts: {
