@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-15 (heatmap: 6-month window)
+
+### Changed
+- "When you write" heatmap now shows the **last 26 weeks (~6 months)**
+  instead of the last 52. `today` is computed from `new Date()` on every
+  render, so the rightmost column is always the current week and the
+  grid rolls forward automatically as days pass.
+- Shade scale and "N days with entries" count are now restricted to the
+  visible window — a noisy day from a year ago no longer compresses the
+  current cells into one flat colour, and the count matches what you
+  see on the grid.
+
 ## 2026-06-14 (mind: axis labels render in any language)
 
 ### Fixed

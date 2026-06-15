@@ -252,17 +252,20 @@ export default function MindPage() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 1. Calendar heatmap — last 52 weeks, GitHub-style. Mobile-first: horizontal
-// scroll, week columns of 7-day rows.
+// 1. Calendar heatmap — last 26 weeks (~6 months), GitHub-style. The window
+// is anchored on `new Date()` at render time, so as days pass the grid
+// scrolls forward automatically. Mobile-first: horizontal scroll, week
+// columns of 7-day rows.
 // ──────────────────────────────────────────────────────────────────────────
 
 function Heatmap({ data }: { data: HeatmapBucket[] }) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // 53 weeks back to today, ending on this Saturday so the right edge is
-  // "this week".
-  const weeks = 53;
+  // 26 weeks (~6 months) back to today. `today` is recomputed on every
+  // render, so the rightmost column is always the current week and the
+  // leftmost is always 26 weeks ago — no manual rollover needed.
+  const weeks = 26;
   const days = weeks * 7;
   const start = new Date(today);
   start.setDate(start.getDate() - days + 1);
@@ -270,7 +273,6 @@ function Heatmap({ data }: { data: HeatmapBucket[] }) {
   start.setDate(start.getDate() - start.getDay());
 
   const byDate = new Map(data.map((d) => [d.date, d]));
-  const maxPages = data.reduce((m, d) => Math.max(m, d.pages), 0) || 1;
 
   // Build the ISO date from LOCAL components (not toISOString, which would
   // convert to UTC and shift the cell by a day for users away from UTC).
@@ -282,6 +284,16 @@ function Heatmap({ data }: { data: HeatmapBucket[] }) {
     `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(
       dt.getDate()
     ).padStart(2, "0")}`;
+
+  // Restrict counts + shade scale to entries inside the visible window —
+  // otherwise a noisy day from a year ago would dominate the colour ramp
+  // and the "N days" footer would advertise data the user can't actually
+  // see on the grid.
+  const startIso = localIso(start);
+  const endIso = localIso(today);
+  const inWindow = data.filter((d) => d.date >= startIso && d.date <= endIso);
+  const maxPages = inWindow.reduce((m, d) => Math.max(m, d.pages), 0) || 1;
+  const inWindowCount = inWindow.length;
 
   const cells: Array<{ date: string; pages: number; row: number; col: number }> = [];
   for (let i = 0; i < weeks * 7; i++) {
@@ -342,7 +354,7 @@ function Heatmap({ data }: { data: HeatmapBucket[] }) {
   return (
     <Section
       title="When you write"
-      subtitle={`Last 52 weeks. Each cell is one day; darker = more pages. ${data.length} day${data.length === 1 ? "" : "s"} with entries. (Uses your diary date when present, else the day you uploaded.)`}
+      subtitle={`Last 6 months. Each cell is one day; darker = more pages. ${inWindowCount} day${inWindowCount === 1 ? "" : "s"} with entries in this window. (Uses your diary date when present, else the day you uploaded.)`}
     >
       <div className="overflow-x-auto -mx-3 px-3">
         <svg
