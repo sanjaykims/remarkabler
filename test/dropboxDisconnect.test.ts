@@ -21,6 +21,12 @@ type DropboxMod = typeof import("@/lib/dropbox");
 let dbMod: DbMod;
 let dropboxMod: DropboxMod;
 const originalFetch = globalThis.fetch;
+// Save env vars at module load so afterEach can restore them. Vitest's
+// worker isolation usually makes this redundant, but explicit restoration
+// matches the pattern in dropboxBaseUrl.test.ts and survives changes to
+// test ordering or --no-isolate runs.
+const originalAppKey = process.env.DROPBOX_APP_KEY;
+const originalAppSecret = process.env.DROPBOX_APP_SECRET;
 
 beforeAll(async () => {
   process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "dropbox-disc-"));
@@ -37,6 +43,10 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  if (originalAppKey === undefined) delete process.env.DROPBOX_APP_KEY;
+  else process.env.DROPBOX_APP_KEY = originalAppKey;
+  if (originalAppSecret === undefined) delete process.env.DROPBOX_APP_SECRET;
+  else process.env.DROPBOX_APP_SECRET = originalAppSecret;
 });
 
 function seed(values: Record<string, string>) {
@@ -50,8 +60,11 @@ function seed(values: Record<string, string>) {
 
 describe("disconnectDropbox", () => {
   it("clears local state even when Dropbox revoke can't be attempted (no credentials)", async () => {
-    // No DROPBOX_APP_KEY/SECRET → getAccessToken() throws "Dropbox not
-    // connected" early. fetch must never be called.
+    // No DROPBOX_APP_KEY/SECRET → the refresh attempt sends an empty
+    // client_id, which the throwing default-mock fetch turns into an
+    // error inside getAccessToken(). The point isn't that fetch is
+    // unreachable — it's that the safety net catches whatever happens,
+    // and local state is cleared regardless.
     delete process.env.DROPBOX_APP_KEY;
     delete process.env.DROPBOX_APP_SECRET;
     seed({

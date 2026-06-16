@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-06-16 (Codex PR #37 final-pass nits)
+
+Codex's final verification pass declared the Dropbox loop closed and
+flagged three NITs (explicitly "not urgent"). Shipped all three while
+the context is fresh — they're each cheap and exactly the kind of
+hygiene that compounds if left.
+
+- **NIT 1.** `dropboxDisconnect.test.ts` now restores
+  `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` in `afterEach`, matching the
+  save-original / restore pattern `dropboxBaseUrl.test.ts` already uses
+  for `NODE_ENV` / `APP_BASE_URL`. Vitest isolation made this redundant
+  in practice but explicit restoration survives `--no-isolate` and
+  future test-ordering changes.
+- **NIT 2.** `APP_BASE_URL` validation now also rejects values with a
+  query string or URL fragment. Without this,
+  `https://example.com?x=1` + `/api/dropbox/callback` would produce a
+  broken redirect URI. Two new test cases lock both rules.
+- **NIT 3.** Fixed the misleading "fetch must never be called" comment
+  in `dropboxDisconnect.test.ts` — the actual behaviour is "the
+  throwing default-mock catches whatever happens." Same kind of
+  overstated-protection comment we cleaned up in the earlier OAuth
+  state pass.
+
+### Tests (+2, total 77)
+- `dropboxBaseUrl.test.ts` — query-string and URL-fragment rejection.
+
 ## 2026-06-16 (Codex verification follow-up)
 
 Codex verified PR #36 and flagged three real issues plus one optional

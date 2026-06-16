@@ -90,6 +90,15 @@ function validateConfiguredBaseUrl(raw: string): string | null {
   if (parsed.pathname && parsed.pathname !== "/") {
     return `APP_BASE_URL must not include a path (got "${parsed.pathname}"); the callback path is appended internally.`;
   }
+  // Query strings and fragments would survive trailing-slash strip and
+  // produce garbage when the callback path is appended (e.g.
+  // "https://x?foo=1" + "/api/dropbox/callback" → "https://x?foo=1/api/...").
+  if (parsed.search) {
+    return `APP_BASE_URL must not include a query string (got "${parsed.search}").`;
+  }
+  if (parsed.hash) {
+    return `APP_BASE_URL must not include a URL fragment (got "${parsed.hash}").`;
+  }
   return null;
 }
 
