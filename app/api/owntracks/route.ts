@@ -5,6 +5,7 @@ import {
   checkOwntracksToken,
   addPoint,
   owntracksStatus,
+  owntracksDebug,
 } from "@/lib/owntracks";
 import { isLocationEnabled } from "@/lib/location";
 
@@ -12,10 +13,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Status for the Memory page — gated by the app session (the owner).
-export async function GET() {
+// `?debug=1` adds a diagnostic snapshot of what the chat tool would see
+// (point counts, stay counts, sample raw points, server clock). Cheap.
+export async function GET(req: NextRequest) {
   if (!isAuthenticated()) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
+  const wantDebug = req.nextUrl.searchParams.get("debug") === "1";
+  if (wantDebug) return NextResponse.json(owntracksDebug());
   return NextResponse.json(owntracksStatus());
 }
 
