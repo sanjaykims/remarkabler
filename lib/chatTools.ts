@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { normaliseDates, isDisciplineEnabled, DISCIPLINE_ID } from "./notes";
 import { isLocationEnabled } from "./location";
-import { owntracksRouteContext } from "./owntracks";
+import { owntracksRouteContext, currentLocation } from "./owntracks";
 import {
   embed,
   decodeEmbedding,
@@ -99,7 +99,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   {
     name: "get_recent_locations",
     description:
-      "Get the user's recent location route — places they were at, when, and how long they stayed — for the last N days. Use for \"where have I been this month?\" or \"how often was I at the gym?\". Returns nothing if location sharing is off.",
+      "Get the user's recent location info — BOTH the route of completed stays (places + dwell times) for the last N days, AND the user's current/most-recent position (with minutesAgo and a place name when cached). Use for \"where am I now?\", \"where have I been this month?\", or \"how often was I at the gym?\". `route` may be empty while `current` is filled when the user is moving or just arrived somewhere; treat `current` as the answer to \"where are you?\" in that case. Returns nothing if location sharing is off.",
     input_schema: {
       type: "object",
       properties: {
@@ -508,9 +508,30 @@ async function getRecentLocations(input: { days?: number }): Promise<unknown> {
   }
   const days = Math.max(1, Math.min(30, Number(input.days) || 7));
   const route = await owntracksRouteContext(days);
-  return route
-    ? { days, route }
-    : { days, route: "", note: "No automatic location data for that range." };
+  // Always include the most-recent position when there is one — that lets
+  // chat answer "where am I now?" even when the clusterer hasn't yet
+  // produced a stay (e.g. user just arrived somewhere and the 8-min
+  // dwell threshold hasn't elapsed). The previous shape only returned
+  // stays, so chat would say "no location data" while OwnTracks was
+  // happily publishing positions every few seconds.
+  const current = currentLocation();
+  if (route) {
+    return current ? { days, route, current } : { days, route };
+  }
+  return current
+    ? {
+        days,
+        route: "",
+        current,
+        note:
+          "No completed stays in this range yet, but the user has a recent position (see `current`). Likely they're moving, or just arrived somewhere and haven't been there for the 8-minute stay threshold yet.",
+      }
+    : {
+        days,
+        route: "",
+        note:
+          "No location data for that range, and no recent position (the phone may not be publishing).",
+      };
 }
 
 function searchChatHistory(input: { query?: string; limit?: number }): unknown {

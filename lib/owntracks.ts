@@ -33,6 +33,47 @@ export function addPoint(p: {
     .run(p.lat, p.lng, p.tst, p.acc ?? null);
 }
 
+// Last known position + recency context for chat, useful when stay-clustering
+// hasn't produced anything yet (e.g. user just arrived somewhere and hasn't
+// hit the 8-min dwell threshold). Returns null when there's nothing recent
+// enough to be meaningful — for that, "recent" means within the last 6
+// hours, otherwise we'd be confidently reporting where the user was last
+// week as their "current" position.
+//
+// `place` is filled in only when the coords are already in the geocode
+// cache — we don't synchronously hit Nominatim on the chat hot path. Same
+// background warmer that primes stay-place names will fill this in too.
+export type CurrentLocation = {
+  lat: number;
+  lng: number;
+  tst: number;
+  /** KST wall-clock formatted as "YYYY-MM-DD HH:MM". */
+  atTime: string;
+  /** Whole minutes between the point's tst and request time. */
+  minutesAgo: number;
+  /** Geocoded place name if already cached, otherwise null. */
+  place: string | null;
+};
+const CURRENT_LOCATION_MAX_AGE_SEC = 6 * 60 * 60; // 6 hours
+
+export function currentLocation(): CurrentLocation | null {
+  const row = db()
+    .prepare(`SELECT lat, lng, tst FROM location_points ORDER BY tst DESC LIMIT 1`)
+    .get() as { lat: number; lng: number; tst: number } | undefined;
+  if (!row) return null;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (nowSec - row.tst > CURRENT_LOCATION_MAX_AGE_SEC) return null;
+  const local = fmtLocal(row.tst);
+  return {
+    lat: row.lat,
+    lng: row.lng,
+    tst: row.tst,
+    atTime: `${local.date} ${local.time}`,
+    minutesAgo: Math.max(0, Math.round((nowSec - row.tst) / 60)),
+    place: cachedPlace(row.lat, row.lng),
+  };
+}
+
 export function owntracksStatus(): {
   configured: boolean;
   points: number;
