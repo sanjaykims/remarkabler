@@ -99,6 +99,10 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - `lib/backup.ts` — weekly tar.gz backup of `DATA_DIR` to a private GitHub repo
   (`maybeRunWeeklyBackup`, with a failure backoff so a broken backup doesn't
   retry every sweep; manual `runBackup` via `/api/backup` ignores the backoff).
+- `lib/dropbox.ts` — Dropbox auto-ingest: OAuth (refresh-token flow),
+  read-only folder polling, dedupe by `notebooks.dropbox_file_id`. Watcher
+  is fired from `runMaintenanceSweep` so it runs alongside the other
+  background jobs.
 - `lib/location.ts` + `lib/owntracks.ts` — OwnTracks ingestion, stay
   clustering, reverse-geocoding; `lib/github.ts` — discipline repo fetch;
   `lib/cleanup.ts`, `lib/upload.ts`, `lib/extractText.ts`, `lib/format.ts` —
@@ -106,7 +110,8 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - API routes (`app/api/*`): `auth`, `notebooks`, `chat`, `insights`, `usage`,
   `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
   `mind/axis-labels`, `mind/reparse-dates`), `embeddings`, `backup`,
-  `discipline`, `location`, `owntracks`, `export`, `settings`.
+  `discipline`, `dropbox/{connect,callback,status,disconnect}`,
+  `location`, `owntracks`, `export`, `settings`.
 - UI pages (`app/*`): `notebooks`, `chat`, `insights`, `mind` (heatmap, theme
   cloud, mood timeline, 3D embedding map — `app/mind/Map3D.tsx`), `memory`,
   `usage` (cost calendar).
@@ -152,9 +157,15 @@ features need the deployed instance to fully verify.
 
 ## Known limits (intentional)
 
-- No automatic reMarkable cloud sync — there is no reliable JavaScript renderer
-  for the `.rm` handwriting format, so the app relies on manual PDF export.
-  This was deliberately deferred; revisit only with the user's agreement.
+- No direct reMarkable-cloud polling — there is still no reliable JavaScript
+  renderer for the `.rm` handwriting format, so we never try to render
+  notebooks ourselves. Instead, we sidestep the renderer entirely: with
+  reMarkable Connect ($8/mo), the user taps **Share → Export to integration
+  → Dropbox** on the device, reMarkable renders the PDF server-side, and
+  `lib/dropbox.ts` auto-ingests from there. One device-side tap per notebook
+  replaces the whole download-and-upload dance. Direct reMarkable-cloud
+  polling (zero taps) is deferred for the same renderer reason; revisit only
+  if the one-tap friction becomes a real chore in practice.
 - The PWA share target and the voice features work on Android Chrome only;
   iOS Safari does not support them.
 

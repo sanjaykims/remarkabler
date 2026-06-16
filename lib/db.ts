@@ -22,13 +22,26 @@ export function db(): Database.Database {
   _db.exec(SCHEMA);
 
   // Migrations for columns added after the initial schema.
-  for (const col of ["status TEXT", "error TEXT"]) {
+  for (const col of [
+    "status TEXT",
+    "error TEXT",
+    // The Dropbox file id of the source PDF when a notebook was auto-ingested
+    // by the dropbox watcher — used to dedupe so a re-poll of the folder
+    // doesn't ingest the same notebook twice. NULL for manually-uploaded
+    // notebooks.
+    "dropbox_file_id TEXT",
+  ]) {
     try {
       _db.exec(`ALTER TABLE notebooks ADD COLUMN ${col}`);
     } catch {
       // column already exists
     }
   }
+  // Lookup index for the watcher's "have I seen this file?" check.
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_notebooks_dropbox_file_id
+       ON notebooks(dropbox_file_id) WHERE dropbox_file_id IS NOT NULL`
+  );
   try {
     _db.exec(`ALTER TABLE insights ADD COLUMN title TEXT`);
   } catch {
