@@ -111,6 +111,24 @@ describe("resolveAppBaseUrl", () => {
     if (!r.ok) expect(r.error).toMatch(/path/i);
   });
 
+  it("rejects an APP_BASE_URL with a query string", async () => {
+    // "https://example.com?x=1" + "/api/dropbox/callback" would produce a
+    // broken redirect_uri — reject at validation time.
+    process.env.APP_BASE_URL = "https://example.com?x=1";
+    const { resolveAppBaseUrl } = await import("@/lib/dropbox");
+    const r = resolveAppBaseUrl(fakeHeaders({}));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/query/i);
+  });
+
+  it("rejects an APP_BASE_URL with a URL fragment", async () => {
+    process.env.APP_BASE_URL = "https://example.com#section";
+    const { resolveAppBaseUrl } = await import("@/lib/dropbox");
+    const r = resolveAppBaseUrl(fakeHeaders({}));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/fragment/i);
+  });
+
   it("accepts http APP_BASE_URL in development for localhost convenience", async () => {
     (process.env as Record<string, string>).NODE_ENV = "development";
     process.env.APP_BASE_URL = "http://localhost:3001";
