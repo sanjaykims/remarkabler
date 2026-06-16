@@ -44,6 +44,85 @@ export function owntracksStatus(): {
   return { configured: owntracksConfigured(), points: row.c, lastTst: row.last };
 }
 
+// Diagnostic snapshot for the Memory page. Bounded, sanitised — exposes
+// what the chat tool would see, so a user (or a future agent) can tell at
+// a glance whether the chat-side "no location data" complaint is a query
+// bug, a clustering bug, an empty-DB bug, or a clock issue.
+//
+// Added after a real outage in which the OwnTracks ingestion was working
+// (175k+ points, last point recent) but the chat tool reported empty —
+// turned out to be impossible to diagnose without DB access. Now anyone
+// can hit /api/owntracks?debug=1 and see exactly what the chat tool sees.
+export function owntracksDebug(): {
+  serverEpochSec: number;
+  serverTimeUtc: string;
+  totalPoints: number;
+  lastTst: number | null;
+  lastTstFormattedKst: string | null;
+  windows: Array<{
+    days: number;
+    sinceEpochSec: number;
+    pointCount: number;
+    firstTstInWindow: number | null;
+    lastTstInWindow: number | null;
+    stays: Array<{
+      lat: number;
+      lng: number;
+      start: number;
+      end: number;
+      dwellMinutes: number;
+    }>;
+    samplePoints: Array<{ lat: number; lng: number; tst: number }>;
+  }>;
+} {
+  const status = owntracksStatus();
+  const nowSec = Math.floor(Date.now() / 1000);
+  const lastTstFormattedKst = status.lastTst
+    ? new Date((status.lastTst + TZ_OFFSET_MIN * 60) * 1000)
+        .toISOString()
+        .replace("T", " ")
+        .slice(0, 19) + " KST"
+    : null;
+
+  const summarise = (days: number) => {
+    const since = nowSec - days * 86400;
+    const pts = db()
+      .prepare(
+        `SELECT lat, lng, tst FROM location_points WHERE tst >= ? ORDER BY tst ASC`
+      )
+      .all(since) as Array<{ lat: number; lng: number; tst: number }>;
+    const stays = recentStays(days).slice(-40).map((s) => ({
+      lat: s.lat,
+      lng: s.lng,
+      start: s.start,
+      end: s.end,
+      dwellMinutes: Math.round((s.end - s.start) / 60),
+    }));
+    // First 3 + last 3 raw points so the user can see whether sparse or dense
+    // data is the issue without leaking an unbounded list.
+    const head = pts.slice(0, 3);
+    const tail = pts.length > 6 ? pts.slice(-3) : pts.slice(3);
+    return {
+      days,
+      sinceEpochSec: since,
+      pointCount: pts.length,
+      firstTstInWindow: pts[0]?.tst ?? null,
+      lastTstInWindow: pts[pts.length - 1]?.tst ?? null,
+      stays,
+      samplePoints: [...head, ...tail],
+    };
+  };
+
+  return {
+    serverEpochSec: nowSec,
+    serverTimeUtc: new Date(nowSec * 1000).toISOString(),
+    totalPoints: status.points,
+    lastTst: status.lastTst,
+    lastTstFormattedKst,
+    windows: [summarise(1), summarise(7)],
+  };
+}
+
 function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(bLat - aLat);

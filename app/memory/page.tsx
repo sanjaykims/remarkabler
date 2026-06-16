@@ -663,6 +663,7 @@ export default function MemoryPage() {
               OwnTracks URL:{" "}
               <code>{origin}/api/owntracks?token=YOUR_TOKEN</code>
             </p>
+            <OwnTracksDiagnoseButton />
           </>
         ) : (
           <p className="text-xs opacity-70 break-words">
@@ -980,6 +981,48 @@ export default function MemoryPage() {
           {bookMsg && <p className="text-sm opacity-70">{bookMsg}</p>}
         </div>
       </section>
+    </div>
+  );
+}
+
+// Inline diagnostic button + result for the OwnTracks ingestion. Fetches
+// /api/owntracks?debug=1 and dumps the raw JSON below the button. Visible
+// only when OwnTracks is configured. Used when the chat reports "no
+// location data" while the ingestion status looks healthy — the JSON
+// shows exactly what the chat tool sees (point counts, stay counts,
+// sample raw points, server clock).
+function OwnTracksDiagnoseButton() {
+  const [busy, setBusy] = useState(false);
+  const [data, setData] = useState<unknown>(null);
+  const [err, setErr] = useState<string | null>(null);
+  async function run() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch("/api/owntracks?debug=1");
+      if (!r.ok) throw new Error(`Failed: ${r.status}`);
+      setData(await r.json());
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={run}
+        disabled={busy}
+        className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+      >
+        {busy ? "Diagnosing…" : "Diagnose location pipeline"}
+      </button>
+      {err && <p className="text-xs text-red-600">{err}</p>}
+      {data !== null && (
+        <pre className="text-[10px] leading-relaxed whitespace-pre-wrap break-words bg-stone-100 dark:bg-stone-900 rounded p-2 max-h-96 overflow-auto">
+          {JSON.stringify(data, null, 2)}
+        </pre>
+      )}
     </div>
   );
 }
