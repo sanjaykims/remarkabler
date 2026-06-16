@@ -41,9 +41,23 @@ describe("classifyDropboxError", () => {
     expect(classifyDropboxError(409)).toBe("unknown");
   });
 
-  it("classifies 400 / 404 as file-local", () => {
-    expect(classifyDropboxError(400)).toBe("file-local");
-    expect(classifyDropboxError(404)).toBe("file-local");
+  // Codex (verification pass) correctly pointed out that bare 400/404
+  // shouldn't be treated as file-local without evidence. Only a recognised
+  // Dropbox path-style .error_summary flips them back to file-local. A
+  // bare 400 might just as easily be a malformed app-level request, which
+  // is systemic and should surface, not be swallowed.
+  it("treats bare 400 / 404 as unknown (no evidence of file-local)", () => {
+    expect(classifyDropboxError(400)).toBe("unknown");
+    expect(classifyDropboxError(404)).toBe("unknown");
+    expect(classifyDropboxError(400, "random_other_thing/x")).toBe("unknown");
+  });
+
+  it("flips 400 / 404 back to file-local when the summary names a path", () => {
+    expect(classifyDropboxError(404, "path/not_found/.")).toBe("file-local");
+    expect(classifyDropboxError(404, "path_lookup/not_found/.")).toBe(
+      "file-local"
+    );
+    expect(classifyDropboxError(400, "path/not_file")).toBe("file-local");
   });
 });
 

@@ -1,5 +1,60 @@
 # Changelog
 
+## 2026-06-16 (Codex verification follow-up)
+
+Codex verified PR #36 and flagged three real issues plus one optional
+cleanup. All are fixed here.
+
+### Fixed
+- **`400` / `404` no longer default to `file-local`.** Without a recognised
+  Dropbox `.error_summary`, a bare `400` could be a malformed app-level
+  request just as easily as a missing path. Defaulting to `file-local`
+  swallowed a class of real systemic bugs. Now defaults to `unknown` (which
+  is poll-level → trips backoff). Recognised path-style summaries still
+  flip back to `file-local`.
+- **`dropboxDisconnect` test no longer risks hitting the real Dropbox API.**
+  `fetch` is mocked via `vi.fn()` in each test. The original test avoided
+  the network only by accident (early-throw in `getAccessToken`); a future
+  refactor that changed the short-circuit order could have made it touch
+  `api.dropboxapi.com` for real. Two new test cases added for the
+  revoke-success and revoke-failure-with-credentials paths.
+- **`lastRevokeWarning` is now hoisted above the connected/disconnected
+  conditional in the Memory page.** Without this, a disconnect that failed
+  Dropbox-side revoke would set the warning, then immediately render the
+  *disconnected* branch (because local state was correctly cleared),
+  hiding the warning from the user. The user would silently lose the
+  signal that their token may still be live at Dropbox.
+
+### Optional cleanup
+- **`APP_BASE_URL` is now validated** at resolve time: must parse as a
+  URL, must be http or https, must have a host, must not include a path,
+  and must be https in production (since Dropbox redirects to it literally
+  — an http origin would leak the OAuth code).
+- **`lastSeenFileCount` preserves `0`.** The previous expression
+  `seenCount ? Number(seenCount) || null : null` collapsed `"0"` to null
+  via the `||` falsey coercion; the UI showed "never polled" for an
+  empty folder. Fixed to use an explicit `Number.isFinite()` check.
+
+### Codex's other optional cleanups (not applicable)
+- "Add seconds/random suffix to backup filenames" — the real
+  `lib/backup.ts` already uses UTC seconds via `stampNow()`; the file
+  I sent Codex for review during paste-the-diff was mis-pasted from
+  memory and didn't match the merged commit. No change needed.
+- "Confirm root-level backup tarballs are intentional" — same issue;
+  the real code already uploads under `backups/{stamp}.tar.gz`, not
+  the root.
+
+### Tests (+12, total 75)
+- `dropboxErrors.test.ts` — locks bare-400/404 → unknown, evidence-based
+  path-style → file-local.
+- `dropboxBaseUrl.test.ts` — adds five validation cases (unparseable,
+  non-http scheme, production http rejection, path-component rejection,
+  dev http acceptance).
+- `dropboxDisconnect.test.ts` — rewritten with mocked `fetch`; covers
+  no-credentials, revoke-401, and revoke-200 paths.
+- `dropboxStatus.test.ts` (new) — locks the `lastSeenFileCount = 0`
+  preservation property.
+
 ## 2026-06-16 (Dropbox review-pass fixes from Codex)
 
 Codex independently reviewed PR #35. None of its findings were security-

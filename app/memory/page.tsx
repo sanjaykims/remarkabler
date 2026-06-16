@@ -807,6 +807,18 @@ export default function MemoryPage() {
 
       <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
         <h2 className="font-medium">Auto-ingest from Dropbox</h2>
+        {/* lastRevokeWarning lives outside the connected/disconnected
+            branches because the most important time to see it is right
+            AFTER a disconnect with a failed Dropbox-side revoke — at which
+            point dropbox.connected is false and the connected-state block
+            never renders. Hoisting it here keeps the message visible
+            independent of connection state, so the user knows the token
+            may still be live at Dropbox and can revoke it manually. */}
+        {dropbox?.lastRevokeWarning && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 break-words">
+            Heads up: {dropbox.lastRevokeWarning}
+          </p>
+        )}
         {dropbox === null ? (
           <p className="text-xs opacity-60">Loading…</p>
         ) : !dropbox.configured ? (
@@ -869,11 +881,8 @@ export default function MemoryPage() {
                 Skipped: {dropbox.lastSkipped}
               </p>
             )}
-            {dropbox.lastRevokeWarning && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 break-words">
-                Heads up: {dropbox.lastRevokeWarning}
-              </p>
-            )}
+            {/* lastRevokeWarning is rendered above the conditional
+                branches so it remains visible after disconnect. */}
             <button
               onClick={disconnectDropbox}
               disabled={dropboxBusy}

@@ -74,4 +74,49 @@ describe("resolveAppBaseUrl", () => {
     const r = resolveAppBaseUrl(fakeHeaders({}));
     expect(r.ok).toBe(false);
   });
+
+  // Codex's optional cleanup: validate the configured value so a misformed
+  // APP_BASE_URL is caught at startup rather than producing a confusing
+  // Dropbox redirect error.
+  it("rejects an unparseable APP_BASE_URL", async () => {
+    process.env.APP_BASE_URL = "not a url";
+    const { resolveAppBaseUrl } = await import("@/lib/dropbox");
+    const r = resolveAppBaseUrl(fakeHeaders({}));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/not a valid URL/i);
+  });
+
+  it("rejects an APP_BASE_URL with a non-http(s) scheme", async () => {
+    process.env.APP_BASE_URL = "ftp://example.com";
+    const { resolveAppBaseUrl } = await import("@/lib/dropbox");
+    const r = resolveAppBaseUrl(fakeHeaders({}));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/http or https/i);
+  });
+
+  it("rejects an http APP_BASE_URL in production (would leak the OAuth code)", async () => {
+    (process.env as Record<string, string>).NODE_ENV = "production";
+    process.env.APP_BASE_URL = "http://example.com";
+    const { resolveAppBaseUrl } = await import("@/lib/dropbox");
+    const r = resolveAppBaseUrl(fakeHeaders({}));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/https in production/i);
+  });
+
+  it("rejects an APP_BASE_URL with a path component", async () => {
+    process.env.APP_BASE_URL = "https://example.com/sub/path";
+    const { resolveAppBaseUrl } = await import("@/lib/dropbox");
+    const r = resolveAppBaseUrl(fakeHeaders({}));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/path/i);
+  });
+
+  it("accepts http APP_BASE_URL in development for localhost convenience", async () => {
+    (process.env as Record<string, string>).NODE_ENV = "development";
+    process.env.APP_BASE_URL = "http://localhost:3001";
+    const { resolveAppBaseUrl } = await import("@/lib/dropbox");
+    const r = resolveAppBaseUrl(fakeHeaders({}));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.baseUrl).toBe("http://localhost:3001");
+  });
 });
