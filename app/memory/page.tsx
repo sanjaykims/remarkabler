@@ -73,6 +73,9 @@ export default function MemoryPage() {
     lastAttemptAt: string | null;
     lastError: string | null;
     ingestedCount: number;
+    lastSeenFileCount: number | null;
+    lastSkipped: string | null;
+    lastRevokeWarning: string | null;
   };
   const [dropbox, setDropbox] = useState<DropboxStatus | null>(null);
   const [dropboxBusy, setDropboxBusy] = useState(false);
@@ -852,10 +855,23 @@ export default function MemoryPage() {
               ) : (
                 <>No poll yet — the next maintenance sweep will run one.</>
               )}
+              {dropbox.lastSeenFileCount !== null && (
+                <> · {dropbox.lastSeenFileCount} file{dropbox.lastSeenFileCount === 1 ? "" : "s"} in folder</>
+              )}
             </p>
             {dropbox.lastError && (
               <p className="text-xs text-red-600 break-words">
                 Last error: {dropbox.lastError}
+              </p>
+            )}
+            {dropbox.lastSkipped && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 break-words">
+                Skipped: {dropbox.lastSkipped}
+              </p>
+            )}
+            {dropbox.lastRevokeWarning && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 break-words">
+                Heads up: {dropbox.lastRevokeWarning}
               </p>
             )}
             <button

@@ -6,18 +6,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // POST /api/dropbox/disconnect
-// Clears the stored refresh_token (and last-sync bookkeeping) so the watcher
-// goes dormant. The notebooks already ingested stay put — disconnect just
-// stops the polling loop. The user can re-connect later without losing data.
-//
-// Does NOT call Dropbox to revoke the token: that would require the access
-// token, which we may not have cached, and is unnecessary for stopping the
-// flow. If the user wants the app's permission fully revoked they can do it
-// from dropbox.com/account/connected_apps.
+// Best-effort revoke at Dropbox, then ALWAYS clear local state. This order
+// matters: clearing local state is the user's hard escape hatch — they must
+// be able to stop this app from polling even if Dropbox is down or the
+// cached access token is already invalid. Revoke failure is surfaced as a
+// warning, not a blocker.
 export async function POST() {
   if (!isAuthenticated()) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
-  disconnectDropbox();
-  return NextResponse.json({ ok: true });
+  const result = await disconnectDropbox();
+  return NextResponse.json({ ok: true, ...result });
 }

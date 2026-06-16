@@ -1,7 +1,43 @@
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
+import Database from "better-sqlite3";
 import { db, DATA_DIR, getSetting, setSetting, clearSetting } from "./db";
+
+// Settings keys whose values must NEVER leave Railway in a backup. The
+// staged DB copy gets these rows deleted before tar/push; the live DB is
+// untouched.
+//
+// dropbox_refresh_token  : long-lived credential — granting future Dropbox
+//                          read access if exfiltrated from the backup repo.
+// dropbox_oauth_state    : (legacy — now cookie-based, but redact anyway in
+//                          case any old row survives a migration).
+// dropbox_oauth_redirect : same legacy reason.
+// dropbox_last_error     : Dropbox error text passes through safeDropboxError
+//                          before persistence, but redact defensively — any
+//                          future code path that bypasses the helper would
+//                          land sensitive text here.
+const SENSITIVE_SETTING_KEYS = [
+  "dropbox_refresh_token",
+  "dropbox_oauth_state",
+  "dropbox_oauth_redirect",
+  "dropbox_last_error",
+];
+
+export function redactSensitiveSettings(stagedDbPath: string): void {
+  // Open the staged copy with a SEPARATE Database handle so we can't
+  // accidentally mutate the live DB. The live one is owned by lib/db.ts.
+  const staged = new Database(stagedDbPath);
+  try {
+    const del = staged.prepare(`DELETE FROM settings WHERE key = ?`);
+    const tx = staged.transaction((keys: string[]) => {
+      for (const k of keys) del.run(k);
+    });
+    tx(SENSITIVE_SETTING_KEYS);
+  } finally {
+    staged.close();
+  }
+}
 
 // Auto-backup to a user-owned private GitHub repo. The whole DATA_DIR
 // (SQLite database + uploaded PDFs + chat attachments) is bundled into a
@@ -201,6 +237,14 @@ export async function runBackup(): Promise<number> {
     // better-sqlite3's backup() returns a Promise.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db() as any).backup(dbCopyPath);
+
+    // 1a. Redact sensitive settings from the STAGED copy only — never touch
+    // the live DB. This is what stops the Dropbox refresh token (and any
+    // transient OAuth state) from travelling to the off-site GitHub backup
+    // repo with the rest of the diary data. Restore-from-backup users will
+    // re-connect Dropbox after restore; that's a feature, not a bug — the
+    // backup is for diary durability, not credential durability.
+    redactSensitiveSettings(dbCopyPath);
 
     // 2. Copy the PDF + attachment directories (use cp for symlink safety).
     const filesSrc = path.join(DATA_DIR, "files");

@@ -1,21 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { isAuthenticated } from "@/lib/auth";
-import { setSetting } from "@/lib/db";
-import { buildAuthUrl, dropboxConfigured } from "@/lib/dropbox";
+import {
+  buildAuthUrl,
+  dropboxConfigured,
+  resolveAppBaseUrl,
+} from "@/lib/dropbox";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Short-lived cookie names for the OAuth dance. httpOnly + SameSite=Lax +
+// Secure-in-prod. 10-min max age — well under the manual time a Dropbox
+// authorise page can sit open, well over any reasonable round-trip.
+const STATE_COOKIE = "dropbox_oauth_state";
+const REDIRECT_COOKIE = "dropbox_oauth_redirect";
+const COOKIE_MAX_AGE_SECONDS = 10 * 60;
+
 // GET /api/dropbox/connect
-// Kicks off Dropbox's OAuth dance: generates a random state, stashes it for
-// the callback to verify (CSRF protection — Dropbox echoes the state back
-// after the user authorises, and we refuse to exchange a code that wasn't
-// part of a session we started), then redirects to Dropbox's authorise page.
+// Kicks off Dropbox's OAuth dance: generates a random CSRF state, stashes
+// it in an httpOnly cookie scoped to this browser, then redirects to
+// Dropbox's authorise page. The callback verifies the state from the
+// cookie before exchanging the code.
 //
-// We construct the redirect URI from the inbound request's host instead of
-// hard-coding it, so the same code works in dev, staging, and prod without
-// per-env config.
+// Redirect URI resolution: in production we REQUIRE APP_BASE_URL to be set
+// in the environment — we don't fall back to forwarded headers there. In
+// dev we honour forwarded headers for localhost/preview convenience. This
+// makes the OAuth origin a canonical configured value in prod rather than
+// "whatever the proxy said," which is the posture Codex pushed for.
 export async function GET(req: NextRequest) {
   if (!isAuthenticated()) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
@@ -29,20 +41,31 @@ export async function GET(req: NextRequest) {
       { status: 400 }
     );
   }
-  // The proxy-aware origin: prefer the forwarded host (set by Railway's
-  // ingress), fall back to whatever the request reports. Never trust
-  // req.url's host directly behind a proxy — it'll say localhost:8080.
-  const proto = req.headers.get("x-forwarded-proto") || "https";
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
-  if (!host) {
-    return NextResponse.json(
-      { error: "Could not determine app host." },
-      { status: 500 }
-    );
+  const base = resolveAppBaseUrl(req.headers);
+  if (!base.ok) {
+    return NextResponse.json({ error: base.error }, { status: 500 });
   }
-  const redirectUri = `${proto}://${host}/api/dropbox/callback`;
+  const redirectUri = `${base.baseUrl}/api/dropbox/callback`;
   const state = randomBytes(16).toString("hex");
-  setSetting("dropbox_oauth_state", state);
-  setSetting("dropbox_oauth_redirect", redirectUri);
-  return NextResponse.redirect(buildAuthUrl(redirectUri, state));
+  const res = NextResponse.redirect(buildAuthUrl(redirectUri, state));
+  const isProd = process.env.NODE_ENV === "production";
+  res.cookies.set(STATE_COOKIE, state, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProd,
+    path: "/",
+    maxAge: COOKIE_MAX_AGE_SECONDS,
+  });
+  // The redirect URI is part of the security check — must be identical
+  // between the connect step and the token exchange. Pin it via cookie
+  // rather than re-deriving in the callback to defend against header
+  // variation between requests.
+  res.cookies.set(REDIRECT_COOKIE, redirectUri, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProd,
+    path: "/",
+    maxAge: COOKIE_MAX_AGE_SECONDS,
+  });
+  return res;
 }
