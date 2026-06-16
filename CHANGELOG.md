@@ -1,5 +1,78 @@
 # Changelog
 
+## 2026-06-16 (Dropbox review-pass fixes from Codex)
+
+Codex independently reviewed PR #35. None of its findings were security-
+critical, but several were operationally/cost-critical and worth shipping
+together as a tightening pass. This PR addresses each one in the order it
+was prioritized.
+
+### Operationally critical
+- **Shared OCR concurrency budget.** Dropbox ingest now gates on
+  `COUNT(*) FROM notebooks WHERE status='processing'` (cap 2 by default,
+  configurable up to 5 via `OCR_CONCURRENCY_LIMIT`). Counts manual uploads
+  too, so Dropbox backs off when the budget is already full instead of
+  stacking 20+ concurrent Claude OCR streams on a freshly-connected
+  account. Startup migration of stale 'processing' rows to 'error' is what
+  makes this gate deadlock-safe.
+- **Per-file Dropbox errors are now classified.** Auth (401/403),
+  rate-limit (429), transient (5xx), and unknown errors propagate to the
+  outer catch so they record `dropbox_last_error` and engage the failure
+  backoff. Only true file-local errors (404, 409 with path/* summary) get
+  swallowed. Fixes the bug where a revoked token mid-poll looked like a
+  successful empty poll.
+- **Size guard on Dropbox ingest.** Pre-download check on Dropbox metadata
+  (`f.size > MAX_UPLOAD_BYTES`) plus a post-download `%PDF` magic-bytes
+  sanity check. Skipped files surface in `/api/dropbox/status` as
+  `lastSkipped`.
+
+### Security hardening
+- **Backup redaction.** New `redactSensitiveSettings(stagedDbPath)` opens
+  the staged DB copy (made by `better-sqlite3.backup()`) with a separate
+  handle and deletes `dropbox_refresh_token`, `dropbox_oauth_state`,
+  `dropbox_oauth_redirect`, `dropbox_last_error` from it before tar+push.
+  The LIVE DB is never touched — verified by a unit test that checks
+  the live `dropbox_refresh_token` survives a redaction call.
+- **Canonical OAuth base URL.** New `APP_BASE_URL` env var. In production
+  with Dropbox configured, missing `APP_BASE_URL` is now a hard error;
+  forwarded-header fallback is dev-only. `resolveAppBaseUrl()` is the one
+  helper both `connect` and `callback` route handlers go through.
+- **Revoke at Dropbox on disconnect.** `disconnectDropbox` is now async:
+  attempts a real `POST /2/auth/token/revoke` first, then **always**
+  clears local state regardless of revoke outcome. If revoke failed, the
+  warning is persisted as `dropbox_last_revoke_warning` and surfaced on
+  Memory so the user can revoke manually from dropbox.com. Local clearing
+  is the user's hard escape hatch — never blocked by Dropbox availability.
+- **Safe error persistence.** `safeDropboxError(endpoint, status, summary)`
+  produces sanitised messages. Token endpoints get a generic status-coded
+  message and NEVER include any response body (defence in depth against
+  future code paths that might echo Authorization headers or secrets).
+  File endpoints include Dropbox's own `.error_summary`, truncated.
+
+### OAuth state hardened
+- CSRF state moved from a process-wide `settings` row to a per-browser
+  **httpOnly, SameSite=Lax cookie** (Secure in production, 10-min max age).
+  Removes the misleading "session" comment, eliminates the two-tab race,
+  and removes two settings keys from anywhere a future bug could read them.
+
+### Visibility
+- Memory page now surfaces `lastSeenFileCount` (helps the user notice the
+  folder getting large), `lastSkipped` (size/format guard hits), and
+  `lastRevokeWarning` (Dropbox-side revoke failure during disconnect).
+- Code-level warning logs when the watched folder crosses 500 files —
+  the conscious tradeoff for not yet using cursor-based polling.
+
+### Tests (+25 vs the prior 38, total 63)
+- `dropboxErrors.test.ts` — classifier covers every status class +
+  the safe-error redaction property (token endpoints never include body).
+- `dropboxPdfGuard.test.ts` — `%PDF` magic bytes accept/reject.
+- `dropboxBaseUrl.test.ts` — production fails closed without
+  `APP_BASE_URL`; dev honours forwarded headers.
+- `backupRedaction.test.ts` — sensitive keys gone from staged copy,
+  preserved in live DB, non-sensitive keys preserved in both.
+- `dropboxDisconnect.test.ts` — local state cleared even when revoke can't
+  be performed; revoke warning recorded.
+
 ## 2026-06-16 (Dropbox auto-ingest)
 
 ### Added — automatic notebook ingestion from Dropbox

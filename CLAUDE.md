@@ -37,6 +37,16 @@ and generate an accumulating record of "insights" about themselves.
   and session recording are disabled so no note content is ever sent. These
   are `NEXT_PUBLIC_*` vars, so they are inlined at build time — set them in
   Railway before the build (changing them triggers a rebuild).
+- Optional Dropbox auto-ingest: set `DROPBOX_APP_KEY` + `DROPBOX_APP_SECRET`
+  (Dropbox app with `files.metadata.read` + `files.content.read` scopes only)
+  and `APP_BASE_URL` (the canonical https URL of the deployment, e.g.
+  `https://your-app.up.railway.app`). Optional: `DROPBOX_INGEST_PATH`
+  (defaults to `/Diary`), `OCR_CONCURRENCY_LIMIT` (defaults to 2, max 5)
+  caps the shared OCR budget across manual uploads + Dropbox ingest. The
+  refresh token is redacted from off-site backups; CSRF state for the
+  OAuth dance is an httpOnly cookie, not a settings row. In production
+  `APP_BASE_URL` is required if Dropbox is configured — we fail closed
+  rather than fall back to forwarded headers.
 - Optional automatic location (OwnTracks): set `OWNTRACKS_TOKEN` to enable the
   `/api/owntracks` ingestion endpoint (the phone app posts there with
   `?token=`). Points are clustered into stays (place + dwell), reverse-geocoded
