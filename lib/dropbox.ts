@@ -65,11 +65,41 @@ function processingNotebookCount(): number {
 // localhost / preview deploys still work without setup.
 // ───────────────────────────────────────────────────────────────────────────
 
+// Validate that a configured APP_BASE_URL is a sensible OAuth origin: must
+// parse, must be http or https, must have a host. We reject `http://` in
+// production because Dropbox redirects to the literal value and an http
+// origin would expose the OAuth code in clear traffic. Returns null if
+// valid (no error), otherwise an explanation string.
+function validateConfiguredBaseUrl(raw: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return `APP_BASE_URL is not a valid URL: ${raw.slice(0, 80)}`;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return `APP_BASE_URL must use http or https (got ${parsed.protocol})`;
+  }
+  if (!parsed.host) return "APP_BASE_URL is missing a host";
+  if (
+    process.env.NODE_ENV === "production" &&
+    parsed.protocol !== "https:"
+  ) {
+    return "APP_BASE_URL must be https in production (Dropbox redirects to it; an http origin would leak the OAuth code).";
+  }
+  if (parsed.pathname && parsed.pathname !== "/") {
+    return `APP_BASE_URL must not include a path (got "${parsed.pathname}"); the callback path is appended internally.`;
+  }
+  return null;
+}
+
 export function resolveAppBaseUrl(headers: {
   get(name: string): string | null;
 }): { ok: true; baseUrl: string } | { ok: false; error: string } {
   const configured = (process.env.APP_BASE_URL || "").trim();
   if (configured) {
+    const err = validateConfiguredBaseUrl(configured);
+    if (err) return { ok: false, error: err };
     return { ok: true, baseUrl: configured.replace(/\/+$/, "") };
   }
   if (process.env.NODE_ENV === "production") {
@@ -126,7 +156,25 @@ export function classifyDropboxError(
     }
     return "unknown";
   }
-  if (status === 400 || status === 404) return "file-local";
+  // 400 / 404 used to map to "file-local" by default. Codex correctly
+  // pointed out the asymmetry: we only have evidence something is
+  // file-local when Dropbox's .error_summary says so. A bare 400 / 404
+  // could be a malformed app-level request (systemic) just as easily as
+  // a missing path (file-local). Default to "unknown" so systemic bugs
+  // surface; only the recognised path-style summaries flip back to
+  // file-local.
+  if (status === 400 || status === 404) {
+    const s = (errorSummary || "").toLowerCase();
+    if (
+      s.startsWith("path/") ||
+      s.startsWith("path_lookup/") ||
+      s.includes("not_found") ||
+      s.includes("not_file")
+    ) {
+      return "file-local";
+    }
+    return "unknown";
+  }
   return "unknown";
 }
 
@@ -216,7 +264,15 @@ export function dropboxStatus(): DropboxStatus {
       `SELECT COUNT(*) AS c FROM notebooks WHERE dropbox_file_id IS NOT NULL`
     )
     .get() as { c: number };
+  // Preserve 0 — an empty Dropbox folder is informative ("we polled, found
+  // nothing yet"). The previous `seenCount ? ... || null : null` collapsed
+  // "0" to null via the `||` coercion and the UI showed "never polled".
   const seenCount = getSetting("dropbox_last_seen_file_count");
+  let parsedSeen: number | null = null;
+  if (seenCount !== null) {
+    const n = Number(seenCount);
+    if (Number.isFinite(n)) parsedSeen = n;
+  }
   return {
     configured: dropboxConfigured(),
     connected: dropboxConnected(),
@@ -226,7 +282,7 @@ export function dropboxStatus(): DropboxStatus {
     lastAttemptAt: getSetting("dropbox_last_attempt_at"),
     lastError: getSetting("dropbox_last_error"),
     ingestedCount: countRow.c,
-    lastSeenFileCount: seenCount ? Number(seenCount) || null : null,
+    lastSeenFileCount: parsedSeen,
     lastSkipped: getSetting("dropbox_last_skipped"),
     lastRevokeWarning: getSetting("dropbox_last_revoke_warning"),
   };
