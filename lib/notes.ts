@@ -926,6 +926,22 @@ export function runMaintenanceSweep(): void {
   } catch {
     // best-effort; backup module is optional
   }
+  // Dropbox auto-ingest. Lazy-imported (same reason as the backup module —
+  // avoids a startup-time import cycle through lib/db). Fire-and-forget; the
+  // function has its own in-flight guard, interval gate, and failure backoff.
+  try {
+    void getMaybeIngestDropbox()();
+  } catch {
+    // best-effort
+  }
+}
+
+let _maybeIngestDropbox: (() => Promise<unknown>) | null = null;
+function getMaybeIngestDropbox(): () => Promise<unknown> {
+  if (_maybeIngestDropbox) return _maybeIngestDropbox;
+  const mod = require("./dropbox") as { maybeIngestDropbox: () => Promise<unknown> };
+  _maybeIngestDropbox = mod.maybeIngestDropbox;
+  return _maybeIngestDropbox;
 }
 
 /** The file paths pulled from the discipline repo (for showing what synced). */

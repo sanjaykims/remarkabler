@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-06-16 (Dropbox auto-ingest)
+
+### Added — automatic notebook ingestion from Dropbox
+The export step has been the single biggest friction point: write notebook →
+manually export → download → open Remarkabler → upload → wait. This collapses
+that to one tap on the device.
+
+- **`lib/dropbox.ts`** — OAuth 2 with `token_access_type=offline` (long-lived
+  refresh token, in-memory access-token cache), folder list/download via the
+  v2 API, and a `maybeIngestDropbox()` watcher with the same hygiene as the
+  other sweeps: in-flight guard, poll interval (5 min), failure backoff (30
+  min so a revoked token doesn't hammer Dropbox), per-sweep ingest cap (10
+  notebooks so a freshly-connected account doesn't trigger a Claude storm).
+- **API routes** — `GET /api/dropbox/connect` kicks off OAuth (proxy-aware
+  redirect URI built from request headers; CSRF state stashed in settings),
+  `GET /api/dropbox/callback` exchanges the code and persists the refresh
+  token, `GET /api/dropbox/status` for the UI, `POST /api/dropbox/disconnect`
+  clears the token locally.
+- **Memory page** — new "Auto-ingest from Dropbox" section sitting alongside
+  the GitHub backup section. One-click connect / disconnect, surfaces the
+  connected account name, last poll, last error, and ingested-notebook count.
+- **Schema** — `notebooks.dropbox_file_id` (nullable, with a partial index)
+  for dedupe so re-polls don't re-ingest the same file. NULL for manually
+  uploaded notebooks.
+- **Hooked into `runMaintenanceSweep`** via lazy `require` (same pattern as
+  the backup module) so the watcher fires automatically without changing
+  the sweep's import surface.
+
+### Trust posture
+- Dropbox app scopes are READ-ONLY (`files.metadata.read` + `files.content.read`).
+  Even with bugs in this code Dropbox would refuse any write/delete from
+  the app.
+- `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` live in Railway env vars; the
+  per-user refresh token lives in the SQLite settings table.
+
+### Tests
+`test/dropboxAuthUrl.test.ts` — locks the authorise URL contract, especially
+`token_access_type=offline` (the only thing that gives us a refresh token at
+all; if a future edit drops it the watcher would die every 4 hours).
+
 ## 2026-06-15 (Codex review follow-through)
 
 ### Fixed

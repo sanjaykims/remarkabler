@@ -64,6 +64,19 @@ export default function MemoryPage() {
   const [backup, setBackup] = useState<BackupStatus | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
 
+  type DropboxStatus = {
+    configured: boolean;
+    connected: boolean;
+    folder: string;
+    account: string | null;
+    lastSyncAt: string | null;
+    lastAttemptAt: string | null;
+    lastError: string | null;
+    ingestedCount: number;
+  };
+  const [dropbox, setDropbox] = useState<DropboxStatus | null>(null);
+  const [dropboxBusy, setDropboxBusy] = useState(false);
+
   type EmbedStatus = {
     enabled: boolean;
     model: string;
@@ -218,6 +231,31 @@ export default function MemoryPage() {
     }
   }
 
+  async function loadDropbox() {
+    try {
+      setDropbox(await fetch("/api/dropbox/status").then((r) => r.json()));
+    } catch {
+      setDropbox(null);
+    }
+  }
+
+  async function disconnectDropbox() {
+    if (
+      !confirm(
+        "Disconnect Dropbox? The watcher stops; previously-ingested notebooks stay. You can reconnect any time."
+      )
+    ) {
+      return;
+    }
+    setDropboxBusy(true);
+    try {
+      await fetch("/api/dropbox/disconnect", { method: "POST" });
+      await loadDropbox();
+    } finally {
+      setDropboxBusy(false);
+    }
+  }
+
   async function loadEmbed() {
     try {
       setEmbed(await fetch("/api/embeddings/status").then((r) => r.json()));
@@ -298,6 +336,7 @@ export default function MemoryPage() {
     loadModels();
     loadBackup();
     loadEmbed();
+    loadDropbox();
   }, []);
 
   function getPosition(): Promise<GeolocationPosition> {
@@ -760,6 +799,73 @@ export default function MemoryPage() {
             <code>VOYAGE_API_KEY</code> in Railway and redeploy. Embedding
             costs are tiny (cents per thousand pages).
           </p>
+        )}
+      </section>
+
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+        <h2 className="font-medium">Auto-ingest from Dropbox</h2>
+        {dropbox === null ? (
+          <p className="text-xs opacity-60">Loading…</p>
+        ) : !dropbox.configured ? (
+          <p className="text-xs opacity-70 break-words">
+            Not configured. Set <code>DROPBOX_APP_KEY</code> and{" "}
+            <code>DROPBOX_APP_SECRET</code> in Railway and redeploy. This
+            section will switch on automatically.
+          </p>
+        ) : !dropbox.connected ? (
+          <>
+            <p className="text-xs opacity-70">
+              When you tap <strong>Share → Export to integration → Dropbox</strong>
+              {" "}on your reMarkable, the PDF lands in{" "}
+              <code>{dropbox.folder}</code>. This watcher polls that folder
+              every few minutes and ingests new PDFs automatically — same
+              pipeline as a manual upload, no extra work after the device-side
+              tap.
+            </p>
+            {dropbox.lastError && (
+              <p className="text-xs text-red-600 break-words">
+                Last error: {dropbox.lastError}
+              </p>
+            )}
+            <a
+              href="/api/dropbox/connect"
+              className="inline-block rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm"
+            >
+              Connect Dropbox
+            </a>
+          </>
+        ) : (
+          <>
+            <p className="text-xs opacity-70">
+              Connected
+              {dropbox.account ? (
+                <> as <code>{dropbox.account}</code></>
+              ) : null}
+              . Watching <code>{dropbox.folder}</code>.{" "}
+              {dropbox.ingestedCount === 0
+                ? "No notebooks ingested yet — the next one you export from your reMarkable will show up here within a few minutes."
+                : `${dropbox.ingestedCount} notebook${dropbox.ingestedCount === 1 ? "" : "s"} ingested so far.`}
+            </p>
+            <p className="text-xs opacity-70">
+              {dropbox.lastSyncAt ? (
+                <>Last poll: {formatLocalTime(dropbox.lastSyncAt)}</>
+              ) : (
+                <>No poll yet — the next maintenance sweep will run one.</>
+              )}
+            </p>
+            {dropbox.lastError && (
+              <p className="text-xs text-red-600 break-words">
+                Last error: {dropbox.lastError}
+              </p>
+            )}
+            <button
+              onClick={disconnectDropbox}
+              disabled={dropboxBusy}
+              className="rounded border border-stone-300 dark:border-stone-700 px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {dropboxBusy ? "Disconnecting…" : "Disconnect Dropbox"}
+            </button>
+          </>
         )}
       </section>
 
