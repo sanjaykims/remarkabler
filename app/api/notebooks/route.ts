@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { createNotebook, processNotebook, deleteNotebook } from "@/lib/notes";
+import {
+  createNotebook,
+  processNotebook,
+  deleteNotebook,
+  runMaintenanceSweep,
+} from "@/lib/notes";
 import { isAuthenticated } from "@/lib/auth";
 import { FileLike, isFileLike, isPdfFile, MAX_UPLOAD_BYTES } from "@/lib/upload";
 
@@ -12,6 +17,10 @@ const LOCKED = () =>
 
 export async function GET() {
   if (!isAuthenticated()) return LOCKED();
+  // Fire-and-forget the background sweep — gated internally to ≤ once per
+  // 5 min, so visiting /notebooks repeatedly is safe. Picks up any new
+  // Dropbox exports, runs the daily/weekly background work, etc.
+  runMaintenanceSweep();
   const notebooks = db()
     .prepare(
       `SELECT n.id, n.name, n.synced_at,

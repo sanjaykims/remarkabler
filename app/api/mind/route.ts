@@ -10,7 +10,7 @@ import {
   getStoredAxisLabels,
 } from "@/lib/mind";
 import { embeddingsEnabled } from "@/lib/embeddings";
-import { reparseAllEntryDates } from "@/lib/notes";
+import { reparseAllEntryDates, runMaintenanceSweep } from "@/lib/notes";
 import { getSetting, setSetting } from "@/lib/db";
 
 // One-time migration: the old extractEntryDate regex expected
@@ -51,6 +51,9 @@ export async function GET() {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   try {
+    // Fire-and-forget the background sweep — gated internally to ≤ once
+    // per 5 min. Lets opening /mind pick up new Dropbox notebooks too.
+    runMaintenanceSweep();
     reparseIfNeeded();
     return NextResponse.json({
       heatmap: getHeatmap(),
