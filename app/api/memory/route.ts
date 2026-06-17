@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { getCurrentProfileRow, saveProfile } from "@/lib/profile";
 import { buildSelfModel } from "@/lib/claude";
-import { buildNotesContext } from "@/lib/notes";
+import { buildNotesContext, runMaintenanceSweep } from "@/lib/notes";
 import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -22,6 +22,11 @@ function hasNotes(): boolean {
 
 export async function GET() {
   if (!isAuthenticated()) return LOCKED();
+  // Fire-and-forget the background sweep — gated internally to ≤ once per
+  // 5 min. /memory is the dashboard, so visits here are a natural place to
+  // pick up new Dropbox exports + run the other background work without
+  // requiring the user to send a chat.
+  runMaintenanceSweep();
   const row = getCurrentProfileRow();
   return NextResponse.json({
     content: row?.content ?? "",
