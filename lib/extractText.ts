@@ -24,7 +24,6 @@ type Mammoth = {
 let _pdfParse: PdfParse | null = null;
 function pdfParse(): PdfParse {
   if (!_pdfParse) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     _pdfParse = require("pdf-parse") as PdfParse;
   }
   return _pdfParse;
@@ -32,7 +31,6 @@ function pdfParse(): PdfParse {
 let _mammoth: Mammoth | null = null;
 function mammoth(): Mammoth {
   if (!_mammoth) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     _mammoth = require("mammoth") as Mammoth;
   }
   return _mammoth;

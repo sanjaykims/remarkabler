@@ -145,7 +145,7 @@ export default function Home() {
               <h2 className="font-medium">No insights yet</h2>
               <p className="text-sm opacity-75">
                 An insight is a reflection Claude writes about you from
-                everything you've fed in. A fresh one is written automatically
+                everything you&rsquo;ve fed in. A fresh one is written automatically
                 each week — or tap below to make one now.
               </p>
               <Link

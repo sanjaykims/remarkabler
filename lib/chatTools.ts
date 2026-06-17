@@ -2,7 +2,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { normaliseDates, isDisciplineEnabled, DISCIPLINE_ID } from "./notes";
 import { isLocationEnabled } from "./location";
-import { owntracksRouteContext, currentLocation } from "./owntracks";
+import {
+  owntracksRouteContext,
+  currentLocation,
+  warmCurrentLocationGeocode,
+} from "./owntracks";
 import {
   embed,
   decodeEmbedding,
@@ -502,7 +506,13 @@ function currentTimeKst(): unknown {
   };
 }
 
-async function getRecentLocations(input: { days?: number }): Promise<unknown> {
+// Exported for unit tests of the response shape — the actual chat path goes
+// through executeTool below. The contract that matters: when route is empty
+// but a recent point exists, `current` must be populated so Claude doesn't
+// say "no location data" while the phone is still publishing every second.
+export async function getRecentLocations(
+  input: { days?: number }
+): Promise<unknown> {
   if (!isLocationEnabled()) {
     return { route: "", note: "Location sharing is off in Remarkabler." };
   }
@@ -515,6 +525,10 @@ async function getRecentLocations(input: { days?: number }): Promise<unknown> {
   // stays, so chat would say "no location data" while OwnTracks was
   // happily publishing positions every few seconds.
   const current = currentLocation();
+  // Fire-and-forget: if the latest point's place isn't cached, kick off a
+  // background Nominatim lookup so the next chat turn graduates from raw
+  // coordinates to a place name. Doesn't block this response.
+  warmCurrentLocationGeocode();
   if (route) {
     return current ? { days, route, current } : { days, route };
   }

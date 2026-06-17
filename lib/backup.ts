@@ -235,7 +235,6 @@ export async function runBackup(): Promise<number> {
     // 1. Clean SQLite copy via the online backup API — safe even mid-write.
     const dbCopyPath = path.join(stagingDir, "app.db");
     // better-sqlite3's backup() returns a Promise.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db() as any).backup(dbCopyPath);
 
     // 1a. Redact sensitive settings from the STAGED copy only — never touch
