@@ -950,7 +950,7 @@ export default function MemoryPage() {
           <p className="text-xs opacity-70">
             <strong>Raw bundle.</strong> Everything in one Markdown file:
             profile, every diary (chronological), every chat (including
-            cleared ones — they're never deleted, only hidden), all
+            cleared ones — they&rsquo;re never deleted, only hidden), all
             insights. Instant download, zero cost.
           </p>
           <a
@@ -966,8 +966,8 @@ export default function MemoryPage() {
           <p className="text-xs opacity-70">
             <strong>Composed by Claude.</strong> An editor pass on Opus that
             turns the raw bundle into a real chaptered book — prologue,
-            chronological chapters with quoted diary excerpts, a "what
-            I've noticed" reflection, and a closing on the present.
+            chronological chapters with quoted diary excerpts, a &ldquo;what
+            I&rsquo;ve noticed&rdquo; reflection, and a closing on the present.
             Takes a minute or two; costs about <strong>$1–2</strong> per
             run on Opus (visible on the Cost tab).
           </p>
@@ -995,6 +995,7 @@ function OwnTracksDiagnoseButton() {
   const [busy, setBusy] = useState(false);
   const [data, setData] = useState<unknown>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [copyMsg, setCopyMsg] = useState<string | null>(null);
   async function run() {
     setBusy(true);
     setErr(null);
@@ -1008,6 +1009,31 @@ function OwnTracksDiagnoseButton() {
       setBusy(false);
     }
   }
+  async function copy() {
+    if (data === null) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+      setCopyMsg("Copied to clipboard.");
+      setTimeout(() => setCopyMsg(null), 2000);
+    } catch {
+      setCopyMsg("Copy failed — long-press to select the JSON manually.");
+    }
+  }
+  // Pull out the summary fields so a glance is enough — no need to expand
+  // the raw JSON to see whether ingestion is healthy. Coordinates are
+  // never shown in the summary; they're behind the `<details>` toggle.
+  type Summary = {
+    serverTimeUtc?: string;
+    totalPoints?: number;
+    lastTstFormattedKst?: string | null;
+    current?: { minutesAgo?: number; place?: string | null } | null;
+    windows?: Array<{
+      days?: number;
+      pointCount?: number;
+      stays?: unknown[];
+    }>;
+  };
+  const summary: Summary | null = (data as Summary) ?? null;
   return (
     <div className="space-y-2">
       <button
@@ -1018,10 +1044,51 @@ function OwnTracksDiagnoseButton() {
         {busy ? "Diagnosing…" : "Diagnose location pipeline"}
       </button>
       {err && <p className="text-xs text-red-600">{err}</p>}
+      {data !== null && summary && (
+        <div className="space-y-1 text-xs opacity-80">
+          <p>
+            Server clock:{" "}
+            <span className="font-mono">{summary.serverTimeUtc}</span>
+            {" · "}
+            Total points:{" "}
+            <span className="font-mono">{summary.totalPoints}</span>
+            {" · "}
+            Latest: {summary.lastTstFormattedKst ?? "—"}
+          </p>
+          {summary.current && (
+            <p>
+              Current position: {summary.current.minutesAgo} min ago
+              {summary.current.place ? ` · ${summary.current.place}` : ""}
+            </p>
+          )}
+          {summary.windows?.map((w, i) => (
+            <p key={i}>
+              {w.days}d window: {w.pointCount} points · {w.stays?.length ?? 0}{" "}
+              stay{(w.stays?.length ?? 0) === 1 ? "" : "s"}
+            </p>
+          ))}
+        </div>
+      )}
       {data !== null && (
-        <pre className="text-[10px] leading-relaxed whitespace-pre-wrap break-words bg-stone-100 dark:bg-stone-900 rounded p-2 max-h-96 overflow-auto">
-          {JSON.stringify(data, null, 2)}
-        </pre>
+        <details className="text-xs opacity-80">
+          <summary className="cursor-pointer">
+            Raw JSON — contains approximate coordinates (rounded to ~100m).
+            Don&rsquo;t screenshot this for sharing if you&rsquo;re privacy-
+            cautious; use Copy instead.
+          </summary>
+          <div className="space-y-1 pt-2">
+            <button
+              onClick={copy}
+              className="rounded border border-stone-300 dark:border-stone-700 px-2 py-1 text-[11px]"
+            >
+              Copy raw JSON
+            </button>
+            {copyMsg && <span className="text-[11px] opacity-70 ml-2">{copyMsg}</span>}
+            <pre className="text-[10px] leading-relaxed whitespace-pre-wrap break-words bg-stone-100 dark:bg-stone-900 rounded p-2 max-h-96 overflow-auto">
+              {JSON.stringify(data, null, 2)}
+            </pre>
+          </div>
+        </details>
       )}
     </div>
   );

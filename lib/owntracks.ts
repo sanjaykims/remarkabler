@@ -100,6 +100,14 @@ export function owntracksDebug(): {
   totalPoints: number;
   lastTst: number | null;
   lastTstFormattedKst: string | null;
+  current: {
+    lat: number;
+    lng: number;
+    tst: number;
+    atTime: string;
+    minutesAgo: number;
+    place: string | null;
+  } | null;
   windows: Array<{
     days: number;
     sinceEpochSec: number;
@@ -133,16 +141,28 @@ export function owntracksDebug(): {
       )
       .all(since) as Array<{ lat: number; lng: number; tst: number }>;
     const stays = recentStays(days).slice(-40).map((s) => ({
-      lat: s.lat,
-      lng: s.lng,
+      // Stay centroids are also rounded — same screenshot-leak reasoning
+      // as samplePoints. The dwell + time fields are exact (they're not
+      // location-revealing).
+      lat: Math.round(s.lat * 1000) / 1000,
+      lng: Math.round(s.lng * 1000) / 1000,
       start: s.start,
       end: s.end,
       dwellMinutes: Math.round((s.end - s.start) / 60),
     }));
     // First 3 + last 3 raw points so the user can see whether sparse or dense
-    // data is the issue without leaking an unbounded list.
+    // data is the issue without leaking an unbounded list. Coordinates
+    // ROUNDED to 3 decimal places (~110m precision) — enough to debug a
+    // "sparse vs dense vs misclustered" question without leaking the
+    // user's home or office address if they screenshot the diagnostic to
+    // share with me. The aggregated counts are exact.
     const head = pts.slice(0, 3);
     const tail = pts.length > 6 ? pts.slice(-3) : pts.slice(3);
+    const blur = (p: { lat: number; lng: number; tst: number }) => ({
+      lat: Math.round(p.lat * 1000) / 1000,
+      lng: Math.round(p.lng * 1000) / 1000,
+      tst: p.tst,
+    });
     return {
       days,
       sinceEpochSec: since,
@@ -150,16 +170,31 @@ export function owntracksDebug(): {
       firstTstInWindow: pts[0]?.tst ?? null,
       lastTstInWindow: pts[pts.length - 1]?.tst ?? null,
       stays,
-      samplePoints: [...head, ...tail],
+      samplePoints: [...head, ...tail].map(blur),
     };
   };
 
+  // Mirror exactly what the chat tool sees: route (covered by windows.stays)
+  // AND current (covered here). Coordinates of `current` are also blurred
+  // for the same screenshot-leak reason as samplePoints / stays.
+  const cur = currentLocation();
+  const currentBlurred = cur
+    ? {
+        lat: Math.round(cur.lat * 1000) / 1000,
+        lng: Math.round(cur.lng * 1000) / 1000,
+        tst: cur.tst,
+        atTime: cur.atTime,
+        minutesAgo: cur.minutesAgo,
+        place: cur.place,
+      }
+    : null;
   return {
     serverEpochSec: nowSec,
     serverTimeUtc: new Date(nowSec * 1000).toISOString(),
     totalPoints: status.points,
     lastTst: status.lastTst,
     lastTstFormattedKst,
+    current: currentBlurred,
     windows: [summarise(1), summarise(7)],
   };
 }
@@ -235,7 +270,6 @@ async function geocode(lat: number, lng: number): Promise<string> {
       { headers: { "User-Agent": "Remarkabler/1.0 (personal journaling app)" } }
     );
     if (r.ok) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const j = (await r.json()) as any;
       const a = j.address || {};
       const label = [
@@ -303,6 +337,33 @@ export async function owntracksRouteContext(
 }
 
 let warmingGeocodes = false;
+// Separate flag so the current-location warmer doesn't block / get blocked
+// by the stays warmer. They poke different rows in the same cache table,
+// so running concurrently is safe.
+let warmingCurrent = false;
+
+/**
+ * Fire-and-forget background pass that resolves the LATEST point's
+ * coordinates into a place name. Called from chat after currentLocation()
+ * is read, so a moving / just-arrived user — who never produces a stay
+ * the existing warmer would cover — still graduates from raw coordinates
+ * to "Yeoksam-dong, Teheran-ro" on the next interaction.
+ */
+export function warmCurrentLocationGeocode(): void {
+  if (warmingCurrent) return;
+  const current = currentLocation();
+  if (!current || current.place !== null) return;
+  warmingCurrent = true;
+  (async () => {
+    try {
+      await geocode(current.lat, current.lng);
+    } catch {
+      // best-effort
+    } finally {
+      warmingCurrent = false;
+    }
+  })();
+}
 
 /**
  * Fire-and-forget background pass that resolves any uncached stays from

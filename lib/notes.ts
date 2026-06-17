@@ -878,7 +878,6 @@ export function disciplineStatus(): { files: number; lastSynced: string | null }
 let _maybeRunWeeklyBackup: (() => void) | null = null;
 function getMaybeRunWeeklyBackup(): () => void {
   if (_maybeRunWeeklyBackup) return _maybeRunWeeklyBackup;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require("./backup") as { maybeRunWeeklyBackup: () => void };
   _maybeRunWeeklyBackup = mod.maybeRunWeeklyBackup;
   return _maybeRunWeeklyBackup;

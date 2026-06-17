@@ -28,7 +28,6 @@ export default function ChatPage() {
   // True once the first scroll-to-bottom has happened, so loading the
   // existing history doesn't animate a noisy smooth scroll on every visit.
   const didInitialScroll = useRef(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -60,7 +59,6 @@ export default function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     if (w.SpeechRecognition || w.webkitSpeechRecognition) setVoiceSupported(true);
   }, []);
@@ -379,7 +377,6 @@ export default function ChatPage() {
       recognitionRef.current?.stop();
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
     if (!SR) return;
@@ -391,7 +388,6 @@ export default function ChatPage() {
     recognition.continuous = false;
 
     let finalText = "";
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (e: any) => {
       let interim = "";
       finalText = "";

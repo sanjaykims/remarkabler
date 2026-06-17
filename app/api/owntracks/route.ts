@@ -64,7 +64,8 @@ export async function POST(req: NextRequest) {
     body._type === "location" &&
     typeof body.lat === "number" &&
     typeof body.lon === "number" &&
-    typeof body.tst === "number"
+    typeof body.tst === "number" &&
+    isPlausiblePoint(body.lat, body.lon, body.tst)
   ) {
     addPoint({
       lat: body.lat,
@@ -74,5 +75,29 @@ export async function POST(req: NextRequest) {
     });
   }
   // OwnTracks expects an array (friend/card list) — empty is fine.
+  // Bad/out-of-range points are silently dropped — OwnTracks will retry
+  // its own queue on the next publish, no benefit to telling it the
+  // payload was rejected.
   return NextResponse.json([]);
+}
+
+// Drop points with impossible coordinates or implausible timestamps. The
+// route is token-protected so this isn't a security check — it's data
+// hygiene. currentLocation() orders by MAX(tst), so a single point with
+// tst far in the future would dominate the chat's "where are you now?"
+// answer until wall-clock caught up. Real-world OwnTracks publishes are
+// always within seconds of real time; allow a small future slop for
+// clock skew between the phone and the server.
+function isPlausiblePoint(lat: number, lng: number, tst: number): boolean {
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return false;
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) return false;
+  if (!Number.isFinite(tst) || tst <= 0) return false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  // Allow up to 10 min of phone-side future skew. Anything beyond that is
+  // a clock bug or a malformed payload.
+  if (tst > nowSec + 10 * 60) return false;
+  // 10-year past cutoff. Backfill is fine, time travel from 1970 is not.
+  const TEN_YEARS_SEC = 10 * 365 * 86400;
+  if (tst < nowSec - TEN_YEARS_SEC) return false;
+  return true;
 }

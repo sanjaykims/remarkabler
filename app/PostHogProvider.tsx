@@ -9,7 +9,6 @@ const HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 // Lazy module reference: only loaded when KEY is set at runtime. Replaces a
 // top-level `import posthog from "posthog-js"` so the ~55 KB gzipped library
 // doesn't ship in the client bundle when analytics aren't configured.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let posthogRef: any = null;
 let starting = false;
 
