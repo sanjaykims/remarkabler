@@ -125,6 +125,15 @@ maintenance sweep catches any batch the inline trigger missed.
 - `CHAT_MEMORY_MODEL` — override the extractor model (defaults to
   `CHAT_MODEL`).
 
+### One-time backfill migration
+
+Chats cleared BEFORE this ships sit with `archived_at` set but
+`archive_batch_id` NULL — they were never grouped into a batch (the
+table didn't exist yet). On first startup after deploy, `lib/db.ts`
+groups every orphan archived message by `conversation_id` into one
+batch each and stamps the messages. The maintenance sweep then
+extracts memories on the next tick. Idempotent — re-runs are no-ops.
+
 ## 2026-06-16 (Codex PR #37 final-pass nits)
 
 Codex's final verification pass declared the Dropbox loop closed and
