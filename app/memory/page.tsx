@@ -1128,137 +1128,152 @@ function ChatMemorySection() {
         : items.filter((m) => m.category === filter);
 
   return (
-    <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
-      <h2 className="font-medium">Chat memory</h2>
-      <p className="text-xs opacity-70">
-        Small durable items Claude pulls out of cleared chats — preferences,
-        facts, intents, feelings, open threads — so the next conversation
-        already knows them. Delete anything that doesn&rsquo;t belong; a
-        delete sticks across future extractions.
-      </p>
+    <details className="rounded border border-stone-200 dark:border-stone-800 group">
+      <summary className="cursor-pointer list-none p-4 flex items-center justify-between gap-2">
+        <span className="font-medium">Chat memory</span>
+        <span className="text-xs opacity-60">
+          {status === null ? (
+            "…"
+          ) : (
+            <>
+              {status.total} item{status.total === 1 ? "" : "s"}
+              {status.pending_batches > 0
+                ? ` · ${status.pending_batches} pending`
+                : ""}
+              {status.stuck_batches > 0
+                ? ` · ${status.stuck_batches} stuck`
+                : ""}
+            </>
+          )}
+        </span>
+      </summary>
+      <div className="px-4 pb-4 pt-3 border-t border-stone-200 dark:border-stone-800 space-y-3">
+        <p className="text-xs opacity-70">
+          Small durable items Claude pulls out of cleared chats — preferences,
+          facts, intents, feelings, open threads — so the next conversation
+          already knows them. Delete anything that doesn&rsquo;t belong; a
+          delete sticks across future extractions.
+        </p>
 
-      {status === null ? (
-        <p className="text-xs opacity-60">Loading…</p>
-      ) : (
-        <>
-          <p className="text-xs opacity-70">
-            {status.total} item{status.total === 1 ? "" : "s"}
-            {status.last_extracted_at
-              ? ` · last extracted ${formatLocalTime(status.last_extracted_at)}`
-              : ""}
-            {status.pending_batches > 0
-              ? ` · ${status.pending_batches} pending`
-              : ""}
-            {status.missing_embedding > 0
-              ? ` · ${status.missing_embedding} without embedding`
-              : ""}
-          </p>
-          {status.stuck_batches > 0 && (
-            <div className="rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-2 space-y-1.5">
-              <p className="text-xs text-red-700 dark:text-red-300">
-                {status.stuck_batches} batch
-                {status.stuck_batches === 1 ? "" : "es"} failed extraction.
-                {status.last_extraction_error
-                  ? ` Last error: ${status.last_extraction_error}`
+        {status === null ? (
+          <p className="text-xs opacity-60">Loading…</p>
+        ) : (
+          <>
+            {status.last_extracted_at && (
+              <p className="text-xs opacity-70">
+                Last extracted {formatLocalTime(status.last_extracted_at)}
+                {status.missing_embedding > 0
+                  ? ` · ${status.missing_embedding} without embedding`
                   : ""}
               </p>
-              <button
-                onClick={retryStuck}
-                disabled={retryBusy}
-                className="rounded border border-red-300 dark:border-red-800 px-3 py-1 text-xs text-red-700 dark:text-red-300 disabled:opacity-50"
-              >
-                {retryBusy ? "Retrying…" : "Retry stuck batches"}
-              </button>
-              {retryMsg && (
-                <p className="text-xs opacity-70">{retryMsg}</p>
-              )}
-            </div>
-          )}
-          <div className="space-y-1.5 pt-1">
-            <button
-              onClick={backfillAll}
-              disabled={backfillBusy}
-              className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs disabled:opacity-50"
-            >
-              {backfillBusy
-                ? "Processing…"
-                : "Re-process all chat history (clean)"}
-            </button>
-            {backfillMsg && (
-              <p className="text-xs opacity-70">{backfillMsg}</p>
             )}
-          </div>
-        </>
-      )}
-
-      {items !== null && items.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {MEMORY_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setFilter(f.value)}
-              className={
-                "rounded-full px-2.5 py-1 text-[11px] " +
-                (filter === f.value
-                  ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900"
-                  : "border border-stone-300 dark:border-stone-700 opacity-80")
-              }
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {filtered === null ? null : filtered.length === 0 ? (
-        <p className="text-xs opacity-60">
-          {items && items.length === 0
-            ? "No chat memories yet. Clear a chat with a meaningful conversation and Claude will extract a few durable items."
-            : "No items in this category."}
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {filtered.map((m) => (
-            <li
-              key={m.id}
-              className="rounded border border-stone-200 dark:border-stone-800 p-2.5 space-y-1.5"
-            >
-              <div className="flex items-start gap-2">
-                <span className="shrink-0 rounded-full bg-stone-100 dark:bg-stone-800 px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-80">
-                  {m.category}
-                </span>
-                <p className="text-sm leading-snug flex-1">{m.text}</p>
-              </div>
-              <div className="flex items-center justify-between gap-2 text-[11px] opacity-60">
-                <span>{formatLocalTime(m.created_at)}</span>
-                {m.missing_embedding === 1 && (
-                  <span className="text-amber-600 dark:text-amber-400">
-                    no embedding (won&rsquo;t auto-recall)
-                  </span>
+            {status.stuck_batches > 0 && (
+              <div className="rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-2 space-y-1.5">
+                <p className="text-xs text-red-700 dark:text-red-300">
+                  {status.stuck_batches} batch
+                  {status.stuck_batches === 1 ? "" : "es"} failed extraction.
+                  {status.last_extraction_error
+                    ? ` Last error: ${status.last_extraction_error}`
+                    : ""}
+                </p>
+                <button
+                  onClick={retryStuck}
+                  disabled={retryBusy}
+                  className="rounded border border-red-300 dark:border-red-800 px-3 py-1 text-xs text-red-700 dark:text-red-300 disabled:opacity-50"
+                >
+                  {retryBusy ? "Retrying…" : "Retry stuck batches"}
+                </button>
+                {retryMsg && (
+                  <p className="text-xs opacity-70">{retryMsg}</p>
                 )}
               </div>
-              {m.source_excerpt && (
-                <details className="text-xs opacity-70">
-                  <summary className="cursor-pointer">Source excerpt</summary>
-                  <p className="mt-1 whitespace-pre-wrap break-words">
-                    {m.source_excerpt}
-                  </p>
-                </details>
+            )}
+            <div className="space-y-1.5 pt-1">
+              <button
+                onClick={backfillAll}
+                disabled={backfillBusy}
+                className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs disabled:opacity-50"
+              >
+                {backfillBusy
+                  ? "Processing…"
+                  : "Re-process all chat history (clean)"}
+              </button>
+              {backfillMsg && (
+                <p className="text-xs opacity-70">{backfillMsg}</p>
               )}
-              <div>
-                <button
-                  onClick={() => remove(m.id)}
-                  disabled={busyId === m.id}
-                  className="text-[11px] underline opacity-70 disabled:opacity-30"
-                >
-                  {busyId === m.id ? "Deleting…" : "Delete"}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+            </div>
+          </>
+        )}
+
+        {items !== null && items.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {MEMORY_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                onClick={() => setFilter(f.value)}
+                className={
+                  "rounded-full px-2.5 py-1 text-[11px] " +
+                  (filter === f.value
+                    ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900"
+                    : "border border-stone-300 dark:border-stone-700 opacity-80")
+                }
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {filtered === null ? null : filtered.length === 0 ? (
+          <p className="text-xs opacity-60">
+            {items && items.length === 0
+              ? "No chat memories yet. Clear a chat with a meaningful conversation and Claude will extract a few durable items."
+              : "No items in this category."}
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {filtered.map((m) => (
+              <li
+                key={m.id}
+                className="rounded border border-stone-200 dark:border-stone-800 p-2.5 space-y-1.5"
+              >
+                <div className="flex items-start gap-2">
+                  <span className="shrink-0 rounded-full bg-stone-100 dark:bg-stone-800 px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-80">
+                    {m.category}
+                  </span>
+                  <p className="text-sm leading-snug flex-1">{m.text}</p>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[11px] opacity-60">
+                  <span>{formatLocalTime(m.created_at)}</span>
+                  {m.missing_embedding === 1 && (
+                    <span className="text-amber-600 dark:text-amber-400">
+                      no embedding (won&rsquo;t auto-recall)
+                    </span>
+                  )}
+                </div>
+                {m.source_excerpt && (
+                  <details className="text-xs opacity-70">
+                    <summary className="cursor-pointer">Source excerpt</summary>
+                    <p className="mt-1 whitespace-pre-wrap break-words">
+                      {m.source_excerpt}
+                    </p>
+                  </details>
+                )}
+                <div>
+                  <button
+                    onClick={() => remove(m.id)}
+                    disabled={busyId === m.id}
+                    className="text-[11px] underline opacity-70 disabled:opacity-30"
+                  >
+                    {busyId === m.id ? "Deleting…" : "Delete"}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </details>
   );
 }
 
