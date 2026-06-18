@@ -346,10 +346,16 @@ export async function DELETE(req: NextRequest) {
       .prepare(`INSERT INTO chat_archive_batches(conversation_id) VALUES(?)`)
       .run(conversationId);
     const id = Number(ins.lastInsertRowid);
+    // COALESCE preserves an existing archive_batch_id when a message has
+    // already been batched by the backfill-all path. That keeps the
+    // backfill batch (and any memories it produced) consistent even when
+    // the user clicks Clear later; only never-batched messages get this
+    // Clear's new id stamped on them.
     db()
       .prepare(
         `UPDATE chat_messages
-           SET archived_at = datetime('now'), archive_batch_id = ?
+           SET archived_at = datetime('now'),
+               archive_batch_id = COALESCE(archive_batch_id, ?)
          WHERE conversation_id = ? AND archived_at IS NULL`
       )
       .run(id, conversationId);
