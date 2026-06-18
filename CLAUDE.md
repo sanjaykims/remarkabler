@@ -25,7 +25,10 @@ and generate an accumulating record of "insights" about themselves.
   (set to `claude-opus-4-7`), `DATA_DIR=/data`; a persistent volume is mounted
   at `/data` and holds the SQLite database and uploaded PDFs. Optional
   `CHAT_MODEL` overrides the model used for chat only (defaults to
-  `claude-sonnet-4-6`); OCR and insights stay on `CLAUDE_MODEL`.
+  `claude-sonnet-4-6`); OCR and insights stay on `CLAUDE_MODEL`. Optional
+  `CHAT_MEMORY_MODEL` overrides the model used to extract durable items
+  from cleared chats (defaults to `CHAT_MODEL`); set this to a cheaper
+  tier once extraction quality is known to hold.
 - Optional env var `APP_PASSCODE` enables the private lock. When set, the
   whole app (pages + APIs) is gated behind a passkey (fingerprint / Face ID)
   or the passcode itself. When unset, the app is fully open — so the lock can
@@ -77,15 +80,26 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `insights`, `credentials`, `chat_attachments`, `api_usage`, `profile`,
   `daily_summaries`, `entry_analysis` (per-entry themes/sentiment/summary
   cache for `/mind`), `locations`, `location_points`, `route_stops`,
-  `geocode_cache`. Some durable state also lives in `settings` rows, e.g.
+  `geocode_cache`, `chat_archive_batches` + `chat_memories` (durable
+  chat-memory layer; one batch per Clear, soft-deleted items don't
+  resurrect). Some durable state also lives in `settings` rows, e.g.
   `mind_pca_axes` (persisted PCA mean + PC vectors + axis labels) and the
   `backup_last_*` markers.
 - `lib/claude.ts` — Anthropic API calls: `ocrNotebookPdf`, `chatOverNotes`,
   `generateInsights`, `generateInsightTitle`, the evolving-memory pair
-  `buildSelfModel` / `updateSelfModel`, `summarizeDay`, `composeBook`, and the
+  `buildSelfModel` / `updateSelfModel`, `summarizeDay`, `composeBook`, the
   `/mind` helpers `analyzeEntryContent` (themes/sentiment/summary, English),
-  `labelEmbeddingAxes` + the pure `parseAxisLabels`. Each records token usage +
-  an estimated cost via `recordUsage` from `lib/usage.ts`.
+  `labelEmbeddingAxes` + the pure `parseAxisLabels`, and the chat-memory
+  pair `compressChatSession` + the pure `parseChatMemories`. Each records
+  token usage + an estimated cost via `recordUsage` from `lib/usage.ts`.
+- `lib/chatMemory.ts` — durable chat-memory layer. `compressBatch`
+  (extract → embed → dedup → insert with bounded retry),
+  `maybeCompressChatSessions` (in-flight-guarded sweep matching the
+  `analyzePending` shape), `recallChatMemories` (Voyage top-K cosine,
+  fail-open), `formatRecalledMemoriesBlock` (advisory framing for the
+  system prompt), `normaliseChatMemoryCategory` (6-value enum),
+  `isDuplicateMemory` (exact text_norm + 0.88 cosine), and
+  `resetBatchForRetry` (clears permanent-skip state).
 - `lib/usage.ts` — `recordUsage` (per-call cost from list prices) plus
   `monthlyUsage` / `dailyUsage` / `totalUsage` aggregation (timezone-aware).
 - `lib/embeddings.ts` — Voyage embeddings (`embed`, `embedBatch`,
@@ -121,7 +135,9 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
   `mind/axis-labels`, `mind/reparse-dates`), `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect}`,
-  `location`, `owntracks`, `export`, `settings`.
+  `location`, `owntracks`, `export`, `settings`,
+  `chat/memories` (GET/DELETE/retry — list, soft-delete, reset stuck
+  batches).
 - UI pages (`app/*`): `notebooks`, `chat`, `insights`, `mind` (heatmap, theme
   cloud, mood timeline, 3D embedding map — `app/mind/Map3D.tsx`), `memory`,
   `usage` (cost calendar).
@@ -140,6 +156,27 @@ features need the deployed instance to fully verify.
 
 ## Hard-won rules — do not regress these
 
+- **Clear is a real boundary.** The chat POST history query filters
+  `archived_at IS NULL` — cleared messages no longer feed Claude as raw
+  history. Continuity is carried forward by extracted `chat_memories`
+  (compact items: preferences, facts, intents, feelings, unresolved).
+  Each Clear creates a `chat_archive_batches` row, the
+  `app/api/chat/route.ts:DELETE` handler fires
+  `maybeCompressChatSessions` un-awaited, and the maintenance sweep
+  catches whatever the inline trigger missed. Do NOT revert the POST
+  filter to "all rows" — that would double-count cleared messages
+  (once as raw history, once as recalled memory).
+- **Chat memory recall is fail-open.** `chatOverNotes` accepts
+  `recalledMemories` as a pre-rendered text block; it lives in the
+  dynamic context block (never cached). Recall errors return an empty
+  block, never throw — chat must never 500 because Voyage was down.
+- **Memory extraction is bounded-retry.** `MAX_EXTRACTION_ATTEMPTS = 2`.
+  On parse failure the first attempt leaves the batch pending; the
+  second attempt sets `memory_extracted_at` to mark permanent skip.
+  Reset via `POST /api/chat/memories/retry/[batchId]` (also exposed
+  as a "Retry stuck batches" button on `/memory`). Do not switch back
+  to "advance the watermark on first failure" — that quietly discards
+  a useful conversation when Claude returns garbage once.
 - **Chat reasons over the profile, not the whole corpus.** `chatOverNotes`
   takes the compact `profile` (Claude's accumulated understanding, updated in
   the background when a diary is fed) and exposes a set of tools in

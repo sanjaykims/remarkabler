@@ -1,5 +1,130 @@
 # Changelog
 
+## 2026-06-18 (Chat memory)
+
+Durable memory layer for chat, inspired by claude-mem but adapted to
+Remarkabler's conversational surface. Cleared chats no longer "just
+disappear" — Claude extracts a small set of durable items (preferences,
+facts, intents, feelings, unresolved threads) and carries them forward
+into future conversations.
+
+### Behaviour change — Clear is now a real boundary
+
+Before: Clear hid the chat from the UI, but Claude still saw the last
+12 messages of archived history on the next turn.
+
+After: Clear archives messages into a batch AND triggers a
+fire-and-forget extraction. Future POST turns filter
+`archived_at IS NULL`, so Claude no longer sees those raw messages.
+Continuity comes from the compact memories instead. There's a brief
+(<5 sec) window after Clear when extraction is still running and
+neither raw history nor new memories cover the cleared batch; the
+maintenance sweep catches any batch the inline trigger missed.
+
+### New tables
+
+- `chat_archive_batches` — one row per Clear, with start/end message
+  ids, message count, user char count, extraction state, and bounded
+  retry (`failed_attempts`, `extraction_error`).
+- `chat_memories` — extracted items with category (6-value enum),
+  normalised text for exact dedup, embedding for semantic recall, and
+  source excerpt + batch back-reference for audit.
+- `chat_messages.archive_batch_id` — column ties each archived message
+  to its batch.
+
+### New module: `lib/chatMemory.ts`
+
+- `compressBatch(batchId)` — extract, embed, dedup, insert.
+  Noise-floor guards (`MIN_MESSAGES_FOR_COMPRESSION = 4`,
+  `MIN_USER_CHARS_FOR_COMPRESSION = 200`) skip without an API call.
+  Bounded retry: malformed JSON gets `MAX_EXTRACTION_ATTEMPTS = 2`
+  before permanent skip; a permanently-skipped batch can be reset
+  via `resetBatchForRetry`.
+- `maybeCompressChatSessions(limit?)` — in-flight-guarded sweep
+  matching `analyzePending` in shape; fires from
+  `runMaintenanceSweep` AND the chat DELETE handler.
+- `recallChatMemories(message, k, minSim)` — Voyage-embedded top-K
+  cosine retrieval. Fail-open: any error returns an empty list so
+  chat never 500s because recall failed.
+- `formatRecalledMemoriesBlock(items)` — advisory framing in the
+  system prompt: "if conflicts with current message, prefer current
+  information." Capped at `MAX_RECALL_CHARS = 2000`.
+- `normaliseChatMemoryCategory` — folds the long tail of model
+  category synonyms ("preferences", "habit", "goal", "open thread"…)
+  into the canonical 6-value enum.
+- `isDuplicateMemory` — exact text match via `text_norm` index, then
+  cosine `>= DEDUP_COSINE_THRESHOLD = 0.88` against the existing
+  active set.
+
+### `lib/claude.ts` additions
+
+- `compressChatSession({transcript, profile, existingMemories})` —
+  privacy-aware extraction with explicit "do NOT extract" list
+  (passwords, transient emotions, hypotheticals as facts, third-party
+  PII).
+- `parseChatMemories(raw)` — pure JSON parser, lenient (same posture
+  as `parseAxisLabels`). 13 unit tests cover fenced output, embedded
+  preambles, trailing commas, bare arrays, missing categories.
+- `modelChatMemory()` — separate knob (`model_chat_memory` setting or
+  `CHAT_MEMORY_MODEL` env var) defaulting to `modelChat()` so the
+  extractor can be swapped to Haiku later without touching chat.
+- `chatOverNotes` accepts a new `recalledMemories` parameter and
+  injects it into the dynamic context block (never cached).
+
+### API + UI
+
+- `GET /api/chat/memories` — list active memories + status (total,
+  last extracted, pending/stuck batches, last error, stuck batch ids
+  for the retry button).
+- `DELETE /api/chat/memories/[id]` — soft delete (so a future
+  extraction doesn't resurface the same item).
+- `POST /api/chat/memories/retry/[batchId]` — reset a permanently-
+  skipped batch.
+- `/memory` page — new "Chat memory" section between Backup and
+  Export with status pill, filter chips (All/Fact/Preference/Intent/
+  Feeling/Unresolved/Other), per-row delete, source excerpt
+  disclosure, and a "Retry stuck batches" button visible only when
+  there are any.
+
+### Hard-won decisions
+
+- **Option B for Clear semantics.** POST history filters
+  `archived_at IS NULL`. Trade-off vs the brief async-gap window is
+  documented above and in the plan file.
+- **Bounded retry, not advance-and-skip.** A single malformed
+  response no longer permanently discards a batch.
+- **Privacy-aware extraction prompt.** Explicit "DO NOT extract"
+  list for passwords, transient venting, hypotheticals, third-party
+  PII.
+- **Non-authoritative recall framing.** Recalled block tells Claude
+  to prefer the current message if it conflicts with a memory.
+- **Smaller transcript default** (16K chars vs 32K) per Codex's
+  cost caution. Raise via `MAX_TRANSCRIPT_CHARS` if extraction
+  misses context.
+
+### Tests (+53, total 141)
+
+- `chatMemoryPrompt.test.ts` (13) — parser leniency.
+- `chatMemoryCategory.test.ts` (8) — alias normalisation.
+- `chatMemoryDedup.test.ts` (12) — exact + cosine dedup, soft-delete
+  exclusion, Voyage-outage exact-match fallback.
+- `chatMemoryExtract.test.ts` (9) — noise-floor short-circuit, happy
+  path, dedup, bounded retry (attempt 1 keeps pending, attempt 2
+  permanent), resetBatchForRetry, already-extracted no-op,
+  empty-extraction-with-no-parse-error success.
+- `chatMemoryRecall.test.ts` (11) — ranking, threshold, soft-delete
+  exclusion, NULL-embedding exclusion, fail-open on both null and
+  thrown embed errors.
+- `chatMemoryFlow.test.ts` (8) — Clear transaction populates batch
+  stats; archives stamp `archive_batch_id`; empty Clear creates no
+  batch; re-Clear creates a second distinct batch; **Option B
+  history filter returns zero archived messages.**
+
+### Optional env vars
+
+- `CHAT_MEMORY_MODEL` — override the extractor model (defaults to
+  `CHAT_MODEL`).
+
 ## 2026-06-16 (Codex PR #37 final-pass nits)
 
 Codex's final verification pass declared the Dropbox loop closed and

@@ -361,12 +361,14 @@ export default function ChatPage() {
     sendMessage(input, false);
   }
 
-  // Archive the visible chat: it is hidden here but kept in the database, and
-  // Claude still continues the conversation from it.
+  // Clear archives the visible chat into one batch and triggers chat-memory
+  // extraction. After clearing, Claude no longer sees those messages as raw
+  // history — instead a few durable items (preferences, facts, intents) are
+  // pulled out and carried forward across future conversations.
   async function clearChat() {
     if (busy) return;
     const ok = window.confirm(
-      "Hide this chat from the app? Your messages are kept and Claude still continues the conversation from them — they are only removed from view here, for privacy."
+      "Clear this chat? It hides from view here, and Claude pulls out a few durable items (preferences, facts, intents) to carry into future chats. You can see and delete those items on the Memory page."
     );
     if (!ok) return;
     await fetch("/api/chat?conversationId=default", { method: "DELETE" });

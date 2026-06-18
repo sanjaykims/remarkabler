@@ -61,6 +61,18 @@ export function db(): Database.Database {
   } catch {
     // column already exists
   }
+  // The archive batch that grouped this message at Clear time. Lets the chat
+  // memory compressor find every message belonging to a single Clear event
+  // and treat it as one compression unit.
+  try {
+    _db.exec(`ALTER TABLE chat_messages ADD COLUMN archive_batch_id INTEGER`);
+  } catch {
+    // column already exists
+  }
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_chat_messages_archive_batch
+       ON chat_messages(archive_batch_id) WHERE archive_batch_id IS NOT NULL`
+  );
   // Per-page semantic embedding (Float32 BLOB) for hybrid (FTS + meaning)
   // search. Backfilled in the background; absent for older pages until then.
   try {
@@ -115,6 +127,63 @@ export function db(): Database.Database {
   _db.exec(
     `CREATE INDEX IF NOT EXISTS idx_entry_analysis_analyzed_at
        ON entry_analysis(analyzed_at)`
+  );
+  // Chat memory: each Clear becomes an archive batch, and the compressor
+  // extracts a small set of durable items from the batch's transcript.
+  // Batches stay around as the audit unit (last error, attempt count,
+  // memory counts); memories outlive their source batch (FK SET NULL on
+  // batch deletion) so a deleted batch doesn't erase what was learned
+  // from it.
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_archive_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id      TEXT NOT NULL,
+      archived_at          TEXT NOT NULL DEFAULT (datetime('now')),
+      message_start_id     INTEGER,
+      message_end_id       INTEGER,
+      message_count        INTEGER NOT NULL DEFAULT 0,
+      user_char_count      INTEGER NOT NULL DEFAULT 0,
+      memory_extracted_at  TEXT,
+      extraction_error     TEXT,
+      failed_attempts      INTEGER NOT NULL DEFAULT 0,
+      memories_inserted    INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_chat_archive_batches_pending
+       ON chat_archive_batches(memory_extracted_at)
+       WHERE memory_extracted_at IS NULL`
+  );
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_memories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_archive_batch_id  INTEGER,
+      source_conversation_id   TEXT NOT NULL,
+      source_message_start_id  INTEGER,
+      source_message_end_id    INTEGER,
+      category                 TEXT NOT NULL DEFAULT 'fact',
+      category_raw             TEXT,
+      text                     TEXT NOT NULL,
+      text_norm                TEXT NOT NULL,
+      embedding                BLOB,
+      source_excerpt           TEXT,
+      model                    TEXT,
+      created_at               TEXT NOT NULL DEFAULT (datetime('now')),
+      deleted_at               TEXT,
+      FOREIGN KEY (source_archive_batch_id) REFERENCES chat_archive_batches(id) ON DELETE SET NULL
+    )
+  `);
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_chat_memories_active
+       ON chat_memories(source_conversation_id, created_at) WHERE deleted_at IS NULL`
+  );
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_chat_memories_recall
+       ON chat_memories(deleted_at, id)`
+  );
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_chat_memories_dedup
+       ON chat_memories(text_norm) WHERE deleted_at IS NULL`
   );
   // Drop columns that have been confirmed dead — written but never read by
   // any current code path. Idempotent (SQLite raises "no such column" once

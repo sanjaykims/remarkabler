@@ -10,6 +10,10 @@ import { owntracksRouteContext, warmOwntracksGeocodes } from "@/lib/owntracks";
 import { chatOverNotes } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
 import { extractTextFromAttachment } from "@/lib/extractText";
+import {
+  recallChatMemories,
+  formatRecalledMemoriesBlock,
+} from "@/lib/chatMemory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -175,11 +179,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // archived_at IS NULL — Clear is a real boundary. Cleared messages no
+  // longer feed Claude as raw history; durable carry-forward lives in the
+  // chat_memories block (recalled below) instead.
   const history = (
     db()
       .prepare(
         `SELECT role, content FROM chat_messages
-         WHERE conversation_id = ? ORDER BY id DESC LIMIT 12`
+         WHERE conversation_id = ? AND archived_at IS NULL
+         ORDER BY id DESC LIMIT 12`
       )
       .all(conversationId) as Array<{ role: "user" | "assistant"; content: string }>
   ).reverse();
@@ -213,12 +221,24 @@ export async function POST(req: NextRequest) {
       : extractedDocText
     : userMessage;
 
+  // Pull the top-K chat memories most relevant to this turn and render them
+  // as an advisory block. Fail-open by design — chat must never 500 because
+  // recall failed (no Voyage key, Voyage outage, decode glitch, etc).
+  let recalledMemories = "";
+  try {
+    const { items } = await recallChatMemories(messageToClaude);
+    recalledMemories = formatRecalledMemoriesBlock(items);
+  } catch (e) {
+    console.warn("[chat] recall failed:", (e as Error).message);
+  }
+
   let reply: string;
   let replyModel: string;
   try {
     const result = await chatOverNotes({
       profile,
       recentLocations,
+      recalledMemories,
       history,
       userMessage: messageToClaude,
       attachment,
@@ -312,18 +332,66 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ messages });
 }
 
-// "Clear" the chat: archive every visible message. They stay in the database
-// and still feed Claude (the POST history query is unfiltered), so the
-// conversation continues — they are only removed from the chat view.
+// "Clear" the chat: archive every visible message into a single batch and
+// fire the chat-memory compressor. The archived messages no longer feed
+// Claude as raw history (POST filters archived_at IS NULL); their durable
+// substance is carried forward by the extracted chat_memories instead.
 export async function DELETE(req: NextRequest) {
   if (!isAuthenticated()) return LOCKED();
   const conversationId =
     req.nextUrl.searchParams.get("conversationId") || "default";
-  db()
-    .prepare(
-      `UPDATE chat_messages SET archived_at = CURRENT_TIMESTAMP
-       WHERE conversation_id = ? AND archived_at IS NULL`
-    )
-    .run(conversationId);
-  return NextResponse.json({ ok: true });
+
+  const batchId = db().transaction(() => {
+    const ins = db()
+      .prepare(`INSERT INTO chat_archive_batches(conversation_id) VALUES(?)`)
+      .run(conversationId);
+    const id = Number(ins.lastInsertRowid);
+    db()
+      .prepare(
+        `UPDATE chat_messages
+           SET archived_at = datetime('now'), archive_batch_id = ?
+         WHERE conversation_id = ? AND archived_at IS NULL`
+      )
+      .run(id, conversationId);
+    const stats = db()
+      .prepare(
+        `SELECT MIN(id) AS s, MAX(id) AS e, COUNT(*) AS c,
+                COALESCE(SUM(CASE WHEN role='user' THEN LENGTH(content) ELSE 0 END), 0) AS uc
+           FROM chat_messages WHERE archive_batch_id = ?`
+      )
+      .get(id) as {
+      s: number | null;
+      e: number | null;
+      c: number;
+      uc: number;
+    };
+    if (stats.c === 0) {
+      db()
+        .prepare(`DELETE FROM chat_archive_batches WHERE id = ?`)
+        .run(id);
+      return null;
+    }
+    db()
+      .prepare(
+        `UPDATE chat_archive_batches
+           SET message_start_id = ?, message_end_id = ?,
+               message_count = ?, user_char_count = ?
+         WHERE id = ?`
+      )
+      .run(stats.s, stats.e, stats.c, stats.uc, id);
+    return id;
+  })();
+
+  if (batchId !== null) {
+    // Fire-and-forget extraction. The maintenance sweep will catch any batch
+    // this misses (process restart, transient failure).
+    try {
+      void import("@/lib/chatMemory").then((m) =>
+        m.maybeCompressChatSessions()
+      );
+    } catch {
+      // best-effort
+    }
+  }
+  return NextResponse.json({ ok: true, batchId });
 }

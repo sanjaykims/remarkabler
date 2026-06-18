@@ -943,6 +943,8 @@ export default function MemoryPage() {
         )}
       </section>
 
+      <ChatMemorySection />
+
       <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
         <h2 className="font-medium">Export — book draft</h2>
 
@@ -982,6 +984,234 @@ export default function MemoryPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+// The "Chat memory" section — durable items Claude extracts from cleared
+// chats so a fresh conversation can still know what the user has said
+// before. List + delete + retry-stuck-batches surface.
+type ChatMemoryItem = {
+  id: number;
+  category: string;
+  category_raw: string | null;
+  text: string;
+  source_excerpt: string | null;
+  created_at: string;
+  missing_embedding: 0 | 1;
+};
+
+type ChatMemoryStatus = {
+  total: number;
+  last_extracted_at: string | null;
+  missing_embedding: number;
+  pending_batches: number;
+  stuck_batches: number;
+  stuck_batch_ids: number[];
+  last_extraction_error: string | null;
+};
+
+const MEMORY_FILTERS = [
+  { value: "all" as const, label: "All" },
+  { value: "fact" as const, label: "Fact" },
+  { value: "preference" as const, label: "Preference" },
+  { value: "intent" as const, label: "Intent" },
+  { value: "feeling" as const, label: "Feeling" },
+  { value: "unresolved" as const, label: "Unresolved" },
+  { value: "other" as const, label: "Other" },
+];
+
+function ChatMemorySection() {
+  const [items, setItems] = useState<ChatMemoryItem[] | null>(null);
+  const [status, setStatus] = useState<ChatMemoryStatus | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [retryBusy, setRetryBusy] = useState(false);
+  const [retryMsg, setRetryMsg] = useState<string | null>(null);
+  const [filter, setFilter] = useState<(typeof MEMORY_FILTERS)[number]["value"]>(
+    "all"
+  );
+
+  async function load() {
+    try {
+      const d = await fetch("/api/chat/memories").then((r) => r.json());
+      setItems(d.memories || []);
+      setStatus(d.status || null);
+    } catch {
+      setItems([]);
+      setStatus(null);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function remove(id: number) {
+    if (
+      !window.confirm(
+        "Delete this memory? Claude won't carry it into future chats. (The deletion is a soft-delete, so a future extraction of the same fact won't resurface it.)"
+      )
+    )
+      return;
+    setBusyId(id);
+    try {
+      const r = await fetch(`/api/chat/memories/${id}`, { method: "DELETE" });
+      if (r.ok) await load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function retryStuck() {
+    if (retryBusy || !status) return;
+    setRetryBusy(true);
+    setRetryMsg(null);
+    try {
+      const ids = status.stuck_batch_ids || [];
+      if (ids.length === 0) {
+        setRetryMsg("No stuck batches.");
+        return;
+      }
+      let ok = 0;
+      for (const id of ids) {
+        const r = await fetch(`/api/chat/memories/retry/${id}`, {
+          method: "POST",
+        });
+        if (r.ok) ok++;
+      }
+      setRetryMsg(
+        `Reset ${ok}/${ids.length} batch${ids.length === 1 ? "" : "es"} — refresh in a few seconds.`
+      );
+      await load();
+    } finally {
+      setRetryBusy(false);
+    }
+  }
+
+  const filtered =
+    items === null
+      ? null
+      : filter === "all"
+        ? items
+        : items.filter((m) => m.category === filter);
+
+  return (
+    <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+      <h2 className="font-medium">Chat memory</h2>
+      <p className="text-xs opacity-70">
+        Small durable items Claude pulls out of cleared chats — preferences,
+        facts, intents, feelings, open threads — so the next conversation
+        already knows them. Delete anything that doesn&rsquo;t belong; a
+        delete sticks across future extractions.
+      </p>
+
+      {status === null ? (
+        <p className="text-xs opacity-60">Loading…</p>
+      ) : (
+        <>
+          <p className="text-xs opacity-70">
+            {status.total} item{status.total === 1 ? "" : "s"}
+            {status.last_extracted_at
+              ? ` · last extracted ${formatLocalTime(status.last_extracted_at)}`
+              : ""}
+            {status.pending_batches > 0
+              ? ` · ${status.pending_batches} pending`
+              : ""}
+            {status.missing_embedding > 0
+              ? ` · ${status.missing_embedding} without embedding`
+              : ""}
+          </p>
+          {status.stuck_batches > 0 && (
+            <div className="rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-2 space-y-1.5">
+              <p className="text-xs text-red-700 dark:text-red-300">
+                {status.stuck_batches} batch
+                {status.stuck_batches === 1 ? "" : "es"} failed extraction.
+                {status.last_extraction_error
+                  ? ` Last error: ${status.last_extraction_error}`
+                  : ""}
+              </p>
+              <button
+                onClick={retryStuck}
+                disabled={retryBusy}
+                className="rounded border border-red-300 dark:border-red-800 px-3 py-1 text-xs text-red-700 dark:text-red-300 disabled:opacity-50"
+              >
+                {retryBusy ? "Retrying…" : "Retry stuck batches"}
+              </button>
+              {retryMsg && (
+                <p className="text-xs opacity-70">{retryMsg}</p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {items !== null && items.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {MEMORY_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFilter(f.value)}
+              className={
+                "rounded-full px-2.5 py-1 text-[11px] " +
+                (filter === f.value
+                  ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900"
+                  : "border border-stone-300 dark:border-stone-700 opacity-80")
+              }
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {filtered === null ? null : filtered.length === 0 ? (
+        <p className="text-xs opacity-60">
+          {items && items.length === 0
+            ? "No chat memories yet. Clear a chat with a meaningful conversation and Claude will extract a few durable items."
+            : "No items in this category."}
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {filtered.map((m) => (
+            <li
+              key={m.id}
+              className="rounded border border-stone-200 dark:border-stone-800 p-2.5 space-y-1.5"
+            >
+              <div className="flex items-start gap-2">
+                <span className="shrink-0 rounded-full bg-stone-100 dark:bg-stone-800 px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-80">
+                  {m.category}
+                </span>
+                <p className="text-sm leading-snug flex-1">{m.text}</p>
+              </div>
+              <div className="flex items-center justify-between gap-2 text-[11px] opacity-60">
+                <span>{formatLocalTime(m.created_at)}</span>
+                {m.missing_embedding === 1 && (
+                  <span className="text-amber-600 dark:text-amber-400">
+                    no embedding (won&rsquo;t auto-recall)
+                  </span>
+                )}
+              </div>
+              {m.source_excerpt && (
+                <details className="text-xs opacity-70">
+                  <summary className="cursor-pointer">Source excerpt</summary>
+                  <p className="mt-1 whitespace-pre-wrap break-words">
+                    {m.source_excerpt}
+                  </p>
+                </details>
+              )}
+              <div>
+                <button
+                  onClick={() => remove(m.id)}
+                  disabled={busyId === m.id}
+                  className="text-[11px] underline opacity-70 disabled:opacity-30"
+                >
+                  {busyId === m.id ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
