@@ -1087,6 +1087,39 @@ function ChatMemorySection() {
     }
   }
 
+  const [backfillBusy, setBackfillBusy] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
+
+  async function backfillAll() {
+    if (backfillBusy) return;
+    if (
+      !window.confirm(
+        "Process every existing chat message through chat memory? Visible chats stay visible — this just creates a batch per conversation so Claude can extract durable items from history. Future Clears continue to work normally."
+      )
+    )
+      return;
+    setBackfillBusy(true);
+    setBackfillMsg(null);
+    try {
+      const r = await fetch("/api/chat/memories/backfill-all", {
+        method: "POST",
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Backfill failed");
+      const n = d.batchesCreated || 0;
+      setBackfillMsg(
+        n === 0
+          ? "Everything is already in a batch — nothing to do."
+          : `Created ${n} batch${n === 1 ? "" : "es"}. Extraction is running; refresh in ~10–30 seconds.`
+      );
+      await load();
+    } catch (e) {
+      setBackfillMsg((e as Error).message || "Backfill failed.");
+    } finally {
+      setBackfillBusy(false);
+    }
+  }
+
   const filtered =
     items === null
       ? null
@@ -1141,6 +1174,20 @@ function ChatMemorySection() {
               )}
             </div>
           )}
+          <div className="space-y-1.5 pt-1">
+            <button
+              onClick={backfillAll}
+              disabled={backfillBusy}
+              className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs disabled:opacity-50"
+            >
+              {backfillBusy
+                ? "Processing…"
+                : "Process all chat history into memory"}
+            </button>
+            {backfillMsg && (
+              <p className="text-xs opacity-70">{backfillMsg}</p>
+            )}
+          </div>
         </>
       )}
 
