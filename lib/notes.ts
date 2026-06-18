@@ -933,6 +933,14 @@ export function runMaintenanceSweep(): void {
   } catch {
     // best-effort
   }
+  // Chat memory: catch any archive batches whose extraction the Clear-path
+  // fire-and-forget missed (process restart, transient failure, retry of
+  // a permanently-skipped batch reset via the /memory UI).
+  try {
+    void getMaybeCompressChatSessions()();
+  } catch {
+    // best-effort
+  }
 }
 
 let _maybeIngestDropbox: (() => Promise<unknown>) | null = null;
@@ -941,6 +949,20 @@ function getMaybeIngestDropbox(): () => Promise<unknown> {
   const mod = require("./dropbox") as { maybeIngestDropbox: () => Promise<unknown> };
   _maybeIngestDropbox = mod.maybeIngestDropbox;
   return _maybeIngestDropbox;
+}
+
+// Chat-memory compressor. Lazy-required so /api/chat's DELETE path can fire
+// it directly without circular-import risk; the sweep uses the same handle.
+let _maybeCompressChatSessions:
+  | (() => Promise<unknown>)
+  | null = null;
+function getMaybeCompressChatSessions(): () => Promise<unknown> {
+  if (_maybeCompressChatSessions) return _maybeCompressChatSessions;
+  const mod = require("./chatMemory") as {
+    maybeCompressChatSessions: () => Promise<unknown>;
+  };
+  _maybeCompressChatSessions = mod.maybeCompressChatSessions;
+  return _maybeCompressChatSessions;
 }
 
 /** The file paths pulled from the discipline repo (for showing what synced). */

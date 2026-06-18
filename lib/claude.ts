@@ -54,6 +54,16 @@ function modelChatFallback(): string {
     "claude-sonnet-4-6"
   );
 }
+// Memory extraction lives on its own knob so it can be swapped to a cheaper
+// tier (Haiku) once quality is known to hold, without changing chat itself.
+// Defaults to whatever chat uses.
+export function modelChatMemory(): string {
+  return (
+    getSetting("model_chat_memory") ||
+    process.env.CHAT_MEMORY_MODEL ||
+    modelChat()
+  );
+}
 
 let _client: Anthropic | null = null;
 function client(): Anthropic {
@@ -264,6 +274,7 @@ const MAX_TOOL_ITERATIONS = 6;
 export async function chatOverNotes(opts: {
   profile: string;
   recentLocations?: string;
+  recalledMemories?: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   userMessage: string;
   attachment?: { kind: "image" | "document"; mediaType: string; dataBase64: string };
@@ -356,6 +367,9 @@ export async function chatOverNotes(opts: {
           opts.recentLocations,
           "=== END LOCATIONS ===",
         ]
+      : []),
+    ...(opts.recalledMemories?.trim()
+      ? ["", opts.recalledMemories.trim()]
       : []),
   ].join("\n");
 
@@ -948,4 +962,176 @@ export async function generateInsights(opts: {
 
   const block = resp.content.find((b) => b.type === "text");
   return block && block.type === "text" ? block.text : "";
+}
+
+/**
+ * Read a chat transcript (one Clear's worth of conversation) and extract a
+ * small set of DURABLE items worth remembering across future chats. Output is
+ * strict JSON of `ChatMemoryDraft` items; the chatMemory layer dedups,
+ * embeds, and inserts them. Returns the raw text + a parse error string when
+ * the JSON couldn't be salvaged, so the caller can retry / record diagnostics
+ * without throwing.
+ */
+export type ChatMemoryDraft = {
+  category: string;
+  text: string;
+  source_excerpt: string;
+};
+
+const CHAT_MEMORY_EXTRACTION_GUIDANCE = [
+  "You read a chat transcript between a person and Claude and extract a small",
+  "set of DURABLE items worth remembering across future conversations.",
+  "",
+  "DO extract:",
+  "- preferences (\"prefers writing in the morning\")",
+  "- stable facts about the person (\"works at Corning\", \"has a daughter\")",
+  "- recurring intents (\"wants to start running again\")",
+  "- persistent feelings (\"often anxious about calls with parents\")",
+  "- unresolved threads (\"we discussed X but didn't conclude\")",
+  "",
+  "DO NOT extract:",
+  "- passwords, tokens, API keys, financial account numbers",
+  "- transient emotions (\"frustrated right now\") unless clearly persistent",
+  "- hypothetical or conditional statements as facts",
+  "  (\"if I quit my job…\" is NOT \"I'm quitting my job\")",
+  "- third-party PII the user mentioned in passing",
+  "- things Claude said about itself",
+  "- meta-chat (\"can you do X?\", \"thanks\", \"ok\")",
+  "- anything the user explicitly framed as private",
+  "",
+  "If uncertain, skip. Prefer FEWER, higher-signal items over many trivial ones.",
+  "Return at most 8 items. If nothing durable, return {\"items\": []}.",
+  "",
+  "Return STRICT JSON only — no preamble, no Markdown fence.",
+  "{",
+  "  \"items\": [",
+  "    { \"category\": \"preference|fact|intent|feeling|unresolved|context\",",
+  "      \"text\": \"≤200 chars, third-person\",",
+  "      \"source_excerpt\": \"≤200 chars, verbatim from transcript\" }",
+  "  ]",
+  "}",
+].join("\n");
+
+export async function compressChatSession(opts: {
+  transcript: string;
+  profile?: string;
+  existingMemories?: string[];
+}): Promise<{
+  items: ChatMemoryDraft[];
+  raw: string;
+  parseError: string;
+  model: string;
+}> {
+  const model = modelChatMemory();
+  const userParts: string[] = [
+    "=== TRANSCRIPT ===",
+    opts.transcript,
+    "=== END TRANSCRIPT ===",
+  ];
+  if (opts.profile && opts.profile.trim()) {
+    userParts.push(
+      "",
+      "=== EXISTING PROFILE (don't restate items already covered here) ===",
+      opts.profile.trim(),
+      "=== END PROFILE ===",
+    );
+  }
+  if (opts.existingMemories && opts.existingMemories.length > 0) {
+    userParts.push(
+      "",
+      "=== EXISTING CHAT MEMORIES (don't restate) ===",
+      opts.existingMemories.map((m, i) => `${i + 1}. ${m}`).join("\n"),
+      "=== END EXISTING MEMORIES ===",
+    );
+  }
+
+  const resp = await client().messages.create({
+    model,
+    max_tokens: 500,
+    system: [
+      {
+        type: "text",
+        text: CHAT_MEMORY_EXTRACTION_GUIDANCE,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    messages: [{ role: "user", content: userParts.join("\n") }],
+  });
+  recordUsage("chat_memory_compress", model, resp.usage);
+
+  const block = resp.content.find((b) => b.type === "text");
+  const raw = block && block.type === "text" ? block.text.trim() : "";
+  const parsed = parseChatMemories(raw);
+  return {
+    items: parsed.items,
+    raw,
+    parseError: parsed.parseError,
+    model,
+  };
+}
+
+/**
+ * Pure parser for compressChatSession's JSON output — lenient in the same
+ * spirit as parseAxisLabels. Returns parseError = "" on success.
+ */
+export function parseChatMemories(raw: string): {
+  items: ChatMemoryDraft[];
+  parseError: string;
+} {
+  const text = (raw || "").trim();
+  if (!text) return { items: [], parseError: "Empty response" };
+
+  const candidates: string[] = [];
+  const stripped = text
+    .replace(/^```(?:json|javascript)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+  candidates.push(stripped);
+  const greedy = text.match(/\{[\s\S]*\}/);
+  if (greedy && greedy[0] !== stripped) candidates.push(greedy[0]);
+  candidates.push(stripped.replace(/,\s*([}\]])/g, "$1"));
+
+  let parsed: unknown = null;
+  let parseError = "";
+  for (const c of candidates) {
+    try {
+      parsed = JSON.parse(c);
+      parseError = "";
+      break;
+    } catch (e) {
+      parseError = (e as Error).message;
+    }
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return { items: [], parseError: parseError || "Could not parse JSON" };
+  }
+
+  const top = parsed as Record<string, unknown>;
+  // Accept either { items: [...] } or a bare array.
+  let itemsRaw: unknown = top.items;
+  if (Array.isArray(parsed)) itemsRaw = parsed;
+  if (!Array.isArray(itemsRaw)) {
+    return { items: [], parseError: "Response missing items array" };
+  }
+
+  const items: ChatMemoryDraft[] = [];
+  for (const it of itemsRaw) {
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    const textVal = typeof o.text === "string" ? o.text.trim() : "";
+    if (!textVal) continue;
+    const category = typeof o.category === "string" ? o.category.trim() : "";
+    const excerpt =
+      typeof o.source_excerpt === "string"
+        ? o.source_excerpt.trim()
+        : typeof o.excerpt === "string"
+          ? o.excerpt.trim()
+          : "";
+    items.push({
+      category: category || "fact",
+      text: textVal,
+      source_excerpt: excerpt,
+    });
+  }
+  return { items, parseError: "" };
 }
