@@ -101,6 +101,26 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "top_entities",
+    description:
+      "Return the most frequently mentioned named entities the user has written about, grouped by kind. Use for aggregate questions like \"who do I mention most?\", \"what places have I been writing about?\", \"what projects do I work on?\" — questions where you want the top of a ranking, not a per-page list. Returns name + page count, ordered by page count desc.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          enum: ["person", "place", "project"],
+          description: "Which kind of entity to aggregate.",
+        },
+        limit: {
+          type: "integer",
+          description: "Max results (default 10, max 50).",
+        },
+      },
+      required: ["kind"],
+    },
+  },
+  {
     name: "get_recent_locations",
     description:
       "Get the user's recent location info — BOTH the route of completed stays (places + dwell times) for the last N days, AND the user's current/most-recent position (with minutesAgo and a place name when cached). Use for \"where am I now?\", \"where have I been this month?\", or \"how often was I at the gym?\". `route` may be empty while `current` is filled when the user is moving or just arrived somewhere; treat `current` as the answer to \"where are you?\" in that case. Returns nothing if location sharing is off.",
@@ -692,6 +712,42 @@ function getMonthSummary(input: { month?: string }): unknown {
   }
 }
 
+function topEntities(input: { kind?: string; limit?: number }): unknown {
+  const kind = String(input.kind || "").trim().toLowerCase();
+  if (kind !== "person" && kind !== "place" && kind !== "project") {
+    return { items: [], note: "Bad kind. Use 'person', 'place', or 'project'." };
+  }
+  const limit = Math.min(
+    50,
+    Math.max(1, Math.floor(Number(input.limit) || 10))
+  );
+  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT e.name_norm AS norm,
+                MIN(e.name) AS name,
+                COUNT(DISTINCT e.page_id) AS pages
+         FROM entry_entities e
+         JOIN pages p ON p.id = e.page_id
+         WHERE e.kind = ? AND p.notebook_id != ?
+         GROUP BY e.name_norm
+         ORDER BY pages DESC, norm ASC
+         LIMIT ?`
+      )
+      .all(kind, excludeId, limit) as Array<{
+      name: string;
+      pages: number;
+    }>;
+    return {
+      kind,
+      items: rows.map(({ name, pages }) => ({ name, pages })),
+    };
+  } catch {
+    return { items: [], note: "Lookup failed." };
+  }
+}
+
 function countEntriesMentioning(input: { term?: string }): unknown {
   const term = String(input.term || "").trim();
   if (!term) return { count: 0, note: "Empty term." };
@@ -743,6 +799,8 @@ export async function executeTool(
         return JSON.stringify(getRecentEntries(i));
       case "current_time_kst":
         return JSON.stringify(currentTimeKst());
+      case "top_entities":
+        return JSON.stringify(topEntities(i));
       case "get_recent_locations":
         return JSON.stringify(await getRecentLocations(i));
       case "search_chat_history":

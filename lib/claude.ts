@@ -483,10 +483,24 @@ export async function chatOverNotes(opts: {
  * Returns null on parse failure rather than throwing, so the batch loop can
  * skip and keep going.
  */
+export type EntryEntityKind = "person" | "place" | "project";
+export type EntryEntity = { kind: EntryEntityKind; name: string };
+
+// Tiny stopword list: things the model sometimes labels as a "person"
+// when they're really pronouns or generic referents. Keep this short —
+// we'd rather drop a few real entries than retain a flood of "me"s.
+const ENTITY_STOPWORDS = new Set([
+  "me", "i", "you", "we", "us", "they", "them",
+  "today", "yesterday", "tomorrow",
+  "morning", "afternoon", "evening", "night",
+  "home", "work", "here", "there",
+]);
+
 export async function analyzeEntryContent(text: string): Promise<{
   themes: string[];
   sentiment: number | null;
   summary: string;
+  entities: EntryEntity[];
 } | null> {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -497,7 +511,7 @@ export async function analyzeEntryContent(text: string): Promise<{
 
   const resp = await client().messages.create({
     model: modelChat(),
-    max_tokens: 400,
+    max_tokens: 500,
     system: [
       "You analyse one diary entry and return STRICT JSON, nothing else.",
       "No preamble, no Markdown fence, no explanation — just the JSON object.",
@@ -506,11 +520,22 @@ export async function analyzeEntryContent(text: string): Promise<{
       "{",
       '  "themes": [string, ...],  // 2 to 5 concrete topics, each 1-3 words, IN ENGLISH (translate even if the entry is in another language). Specific, not generic — "family dinner", "work stress", "running form", "startup idea" — NOT "life", "feelings", "thoughts".',
       '  "sentiment": number,      // overall emotional valence, -1.0 very negative ↔ +1.0 very positive, 0 for neutral. One decimal place is fine.',
-      '  "summary": string         // one short sentence (≤25 words) IN ENGLISH (translate even if the entry is in another language), describing what the person wrote about.',
+      '  "summary": string,        // one short sentence (≤25 words) IN ENGLISH (translate even if the entry is in another language), describing what the person wrote about.',
+      '  "entities": [             // 0 to 12 concrete NAMED items the entry actually mentions. Do NOT extract generic words ("coffee", "meeting", "the team"). Only specific named items.',
+      '    { "kind": "person|place|project",',
+      '      "name": "short proper noun, ≤60 chars, ORIGINAL CASING preserved (do NOT translate names; keep \\"Pastor Kim\\" as \\"Pastor Kim\\", not \\"목사 김\\")" }',
+      '  ]',
       "}",
       "",
+      "Entity guidance: a person is a specific named individual the writer",
+      "refers to (\"Pastor Kim\", \"Mom\", \"Sanjay\"). A place is a specific",
+      "named location (\"Seoul Iris Garden\", \"Costco\", \"Shenzhen\"). A",
+      "project is a specific named effort or work item (\"Sermorizer\",",
+      "\"the 2026 book project\"). If uncertain whether something is a real",
+      "named entity, skip it.",
+      "",
       "If the entry is too short or empty to analyse, return:",
-      '{"themes": [], "sentiment": null, "summary": ""}',
+      '{"themes": [], "sentiment": null, "summary": "", "entities": []}',
     ].join("\n"),
     messages: [{ role: "user", content: input }],
   });
@@ -519,7 +544,20 @@ export async function analyzeEntryContent(text: string): Promise<{
   const block = resp.content.find((b) => b.type === "text");
   const raw = block && block.type === "text" ? block.text.trim() : "";
   if (!raw) return null;
+  return parseAnalyzeEntryContent(raw);
+}
 
+/**
+ * Pure parser for analyzeEntryContent's JSON output. Extracted so it can be
+ * unit-tested without an API call. Lenient — strips ```json fences, parses
+ * once, validates every field, and drops items that don't fit.
+ */
+export function parseAnalyzeEntryContent(raw: string): {
+  themes: string[];
+  sentiment: number | null;
+  summary: string;
+  entities: EntryEntity[];
+} | null {
   // Tolerate occasional ```json fences even though we asked for none.
   const stripped = raw
     .replace(/^```(?:json)?\s*/i, "")
@@ -550,7 +588,21 @@ export async function analyzeEntryContent(text: string): Promise<{
   const summaryRaw = typeof p.summary === "string" ? p.summary.trim() : "";
   const summary = summaryRaw.length > 400 ? summaryRaw.slice(0, 400) : summaryRaw;
 
-  return { themes, sentiment, summary };
+  const entitiesRaw = Array.isArray(p.entities) ? p.entities : [];
+  const entities: EntryEntity[] = [];
+  for (const raw of entitiesRaw) {
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as Record<string, unknown>;
+    const kind = typeof e.kind === "string" ? e.kind.trim().toLowerCase() : "";
+    if (kind !== "person" && kind !== "place" && kind !== "project") continue;
+    const name = typeof e.name === "string" ? e.name.trim() : "";
+    if (!name || name.length > 60) continue;
+    if (ENTITY_STOPWORDS.has(name.toLowerCase())) continue;
+    entities.push({ kind, name });
+    if (entities.length >= 12) break;
+  }
+
+  return { themes, sentiment, summary, entities };
 }
 
 /**

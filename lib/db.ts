@@ -128,6 +128,30 @@ export function db(): Database.Database {
     `CREATE INDEX IF NOT EXISTS idx_entry_analysis_analyzed_at
        ON entry_analysis(analyzed_at)`
   );
+  // Per-page named entities (people / places / projects) extracted in the
+  // same Claude call that fills entry_analysis. Many-per-page, so it's a
+  // separate table rather than columns on entry_analysis. name_norm is
+  // lowercase + collapsed whitespace, used for grouping ("Sermorizer"
+  // and "sermorizer" coalesce). Cascades on page delete.
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS entry_entities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      page_id    TEXT NOT NULL,
+      kind       TEXT NOT NULL,
+      name       TEXT NOT NULL,
+      name_norm  TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
+    )
+  `);
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_entry_entities_page
+       ON entry_entities(page_id)`
+  );
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_entry_entities_kind_norm
+       ON entry_entities(kind, name_norm)`
+  );
   // Chat memory: each Clear becomes an archive batch, and the compressor
   // extracts a small set of durable items from the batch's transcript.
   // Batches stay around as the audit unit (last error, attempt count,

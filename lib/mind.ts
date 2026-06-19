@@ -130,6 +130,14 @@ export function countAnalyzed(): number {
   return row.c;
 }
 
+// Normalise an entity name for grouping: lowercase, trim, collapse
+// internal whitespace. Same posture as normaliseMemoryText in chatMemory
+// — exact-match dedup only; aliasing ("Sermorizer" === "the sermon app")
+// is explicitly out of scope.
+export function normaliseEntityName(name: string): string {
+  return (name || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
 // Module-level in-flight guard. better-sqlite3 is synchronous so DB-level
 // races are limited, but the async Claude calls between SELECT and UPSERT
 // create a window where two overlapping callers (e.g. the upload-triggered
@@ -174,6 +182,14 @@ export async function analyzePending(
          model       = excluded.model,
          analyzed_at = excluded.analyzed_at`
     );
+    // Entities are many-per-page, so we replace the page's set on every
+    // analysis rather than upserting by primary key.
+    const delEntities = db().prepare(
+      `DELETE FROM entry_entities WHERE page_id = ?`
+    );
+    const insEntity = db().prepare(
+      `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES (?, ?, ?, ?)`
+    );
 
     // Process serially so we don't fan out parallel Claude calls (the SDK is
     // fine with concurrency but the rate-limit accounting is not, and burning
@@ -209,6 +225,10 @@ export async function analyzePending(
           result.summary || null,
           model
         );
+        delEntities.run(row.id);
+        for (const e of result.entities) {
+          insEntity.run(row.id, e.kind, e.name, normaliseEntityName(e.name));
+        }
         analyzed++;
       } catch (e) {
         // DB write failed (busy / locked / FK violation if the page was just
