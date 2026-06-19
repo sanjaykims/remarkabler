@@ -1,5 +1,88 @@
 # Changelog
 
+## 2026-06-19 (Entities layer; Graphify evaluated and rejected)
+
+User asked whether [safishamsi/graphify](https://github.com/safishamsi/graphify)
+(a CLI + MCP knowledge-graph engine) could reduce Remarkabler's chat
+token usage. After fetching the README and tracing through how it
+would fit, the answer is no for three reasons documented in
+`SKILL.md` → "Evaluated and rejected: Graphify": the tree-sitter
+innovation doesn't transfer to diary text, retrieval functionality
+already exists, and the cost math is negative at our usage.
+
+The one focused idea worth keeping — structured entity aggregation
+("who do I mention most?") — was built native as the **entities
+layer**:
+
+### Schema
+
+New table `entry_entities` (`page_id`, `kind`, `name`, `name_norm`,
+`created_at`). Many-per-page, `ON DELETE CASCADE` from `pages`. Two
+indexes: `(page_id)` and `(kind, name_norm)`. Mirrors the
+`entry_analysis` posture.
+
+### Extraction
+
+`lib/claude.ts:analyzeEntryContent` now returns
+`{ themes, sentiment, summary, entities }` from the same Sonnet call —
+no new model invocation, no separate pass. Cost increase ~$0.001-0.002
+per page (extra ~50-100 output tokens). The new `parseAnalyzeEntryContent`
+pure function isolates parsing for unit tests. `max_tokens` raised
+400 → 500 to give Claude room.
+
+Prompt addition is explicit about "do NOT extract generic words —
+only concrete named items (Pastor Kim, Seoul Iris Garden,
+Sermorizer)" with a small stopword list (`me`, `today`, `home`, …)
+applied client-side as a backstop.
+
+### Persistence
+
+`lib/mind.ts:analyzePending` extends its per-page upsert loop with a
+delete-then-insert for entities, plus a new exported
+`normaliseEntityName` (lowercase + collapsed whitespace).
+
+### New chat tool: `top_entities`
+
+`lib/chatTools.ts` gets one new tool —
+`top_entities({kind: "person"|"place"|"project", limit})` — that does
+a `GROUP BY name_norm` aggregation across all pages and returns the
+top-N by page count. Respects the discipline-notebook toggle the same
+way `count_entries_mentioning` does.
+
+This is genuinely additive vs the existing `count_entries_mentioning`:
+that tool counts pages mentioning a specific term (FTS); this one
+returns the *top of the ranking* without needing to know the term
+upfront ("who do I mention most?" couldn't be answered by FTS
+without guessing names).
+
+### Backfill
+
+No new endpoint needed. The existing **Re-analyse** button on `/mind`
+(POST `/api/mind/reanalyze`) already re-runs `analyzePending` over
+every page; once it returns entities, that single tap repopulates
+`entry_entities` for the whole corpus. ~$0.18 one-time at ~92 pages.
+
+### Tests (+23, total 177)
+
+- `test/entryEntitiesParse.test.ts` (12 cases) — `parseAnalyzeEntryContent`
+  leniency: clean parse, fence stripping, kind enum filtering, case
+  normalisation, empty/oversize name rejection, stopword filter, cap
+  at 12, missing/wrong-shape `entities` key, non-JSON returns null,
+  original casing preserved.
+- `test/topEntities.test.ts` (11 cases) — DB-backed integration:
+  `name_norm` aggregation coalesces casings, top-N ordering, kind
+  filter, `limit` respected, clamping, discipline toggle, invalid
+  kind, empty result; plus `normaliseEntityName` sanity tests.
+
+### Hard-won decisions
+
+- **No entity aliasing across pages.** "Sermorizer" === "the sermon app"
+  would need a separate canonicalization pass. Out of scope for v1;
+  exact-norm dedup is enough.
+- **No dedicated `/entities` UI.** Chat tool is the primary surface.
+- **No graph edges.** Co-occurrence as a queryable relation is the
+  slope toward rebuilding Graphify; explicitly deferred.
+
 ## 2026-06-18 (Chat memory)
 
 Durable memory layer for chat, inspired by claude-mem but adapted to

@@ -80,10 +80,12 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `notebooks`, `pages`, `pages_fts` (FTS5 virtual), `chat_messages`,
   `insights`, `credentials`, `chat_attachments`, `api_usage`, `profile`,
   `daily_summaries`, `entry_analysis` (per-entry themes/sentiment/summary
-  cache for `/mind`), `locations`, `location_points`, `route_stops`,
-  `geocode_cache`, `chat_archive_batches` + `chat_memories` (durable
-  chat-memory layer; one batch per Clear, soft-deleted items don't
-  resurrect). Some durable state also lives in `settings` rows, e.g.
+  cache for `/mind`), `entry_entities` (per-page named entities —
+  person/place/project — for the `top_entities` chat tool), `locations`,
+  `location_points`, `route_stops`, `geocode_cache`, `chat_archive_batches`
+  + `chat_memories` (durable chat-memory layer; one batch per Clear,
+  soft-deleted items don't resurrect). Some durable state also lives in
+  `settings` rows, e.g.
   `mind_pca_axes` (persisted PCA mean + PC vectors + axis labels) and the
   `backup_last_*` markers.
 - `lib/claude.ts` — Anthropic API calls: `ocrNotebookPdf`, `chatOverNotes`,
