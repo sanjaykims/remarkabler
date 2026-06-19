@@ -2,10 +2,11 @@
 
 Guidance for Claude Code working on this repository.
 
-> **New here?** Start with **`AGENTS.md`** at the repo root — a
-> tool-agnostic orientation (structure map, how to work, and what an AI
-> agent can/can't do in this environment) that any AI can read. This file
-> holds the Claude-specific deep detail; `AGENTS.md` is the front door.
+> **New here?** Start with **`SKILL.md`** for a one-page index of every
+> module/table/route/page, then **`AGENTS.md`** for the tool-agnostic
+> orientation (how to work, what an AI agent can/can't do in this
+> environment). This file holds the Claude-specific deep detail with the
+> "do not regress" rules.
 
 ## What this is
 
@@ -100,6 +101,12 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   system prompt), `normaliseChatMemoryCategory` (6-value enum),
   `isDuplicateMemory` (exact text_norm + 0.88 cosine), and
   `resetBatchForRetry` (clears permanent-skip state).
+- `lib/chatMemoryBackfill.ts` — pure helpers (`chunkMessageIds`,
+  `estimateTranscriptCost`, `CHUNK_TARGET_CHARS = 12_000`) shared
+  between the `/api/chat/memories/backfill-all` endpoint and its test.
+  Splits each conversation into transcript-fit chunks so a long
+  history is processed in many batches under the 16K cap, not one
+  truncated batch.
 - `lib/usage.ts` — `recordUsage` (per-call cost from list prices) plus
   `monthlyUsage` / `dailyUsage` / `totalUsage` aggregation (timezone-aware).
 - `lib/embeddings.ts` — Voyage embeddings (`embed`, `embedBatch`,
@@ -136,8 +143,9 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `mind/axis-labels`, `mind/reparse-dates`), `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect}`,
   `location`, `owntracks`, `export`, `settings`,
-  `chat/memories` (GET/DELETE/retry — list, soft-delete, reset stuck
-  batches).
+  `chat/memories` (GET list+status / DELETE soft-delete /
+  `retry/[batchId]` reset stuck / `backfill-all` chunked re-process
+  with optional `?reset=true`).
 - UI pages (`app/*`): `notebooks`, `chat`, `insights`, `mind` (heatmap, theme
   cloud, mood timeline, 3D embedding map — `app/mind/Map3D.tsx`), `memory`,
   `usage` (cost calendar).
@@ -177,6 +185,15 @@ features need the deployed instance to fully verify.
   as a "Retry stuck batches" button on `/memory`). Do not switch back
   to "advance the watermark on first failure" — that quietly discards
   a useful conversation when Claude returns garbage once.
+- **Chat memory backfill is chunked, not single-batch.** The
+  `backfill-all` endpoint splits each conversation by
+  `CHUNK_TARGET_CHARS = 12_000` (well under `compressBatch`'s
+  `MAX_TRANSCRIPT_CHARS = 16_000` cap) so a long history flows into
+  many batches and Claude actually reads all of it. The first
+  implementation grouped each conversation into one giant batch —
+  combined with the 16K cap, that silently truncated months of chat
+  to the most recent tail and produced ~6 items from real history.
+  Don't reintroduce a single-batch backfill.
 - **Chat reasons over the profile, not the whole corpus.** `chatOverNotes`
   takes the compact `profile` (Claude's accumulated understanding, updated in
   the background when a diary is fed) and exposes a set of tools in

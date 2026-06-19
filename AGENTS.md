@@ -6,14 +6,16 @@ project. Read this first, then the linked docs. The goal: get productive in
 one pass without re-deriving what we already know.
 
 > **Companion docs (read in this order if you're new):**
-> 1. **`CLAUDE.md`** — project specifics + hard rules that override defaults.
-> 2. **This file** — orientation, structure map, how to work, what you (the
+> 1. **`SKILL.md`** — one-page index of the whole project (modules, tables,
+>    routes, pages, env vars). Skim this first to know what exists.
+> 2. **`CLAUDE.md`** — project specifics + hard rules that override defaults.
+> 3. **This file** — orientation, structure map, how to work, what you (the
 >    agent) can and can't do in this environment.
-> 3. **`docs/claude-harness.md`** (+ `.svg`/`.png`) — how the agent harness
+> 4. **`docs/claude-harness.md`** (+ `.svg`/`.png`) — how the agent harness
 >    itself is wired (tools, context, subagents, permissions, MCP).
-> 4. **`docs/sessions/*.md`** — decision logs. Read the most recent before
+> 5. **`docs/sessions/*.md`** — decision logs. Read the most recent before
 >    touching embeddings, OCR model choice, cost, or backup.
-> 5. **`CHANGELOG.md`** — what changed and why, newest first.
+> 6. **`CHANGELOG.md`** — what changed and why, newest first.
 
 ---
 
@@ -41,33 +43,54 @@ and an accumulating record of "insights" about them. It's a long-horizon
 ### `lib/` — the core logic
 | File | Responsibility |
 |---|---|
-| `db.ts` | SQLite connection, schema, migrations. Tables: settings, notebooks, pages, pages_fts, chat_messages, insights, credentials, chat_attachments, api_usage, profile, locations, daily_summaries, geocode_cache. |
-| `claude.ts` | All Anthropic calls: `ocrNotebookPdf`, `chatOverNotes`, `generateInsights`, `generateInsightTitle`, `composeBook`, `summarizeDay`, `buildSelfModel`/`updateSelfModel`. Model resolution (`modelMain`/`modelChat`/`modelChatFallback`/`modelOcr`) is in-app-setting → env var → default. |
-| `chatTools.ts` | The tool-calling toolbox Claude uses during chat (`search_diary` hybrid FTS+semantic, `get_entries_by_date`, summaries, etc.). |
-| `embeddings.ts` | Voyage AI embeddings: token-budget batching, 429 retry, `embedBatch`/`embedBatchOrThrow`, encode/decode BLOB helpers, cosine similarity. |
-| `notes.ts` | `createNotebook`, `processNotebook` (background OCR), `runMaintenanceSweep` (throttled background chores), discipline sync, embedding/summary backfills. |
+| `db.ts` | SQLite connection, schema, migrations. Tables: settings, notebooks, pages, pages_fts, chat_messages, insights, credentials, chat_attachments, api_usage, profile, locations, location_points, route_stops, geocode_cache, daily_summaries, entry_analysis (`/mind`), chat_archive_batches + chat_memories (durable chat-memory layer). One-time backfill creates batches for chats archived before the chat-memory feature shipped. |
+| `claude.ts` | All Anthropic calls: `ocrNotebookPdf`, `chatOverNotes` (accepts `recalledMemories`), `generateInsights`, `generateInsightTitle`, `composeBook`, `summarizeDay`, `buildSelfModel`/`updateSelfModel`, `/mind` helpers (`analyzeEntryContent`, `labelEmbeddingAxes` + pure `parseAxisLabels`), and chat-memory pair `compressChatSession` + pure `parseChatMemories`. Model resolution (`modelMain`/`modelChat`/`modelChatFallback`/`modelChatMemory`) is in-app-setting → env var → default. |
+| `chatTools.ts` | The tool-calling toolbox Claude uses during chat (`search_diary` hybrid FTS+semantic, `get_entries_by_date`, summaries, location, etc.). |
+| `chatMemory.ts` | Durable chat-memory layer. `compressBatch` (extract→embed→dedup→insert with bounded retry), `maybeCompressChatSessions` (in-flight-guarded sweep), `recallChatMemories` (fail-open Voyage top-K cosine), `formatRecalledMemoriesBlock` (advisory framing), `normaliseChatMemoryCategory` (6-value enum), `isDuplicateMemory` (exact text_norm + 0.88 cosine), `resetBatchForRetry`. |
+| `chatMemoryBackfill.ts` | Pure helpers (`chunkMessageIds`, `estimateTranscriptCost`, `CHUNK_TARGET_CHARS = 12_000`) used by the `/api/chat/memories/backfill-all` endpoint so a long history is sliced into transcript-fit batches instead of one giant truncated batch. |
+| `embeddings.ts` | Voyage AI embeddings: token-budget batching, 429 retry, `embed`/`embedBatch`/`embedBatchOrThrow`, encode/decode BLOB helpers, cosine similarity. |
+| `notes.ts` | `createNotebook`, `processNotebook` (background OCR → embed → fold into profile → auto-analyse pages for `/mind`), `runMaintenanceSweep` (throttled background chores: profile seed, weekly insight, embedding backfill, daily summaries, location distill, Dropbox poll, weekly backup, **chat-memory sweep**, discipline auto-sync), discipline sync, embedding/summary backfills. |
 | `profile.ts` | The evolving "memory of you" (versioned `profile` table). |
+| `mind.ts` | `/mind` analytics (heatmap, themes, sentiment series, embedding map). Shared PCA + persisted axis labels. `analyzePending` is the in-flight-guard pattern reused by `chatMemory`. |
 | `usage.ts` | `recordUsage` (per-call cost from list prices) + aggregation for the Cost tab. |
 | `extractText.ts` | Converts PDF/Word chat attachments to text (pdf-parse/mammoth) before sending to Claude — token savings. Handwritten PDFs fall back to raw. |
 | `auth.ts` / `webauthn.ts` | Passcode + passkey (WebAuthn) lock; HMAC session cookie; 24h server-side inactivity timeout. |
 | `backup.ts` | Weekly auto-backup of `/data` to a private GitHub repo, keep-last-12. |
-| `owntracks.ts` / `location.ts` / `format.ts` | Location ingestion, clustering, KST timezone helpers. |
+| `dropbox.ts` | reMarkable Connect → Dropbox auto-ingest. OAuth refresh-token flow, polling, dedupe by `dropbox_file_id`. Fired from `runMaintenanceSweep`. |
+| `owntracks.ts` / `location.ts` / `format.ts` | Location ingestion (OwnTracks endpoint), stay clustering, reverse-geocoding via Nominatim, KST timezone helpers. |
 | `github.ts` | Discipline-repo fetching (GitHub Contents API). |
 | `cleanup.ts` / `upload.ts` | Orphan-attachment sweep; upload validation/duck-typing. |
 
 ### `app/` — UI + API
 - Pages: `/` (dashboard), `/notebooks`, `/chat`, `/insights`, `/memory`,
-  `/usage` (cost).
+  `/mind` (heatmap, theme cloud, mood timeline, 3D embedding map —
+  `app/mind/Map3D.tsx`), `/usage` (cost calendar).
 - `app/api/*` — one route per feature. All data-reading routes set
-  `runtime = "nodejs"` and `dynamic = "force-dynamic"`.
+  `runtime = "nodejs"` and `dynamic = "force-dynamic"`. Notable groups:
+  - `notebooks`, `chat` (POST + GET + DELETE), `chat/attachment/[id]`,
+    `chat/memories` (GET list + status), `chat/memories/[id]` (DELETE
+    soft delete), `chat/memories/retry/[batchId]` (POST reset stuck
+    batch), `chat/memories/backfill-all` (POST chunked re-process, with
+    `?reset=true` for destructive clean re-run).
+  - `insights`, `usage`, `memory` (the profile, not chat memory), `diary`.
+  - `mind` (+ `mind/analyze`, `mind/reanalyze`, `mind/axis-labels`,
+    `mind/reparse-dates`), `embeddings/status`.
+  - `backup` (GET status + POST run-now), `dropbox/{connect,callback,status,disconnect}`.
+  - `discipline` (GET + POST sync), `discipline/settings`.
+  - `location` (GET + POST), `location/settings`, `owntracks` (`?token=`).
+  - `export` (raw bundle), `export/book` (Opus editor pass).
+  - `settings/models`, `auth`.
 - `app/share/route.ts` — PWA Web Share Target. `public/manifest.json` — PWA.
 
 ---
 
 ## 3. How to work here
 
-- **Build must pass:** `npm run build`. There are no automated tests; the
-  build + a careful read is the safety net. Lint: `npm run lint`.
+- **Build must pass:** `npm run build`. `npm test` runs Vitest over
+  `test/*.test.ts` — 154 tests as of writing (pure-logic units +
+  DB-backed integration tests with throwaway SQLite). Lint:
+  `npm run lint`. The build, the tests, and a careful read are the
+  safety net for changes that don't need real Claude/Voyage credentials.
 - **Branch / commit / PR discipline (required):**
   - Never commit straight to `main`. Branch first (`claude/<short-topic>`).
   - Commit with clear messages, push, open a PR, then merge.
@@ -112,28 +135,56 @@ full picture; the essentials:
 1. **Chat reasons over the compact `profile`, not the whole corpus.** Chat
    uses tool-calling (`lib/chatTools.ts`) to fetch entries on demand.
    Sending all notes per message once cost ~$0.11/chat — never revert to it.
-2. **Transcription runs in the background.** `createNotebook` returns
+2. **Clear is a real boundary.** The chat POST history query filters
+   `archived_at IS NULL` — cleared messages no longer feed Claude as raw
+   history. Continuity is carried forward by extracted `chat_memories`
+   (compact items: preferences, facts, intents, feelings, unresolved).
+   Do NOT revert that filter — it would double-count cleared messages.
+3. **Chat memory recall is fail-open.** `chatOverNotes` accepts a
+   pre-rendered `recalledMemories` block. Recall errors return an empty
+   block, never throw — chat must never 500 because Voyage was down.
+4. **Memory extraction is bounded-retry** (`MAX_EXTRACTION_ATTEMPTS = 2`).
+   On parse failure the first attempt leaves the batch pending; the
+   second sets `memory_extracted_at` to mark permanent skip. Reset via
+   `POST /api/chat/memories/retry/[batchId]`. Do not switch back to
+   "advance the watermark on first failure" — that quietly discards a
+   useful conversation when Claude returns garbage once.
+5. **Chat memory backfill is chunked, not single-batch.** The
+   `backfill-all` endpoint splits each conversation by
+   `CHUNK_TARGET_CHARS = 12_000` (well under `compressBatch`'s 16K
+   transcript cap) so a long history is fully read, not silently
+   truncated to the tail. The earlier single-batch shape produced ~6
+   items from months of history; don't reintroduce it.
+6. **Transcription runs in the background.** `createNotebook` returns
    immediately; `processNotebook` is fired un-awaited and sets notebook
    `status`. Never make upload/share wait on OCR.
-3. **OCR streams the response** (`messages.stream()`) and uses a
+7. **OCR streams the response** (`messages.stream()`) and uses a
    `--- PAGE n ---` delimiter format, not JSON.
-4. **OCR stays on Opus for this user.** Validated against Sonnet on real
+8. **OCR stays on Opus for this user.** Validated against Sonnet on real
    Korean handwriting (see `docs/sessions/2026-06-04.md`): Sonnet makes
    consistent meaning-changing errors. Don't propose switching without
    re-reading that log.
-5. **Behind Railway's proxy, `req.url` reports internal `localhost:8080`.**
+9. **Behind Railway's proxy, `req.url` reports internal `localhost:8080`.**
    Never build redirects/absolute URLs from it; redirect client-side.
-6. **Background chores run via one throttled `runMaintenanceSweep`** (5-min
-   window, `last_maintenance_at` persisted so cold-starts don't refire).
+10. **Background chores run via one throttled `runMaintenanceSweep`**
+    (5-min window, `last_maintenance_at` persisted so cold-starts don't
+    refire). The chat-memory sweep, Dropbox poll, weekly backup, weekly
+    insight, embedding backfill, daily summaries, profile seed, and
+    discipline auto-sync all ride this one cadence.
 
 ---
 
 ## 6. Known intentional limits
 
 - No automatic reMarkable cloud sync (no reliable JS renderer for the `.rm`
-  format) — manual PDF export is deliberate.
+  format) — manual PDF export or Dropbox export-from-device is deliberate.
 - PWA share target + voice input work on Android Chrome only, not iOS Safari.
 - reMarkable PDFs are image-based ink with **no text layer** — text
   extraction tools (MarkItDown, pdf-parse) return nothing for them; only
   vision OCR (Claude) reads them. This is why OCR can't be replaced by a
   cheap text extractor.
+- After Clear, there's a brief (~5 sec) async-gap window before the new
+  chat memories from that batch are available. Acceptable for v1; if it
+  becomes a problem, the fix is sync-on-Clear or a "extracting…"
+  indicator. Don't paper over it by re-feeding archived messages as raw
+  history (see rule 2 above).
