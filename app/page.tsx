@@ -2,6 +2,9 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatLocalTime } from "@/lib/format";
 import { runMaintenanceSweep } from "@/lib/notes";
+import { Card } from "@/components/Card";
+import { LinkButton } from "@/components/Button";
+import { Stat } from "@/components/Stat";
 
 export const dynamic = "force-dynamic";
 
@@ -80,24 +83,18 @@ export default function Home() {
       )}
 
       <section className="grid grid-cols-2 gap-3">
-        <Link
-          href="/notebooks"
-          className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-3 text-sm font-medium text-center"
-        >
+        <LinkButton href="/notebooks" variant="primary">
           Add a notebook
-        </Link>
-        <Link
-          href="/chat"
-          className="rounded border border-stone-300 dark:border-stone-700 px-4 py-3 text-sm font-medium text-center"
-        >
+        </LinkButton>
+        <LinkButton href="/chat" variant="secondary">
           Chat with your notes
-        </Link>
+        </LinkButton>
       </section>
 
       {stats.notebooks === 0 ? (
-        <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+        <Card as="section" className="space-y-2">
           <h2 className="font-medium">Getting started</h2>
-          <ol className="text-sm opacity-80 space-y-1 list-decimal list-inside">
+          <ol className="text-sm opacity-80 space-y-1 list-decimal list-inside leading-relaxed">
             <li>
               On your reMarkable, open a notebook → menu →{" "}
               <em>Export</em> / <em>Save as PDF</em>.
@@ -114,11 +111,11 @@ export default function Home() {
               </Link>
             </li>
           </ol>
-        </section>
+        </Card>
       ) : (
         <>
           {latestInsight ? (
-            <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-1.5">
+            <Card as="section" className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="font-medium">Latest insight</h2>
                 <Link
@@ -133,17 +130,17 @@ export default function Home() {
                   {latestInsight.title}
                 </div>
               )}
-              <p className="text-sm opacity-75">
+              <p className="text-sm opacity-75 leading-relaxed">
                 {preview(latestInsight.content)}
               </p>
               <div className="text-xs opacity-50">
                 {formatLocalTime(latestInsight.created_at)}
               </div>
-            </section>
+            </Card>
           ) : (
-            <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-1.5">
+            <Card as="section" className="space-y-1.5">
               <h2 className="font-medium">No insights yet</h2>
-              <p className="text-sm opacity-75">
+              <p className="text-sm opacity-75 leading-relaxed">
                 An insight is a reflection Claude writes about you from
                 everything you&rsquo;ve fed in. A fresh one is written automatically
                 each week — or tap below to make one now.
@@ -154,10 +151,10 @@ export default function Home() {
               >
                 Open Insights →
               </Link>
-            </section>
+            </Card>
           )}
 
-          <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+          <Card as="section" className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <h2 className="font-medium">Recent notebooks</h2>
               <Link
@@ -180,18 +177,9 @@ export default function Home() {
                 </li>
               ))}
             </ul>
-          </section>
+          </Card>
         </>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded border border-stone-200 dark:border-stone-800 p-3 text-center">
-      <div className="text-2xl font-semibold">{value}</div>
-      <div className="text-xs opacity-70">{label}</div>
     </div>
   );
 }

@@ -1,10 +1,28 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
-import Link from "next/link";
+import localFont from "next/font/local";
 import { isAuthenticated, isLockEnabled } from "@/lib/auth";
 import LockScreen from "./LockScreen";
 import AutoLock from "./AutoLock";
+import Nav from "./Nav";
 import PostHogProvider from "./PostHogProvider";
+
+// Clear Sans — single font for the whole app. Self-hosted from
+// public/fonts/ so there is zero build-time and zero runtime network
+// for fonts. See DESIGN.md § Typography.
+//
+// `font-semibold` (Tailwind's 600) is remapped to weight 500 in
+// globals.css because Clear Sans ships no 600 face.
+const clearSans = localFont({
+  src: [
+    { path: "../public/fonts/clear-sans-400.woff2", weight: "400", style: "normal" },
+    { path: "../public/fonts/clear-sans-400-italic.woff2", weight: "400", style: "italic" },
+    { path: "../public/fonts/clear-sans-500.woff2", weight: "500", style: "normal" },
+    { path: "../public/fonts/clear-sans-700.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-sans",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Remarkabler",
@@ -34,21 +52,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const authed = isAuthenticated();
 
   return (
-    <html lang="en">
+    <html lang="en" className={clearSans.variable}>
       <body>
         <PostHogProvider>
           {authed ? (
             <>
               <header className="border-b border-stone-200 dark:border-stone-800 pt-safe pl-safe pr-safe">
-                <nav className="mx-auto max-w-5xl px-4 py-3 flex items-center gap-x-3 text-xs whitespace-nowrap overflow-x-auto">
-                  <Link href="/" className="font-semibold">Remarkabler</Link>
-                  <Link href="/notebooks" className="opacity-70 hover:opacity-100">Notebooks</Link>
-                  <Link href="/chat" className="opacity-70 hover:opacity-100">Chat</Link>
-                  <Link href="/mind" className="opacity-70 hover:opacity-100">Mind</Link>
-                  <Link href="/insights" className="opacity-70 hover:opacity-100">Insights</Link>
-                  <Link href="/memory" className="opacity-70 hover:opacity-100">Memory</Link>
-                  <Link href="/usage" className="opacity-70 hover:opacity-100">Cost</Link>
-                </nav>
+                <Nav />
               </header>
               <main className="mx-auto max-w-5xl px-4 sm:px-6 py-6 sm:py-8 pl-safe pr-safe pb-safe">
                 {children}

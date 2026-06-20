@@ -273,7 +273,7 @@ export default function NotebooksPage() {
                                 ? ` · ${p.entry_date}`
                                 : ""}
                             </p>
-                            <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">
+                            <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">
                               {p.ocr_text || "(blank)"}
                             </pre>
                           </div>

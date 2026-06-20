@@ -228,6 +228,19 @@ features need the deployed instance to fully verify.
 - **Behind Railway's proxy, `req.url` reports the internal `localhost:8080`.**
   Never build redirects or absolute URLs from it; redirect client-side (see
   `app/share/route.ts`).
+- **UI tokens live in `DESIGN.md`. Read it before any UI change.** Three
+  load-bearing rules:
+  - **One font everywhere — Clear Sans, self-hosted under `public/fonts/`.**
+    Loaded via `next/font/local` in `app/layout.tsx`. Zero build-time and
+    runtime external font requests. Do not add a serif, do not add Caveat
+    back, do not switch loaders unless you also update `DESIGN.md`.
+  - **`.font-semibold` is globally remapped to `font-weight: 500`** in
+    `app/globals.css` because Clear Sans has no 600 face. Do not introduce
+    a real 600 font face unless Clear Sans starts shipping one; do not
+    remove the remap.
+  - **Dark mode stays media-based.** Every existing `dark:` variant in the
+    codebase depends on `prefers-color-scheme`. Do not switch to
+    class-based without auditing the whole repo.
 - Keep `CHANGELOG.md` updated with every notable change.
 
 ## Known limits (intentional)

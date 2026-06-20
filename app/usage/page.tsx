@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Stat } from "@/components/Stat";
 
 type DayCost = { day: string; cost: number; calls: number };
 type MonthData = {
@@ -201,11 +202,3 @@ export default function UsagePage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded border border-stone-200 dark:border-stone-800 p-3 text-center">
-      <div className="text-2xl font-semibold">{value}</div>
-      <div className="text-xs opacity-70">{label}</div>
-    </div>
-  );
-}
