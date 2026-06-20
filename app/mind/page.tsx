@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import type { EntityRank } from "@/lib/mind";
 
 // The 3D map uses three.js / react-three-fiber which need `window`, so it
 // must be client-only. next/dynamic with ssr:false defers the chunk load
@@ -42,8 +43,6 @@ type AxisLabels = {
   pc2: { positive: string; negative: string };
   pc3: { positive: string; negative: string };
 };
-
-type EntityRank = { name: string; pages: number };
 
 type MindData = {
   heatmap: HeatmapBucket[];
