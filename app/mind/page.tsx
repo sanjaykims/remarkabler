@@ -43,12 +43,15 @@ type AxisLabels = {
   pc3: { positive: string; negative: string };
 };
 
+type EntityRank = { name: string; pages: number };
+
 type MindData = {
   heatmap: HeatmapBucket[];
   themes: ThemeBucket[];
   sentiment: SentimentPoint[];
   embeddingMap: MapPoint[];
   axisLabels: AxisLabels | null;
+  entities: { people: EntityRank[]; places: EntityRank[]; projects: EntityRank[] };
   counts: { analyzed: number; pending: number };
   embeddingsEnabled: boolean;
 };
@@ -317,6 +320,7 @@ export default function MindPage() {
         <>
           <Heatmap data={data.heatmap} />
           <ThemeCloud data={data.themes} />
+          <EntityRankings data={data.entities} />
           <SentimentChart data={data.sentiment} />
           <EmbeddingMap
             data={data.embeddingMap}
@@ -741,6 +745,68 @@ function EmbeddingMap({
 }
 
 // Section wrapper — keeps every chart visually consistent.
+function EntityRankings({
+  data,
+}: {
+  data: { people: EntityRank[]; places: EntityRank[]; projects: EntityRank[] };
+}) {
+  const allEmpty =
+    data.people.length === 0 &&
+    data.places.length === 0 &&
+    data.projects.length === 0;
+  if (allEmpty) {
+    return (
+      <Section title="Who, where, what">
+        <p className="opacity-60 text-sm">
+          Once you re-analyse your entries, the people, places, and projects
+          you mention most will surface here.
+        </p>
+      </Section>
+    );
+  }
+  const Column = ({
+    label,
+    items,
+  }: {
+    label: string;
+    items: EntityRank[];
+  }) => (
+    <div className="space-y-1.5 min-w-0">
+      <h3 className="text-xs font-medium opacity-70">{label}</h3>
+      {items.length === 0 ? (
+        <p className="text-xs opacity-40">—</p>
+      ) : (
+        <ul className="space-y-1 text-sm">
+          {items.map((it) => (
+            <li
+              key={it.name}
+              className="flex justify-between gap-2"
+              title={`${it.pages} page${it.pages === 1 ? "" : "s"}`}
+            >
+              <span className="truncate">{it.name}</span>
+              <span className="opacity-50 text-xs tabular-nums shrink-0">
+                {it.pages}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+  return (
+    <Section
+      title="Who, where, what"
+      subtitle="Top 10 people, places, and projects from your entries. Ranked by pages they appear on."
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Column label="People" items={data.people} />
+        <Column label="Places" items={data.places} />
+        <Column label="Projects" items={data.projects} />
+      </div>
+    </Section>
+  );
+}
+
 function Section({
   title,
   subtitle,

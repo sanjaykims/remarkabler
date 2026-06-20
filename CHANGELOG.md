@@ -1,5 +1,59 @@
 # Changelog
 
+## 2026-06-19 (Entities layer — drill-down + /mind UI)
+
+Two follow-up improvements after the entities layer landed and the live
+output looked good (Taeyoon: 25 pages, Wuhan: 4 pages, Remarkabler: 6
+pages, etc.).
+
+### `pages_for_entity` chat tool
+
+New `lib/chatTools.ts` tool that drills down from an entity name to the
+actual pages mentioning it, with excerpts and `entry_date`:
+
+```
+pages_for_entity({ kind, name, limit? })
+```
+
+Beats `search_diary` for proper nouns because it uses the structured
+entity index — different spellings/transliterations are coalesced by
+`name_norm`, so it won't miss pages that FTS keyword search would.
+Sorts by `entry_date DESC` (with `notebooks.synced_at` fallback for
+older entries that lack a parsed date).
+
+Natural follow-up flow:
+
+> "Who do I mention most?" → `top_entities({kind: "person"})` returns
+> a ranking → user asks "What did I write about Taeyoon?" →
+> `pages_for_entity({kind: "person", name: "Taeyoon"})` returns
+> dated excerpts.
+
+### `/mind` "Who, where, what" section
+
+The top entities are now visible directly on `/mind` without going
+through chat — three columns (People / Places / Projects), top 10
+each. Mobile-first (stacks to one column on narrow screens).
+
+- New `lib/mind.ts:getTopEntities(limit)` returns
+  `{ people, places, projects }` in one call.
+- `/api/mind` includes `entities` in its response payload.
+- New `EntityRankings` component in `app/mind/page.tsx`, slotted
+  between the theme cloud and the sentiment timeline.
+
+Always excludes the discipline notebook — same posture as themes and
+sentiment, which never show discipline data on `/mind`. (The chat
+tools still respect the per-session toggle.)
+
+### Tests (+16, total 193)
+
+- `test/pagesForEntity.test.ts` (10) — name_norm casing/whitespace
+  match, kind filter, ordering by date (with synced_at fallback),
+  limit clamping (1-20), discipline toggle, bad-input notes, 1-based
+  page numbers, empty-result message.
+- `test/getTopEntities.test.ts` (6) — top-N ranking per kind,
+  unconditional discipline exclusion, limit + clamping, name_norm
+  coalescing, empty corpus.
+
 ## 2026-06-19 (Entities layer; Graphify evaluated and rejected)
 
 User asked whether [safishamsi/graphify](https://github.com/safishamsi/graphify)

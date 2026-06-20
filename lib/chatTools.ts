@@ -121,6 +121,31 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "pages_for_entity",
+    description:
+      "Drill down from a named entity (a person, place, or project) to the diary pages that actually mention it. Use as a follow-up to top_entities — once you know an entity name (\"Taeyoon\", \"Wuhan\", \"Remarkabler\"), call this to fetch real excerpts from the pages tagged with it. Beats search_diary for proper nouns because it uses the structured entity index, so different spellings/transliterations are coalesced and you won't miss pages that FTS would.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          enum: ["person", "place", "project"],
+          description: "Which kind of entity to look up.",
+        },
+        name: {
+          type: "string",
+          description:
+            "The entity name (case-insensitive — matches by name_norm). e.g. \"Taeyoon\", \"태윤\", or \"TAEYOON\" all match.",
+        },
+        limit: {
+          type: "integer",
+          description: "Max excerpts to return (1-20, default 8).",
+        },
+      },
+      required: ["kind", "name"],
+    },
+  },
+  {
     name: "get_recent_locations",
     description:
       "Get the user's recent location info — BOTH the route of completed stays (places + dwell times) for the last N days, AND the user's current/most-recent position (with minutesAgo and a place name when cached). Use for \"where am I now?\", \"where have I been this month?\", or \"how often was I at the gym?\". `route` may be empty while `current` is filled when the user is moving or just arrived somewhere; treat `current` as the answer to \"where are you?\" in that case. Returns nothing if location sharing is off.",
@@ -748,6 +773,71 @@ function topEntities(input: { kind?: string; limit?: number }): unknown {
   }
 }
 
+function pagesForEntity(input: {
+  kind?: string;
+  name?: string;
+  limit?: number;
+}): unknown {
+  const kind = String(input.kind || "").trim().toLowerCase();
+  if (kind !== "person" && kind !== "place" && kind !== "project") {
+    return {
+      excerpts: [],
+      note: "Bad kind. Use 'person', 'place', or 'project'.",
+    };
+  }
+  const rawName = String(input.name || "").trim();
+  if (!rawName) return { excerpts: [], note: "Missing entity name." };
+  // We compare by name_norm (lowercase + whitespace-collapsed) so casing /
+  // extra spaces don't matter. Mirrors how the entity rows were written.
+  const norm = rawName.toLowerCase().replace(/\s+/g, " ").trim();
+  const limit = Math.min(
+    20,
+    Math.max(1, Math.floor(Number(input.limit) || 8))
+  );
+  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT DISTINCT n.name AS notebook_name,
+                        p.page_index,
+                        p.ocr_text AS text,
+                        p.entry_date AS entry_date,
+                        e.name AS entity_name
+         FROM entry_entities e
+         JOIN pages p ON p.id = e.page_id
+         JOIN notebooks n ON n.id = p.notebook_id
+         WHERE e.kind = ? AND e.name_norm = ? AND p.notebook_id != ?
+         ORDER BY COALESCE(p.entry_date, n.synced_at) DESC, p.page_index DESC
+         LIMIT ?`
+      )
+      .all(kind, norm, excludeId, limit) as Array<{
+      notebook_name: string;
+      page_index: number;
+      text: string;
+      entry_date: string | null;
+      entity_name: string;
+    }>;
+    if (rows.length === 0) {
+      return {
+        excerpts: [],
+        note: `No pages tagged with ${kind} "${rawName}". Try search_diary instead.`,
+      };
+    }
+    return {
+      kind,
+      name: rows[0].entity_name,
+      excerpts: rows.map((r) => ({
+        notebook: r.notebook_name,
+        page: r.page_index + 1,
+        date: r.entry_date,
+        text: trim(r.text),
+      })),
+    };
+  } catch {
+    return { excerpts: [], note: "Lookup failed." };
+  }
+}
+
 function countEntriesMentioning(input: { term?: string }): unknown {
   const term = String(input.term || "").trim();
   if (!term) return { count: 0, note: "Empty term." };
@@ -801,6 +891,8 @@ export async function executeTool(
         return JSON.stringify(currentTimeKst());
       case "top_entities":
         return JSON.stringify(topEntities(i));
+      case "pages_for_entity":
+        return JSON.stringify(pagesForEntity(i));
       case "get_recent_locations":
         return JSON.stringify(await getRecentLocations(i));
       case "search_chat_history":

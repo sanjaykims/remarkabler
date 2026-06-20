@@ -105,9 +105,9 @@ Companion docs — read in order if any is unfamiliar:
 |---|---|
 | `/` | Dashboard. Counts, recent notebooks, latest insight. Fires `runMaintenanceSweep` on load. |
 | `/notebooks` | Upload PDFs. Per-notebook expand → status + transcribed pages. Delete. |
-| `/chat` | Conversational chat with Claude over the profile. Image/PDF attachments. Voice in/out (Android). Clear button (= archive + chat-memory extraction). Tools include `top_entities` for aggregate "who/where/what do I mention most?" questions. |
+| `/chat` | Conversational chat with Claude over the profile. Image/PDF attachments. Voice in/out (Android). Clear button (= archive + chat-memory extraction). Tools include `top_entities` (aggregate "who/where/what do I mention most?") and `pages_for_entity` (drill down to actual pages for a named entity). |
 | `/insights` | History of reflections. "Generate now" button (Opus). |
-| `/mind` | Heatmap (6 months) + theme cloud + sentiment timeline + 3D embedding map (`Map3D.tsx`). Axis labels under the map. "Re-analyse" / "Re-label" buttons. |
+| `/mind` | Heatmap (6 months) + theme cloud + "Who, where, what" (top people/places/projects) + sentiment timeline + 3D embedding map (`Map3D.tsx`). Axis labels under the map. "Re-analyse" / "Re-label" buttons. |
 | `/memory` | Profile editor (the textarea) + Discipline, Location, OwnTracks, Models, Voyage status, Dropbox, Backup, **Chat memory** (collapsible), Export sections. |
 | `/usage` | Cost calendar (daily/monthly), feature breakdown. KST timezone. |
 

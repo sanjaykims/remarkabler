@@ -138,6 +138,36 @@ export function normaliseEntityName(name: string): string {
   return (name || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+export type EntityRank = { name: string; pages: number };
+
+/**
+ * Top-N entities for each kind in one query each, for the /mind summary
+ * surface. Matches the ranking the top_entities chat tool returns but
+ * runs as a free (cached) view-time query — no Claude call. Always
+ * excludes the discipline notebook (same posture as themes/sentiment).
+ */
+export function getTopEntities(
+  limit: number = 10
+): { people: EntityRank[]; places: EntityRank[]; projects: EntityRank[] } {
+  const n = Math.max(1, Math.min(50, Math.floor(limit)));
+  const stmt = db().prepare(
+    `SELECT MIN(e.name) AS name, COUNT(DISTINCT e.page_id) AS pages
+       FROM entry_entities e
+       JOIN pages p ON p.id = e.page_id
+      WHERE e.kind = ? AND p.notebook_id != ?
+      GROUP BY e.name_norm
+      ORDER BY pages DESC, name ASC
+      LIMIT ?`
+  );
+  const fetchKind = (kind: string): EntityRank[] =>
+    (stmt.all(kind, DISCIPLINE_ID, n) as Array<{ name: string; pages: number }>);
+  return {
+    people: fetchKind("person"),
+    places: fetchKind("place"),
+    projects: fetchKind("project"),
+  };
+}
+
 // Module-level in-flight guard. better-sqlite3 is synchronous so DB-level
 // races are limited, but the async Claude calls between SELECT and UPSERT
 // create a window where two overlapping callers (e.g. the upload-triggered
