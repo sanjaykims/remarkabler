@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
+import { chunkedBackfillForConversation } from "./chatMemoryBackfill";
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -264,10 +265,12 @@ export function db(): Database.Database {
   }
   // One-time backfill: chats cleared BEFORE the chat-memory feature shipped
   // sit with archived_at set but archive_batch_id NULL — they were never
-  // grouped into a batch because the table didn't exist yet. Group them by
-  // conversation_id (one batch per conversation's orphan archived messages)
-  // so the next maintenance sweep extracts memories from them. Idempotent:
-  // once every archived row has a batch_id, the SELECT returns nothing.
+  // grouped into a batch because the table didn't exist yet. Chunk them
+  // by char budget (via chunkedBackfillForConversation) so a multi-month
+  // conversation produces many batches under compressBatch's 16K-char cap,
+  // not one giant batch that gets silently truncated to the most recent
+  // tail. Idempotent: once every archived row has a batch_id, the SELECT
+  // returns nothing.
   try {
     const orphanConvs = _db
       .prepare(
@@ -276,41 +279,9 @@ export function db(): Database.Database {
       )
       .all() as Array<{ conversation_id: string }>;
     for (const { conversation_id } of orphanConvs) {
-      const ins = _db
-        .prepare(
-          `INSERT INTO chat_archive_batches(conversation_id) VALUES(?)`
-        )
-        .run(conversation_id);
-      const batchId = Number(ins.lastInsertRowid);
-      _db
-        .prepare(
-          `UPDATE chat_messages SET archive_batch_id = ?
-           WHERE conversation_id = ?
-             AND archived_at IS NOT NULL
-             AND archive_batch_id IS NULL`
-        )
-        .run(batchId, conversation_id);
-      const stats = _db
-        .prepare(
-          `SELECT MIN(id) AS s, MAX(id) AS e, COUNT(*) AS c,
-                  COALESCE(SUM(CASE WHEN role='user' THEN LENGTH(content) ELSE 0 END), 0) AS uc
-             FROM chat_messages WHERE archive_batch_id = ?`
-        )
-        .get(batchId) as { s: number | null; e: number | null; c: number; uc: number };
-      if (stats.c === 0) {
-        _db
-          .prepare(`DELETE FROM chat_archive_batches WHERE id = ?`)
-          .run(batchId);
-        continue;
-      }
-      _db
-        .prepare(
-          `UPDATE chat_archive_batches
-             SET message_start_id = ?, message_end_id = ?,
-                 message_count = ?, user_char_count = ?
-           WHERE id = ?`
-        )
-        .run(stats.s, stats.e, stats.c, stats.uc, batchId);
+      chunkedBackfillForConversation(_db, conversation_id, {
+        onlyArchived: true,
+      });
     }
   } catch {
     // best-effort; the sweep would retry on the next process startup

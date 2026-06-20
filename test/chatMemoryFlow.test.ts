@@ -41,11 +41,17 @@ function clearChat(conversationId: string): number | null {
       .prepare(`INSERT INTO chat_archive_batches(conversation_id) VALUES(?)`)
       .run(conversationId);
     const id = Number(ins.lastInsertRowid);
+    // COALESCE matches the production Clear route in app/api/chat/route.ts —
+    // if a message was already stamped with a batch id by the backfill
+    // path, Clear preserves that batch and only the still-NULL messages
+    // get the new batch id. Without COALESCE the test wouldn't exercise
+    // the same SQL shape that ships.
     dbMod
       .db()
       .prepare(
         `UPDATE chat_messages
-           SET archived_at = datetime('now'), archive_batch_id = ?
+           SET archived_at = datetime('now'),
+               archive_batch_id = COALESCE(archive_batch_id, ?)
          WHERE conversation_id = ? AND archived_at IS NULL`
       )
       .run(id, conversationId);

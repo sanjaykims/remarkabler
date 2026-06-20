@@ -1,5 +1,86 @@
 # Changelog
 
+## 2026-06-20 (Tier-1: chat-memory backfill + entity write correctness)
+
+Codex + Claude code-review found five correctness issues across the
+chat-memory layer and the new entities layer. All five are regressions
+of explicit "do not regress" rules or silent-data-loss class — fixing
+together in one PR.
+
+### 1. Startup orphan migration now chunks (was creating one giant batch)
+
+`lib/db.ts`'s one-time migration for pre-chat-memory archived chats
+used to do `INSERT INTO chat_archive_batches(conversation_id) VALUES(?)`
+once per conversation, then stamp every orphan archived message with
+that single batch_id. Combined with `compressBatch`'s 16K-char cap, a
+multi-month conversation got silently truncated to its most recent
+tail — the exact bug PR #45 was meant to prevent, just at a different
+code path.
+
+Fixed by sharing the chunking logic with `/api/chat/memories/backfill-all`.
+New helper `chunkedBackfillForConversation` in `lib/chatMemoryBackfill.ts`
+reads un-batched messages, applies `chunkMessageIds` to split them at
+the 12K-char target, and creates one `chat_archive_batches` row per
+chunk via the new exported `createBatchForChunk`. Startup migration
+and the route both call it now — they can't drift again.
+
+### 2. `backfill-all` only touches archived messages
+
+The route used to filter `WHERE archive_batch_id IS NULL` without also
+requiring `archived_at IS NOT NULL`. That meant default backfill would
+stamp ACTIVE (visible, never-cleared) chat messages with a batch_id —
+which conflicts with the Clear route's `COALESCE(archive_batch_id, ?)`:
+the user's subsequent Clear would silently fail to create its own
+batch.
+
+Fixed: both SELECT queries now require `archived_at IS NOT NULL`.
+Active chat is out of scope for the memory layer — Clear is the
+semantic boundary, full stop. `?reset=true` still wipes and re-runs,
+but only over archived messages.
+
+### 3. Per-page entity write is now transactional
+
+`analyzePending`'s inner loop used to run `upsert(entry_analysis)` +
+`delete(entry_entities)` + `N inserts` as separate statements. A
+mid-loop throw (SQLITE_BUSY, FK race on a concurrently-deleted page,
+SIGTERM during a Railway redeploy) left `entry_analysis` updated but
+`entry_entities` partial — and because the pending-pages query is
+`WHERE entry_analysis.page_id IS NULL`, the page would never be
+retried.
+
+Fixed by wrapping the per-page block in `db().transaction(() => {...})()`.
+The whole row's write commits-or-rolls-back together; a failure leaves
+the page in its pre-write state and the next sweep picks it up.
+
+### 4. `delEntities` only fires when there ARE new entities
+
+The same code path used to call `delEntities.run(row.id)` unconditionally
+before iterating over `result.entities`. A noisy Claude response with
+valid JSON but `entities: []` would silently wipe a page's previously-
+good entity set — losing data based on one bad model call.
+
+Fixed: `if (result.entities.length > 0)` guards the delete-then-insert
+block. Empty is now treated as "no signal, keep the old set" rather
+than "explicit instruction to clear."
+
+### 5. Clear test helper now mirrors production SQL
+
+`test/chatMemoryFlow.test.ts`'s local `clearChat` helper used
+`SET archive_batch_id = ?`, but the real route in `app/api/chat/route.ts`
+uses `SET archive_batch_id = COALESCE(archive_batch_id, ?)` (preserve
+any existing batch id, e.g. one written by the backfill path). The
+test never exercised the path that matters — fixed to match.
+
+### Tests (+10, total 205)
+
+- `test/chunkedBackfill.test.ts` (7) — multi-chunk creation for long
+  conversations, single-chunk for short, `onlyArchived: true` skips
+  active messages, empty conversation is a no-op, 100K-char regression
+  test (Codex specifically asked for this), empty id list, denormalised
+  stats.
+- `test/entityWriteAtomicity.test.ts` (3) — empty entities preserves
+  old set, non-empty replaces, mid-write throw rolls back entirely.
+
 ## 2026-06-19 (Entities layer — drill-down + /mind UI)
 
 Two follow-up improvements after the entities layer landed and the live
