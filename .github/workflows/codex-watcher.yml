@@ -1,0 +1,72 @@
+name: Codex watcher
+
+# When Codex (chatgpt-codex-connector) posts a review, review comment, or
+# issue comment on this repo, this workflow pings @claude in the same
+# thread so the Claude Code GitHub App spawns a session to investigate
+# and respond.
+#
+# Without this, Codex's findings sit unanswered until someone reads them
+# by hand. With it, every Codex comment automatically reaches Claude.
+#
+# Setup requirements:
+# - The Claude Code GitHub App must be installed on this repo (it
+#   already is, since `@claude` mentions work from the web Claude Code
+#   integration).
+# - No new secrets needed — the workflow uses the default GITHUB_TOKEN.
+#
+# To disable: delete this file, or comment out the `on:` triggers.
+
+on:
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  forward-to-claude:
+    # Filter: only fire on events authored by Codex's connector. Without
+    # this the workflow would loop on every comment in the repo, including
+    # its own @claude pings.
+    if: github.event.sender.login == 'chatgpt-codex-connector'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post @claude handoff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          COMMENT_URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
+          COMMENT_BODY: ${{ github.event.comment.body || github.event.review.body }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Truncate Codex's comment so a 20k-char essay doesn't bloat
+          # the downstream @claude ping. The URL is always the source of
+          # truth — Claude can fetch the full body from there.
+          TRUNCATED=$(printf '%s' "${COMMENT_BODY:-(no body — see linked thread)}" | head -c 3500)
+
+          # Build the comment body in a tmp file to avoid shell-quoting
+          # hell with multiline content that may include backticks etc.
+          {
+            echo "@claude — Codex (chatgpt-codex-connector) posted a ${EVENT_NAME} here:"
+            echo ""
+            echo "${COMMENT_URL}"
+            echo ""
+            echo "Their note (first 3500 chars):"
+            echo ""
+            printf '%s\n' "${TRUNCATED}" | sed 's/^/> /'
+            echo ""
+            echo "---"
+            echo ""
+            echo "Please investigate the finding. If it's clearly actionable and correct, fix it on a branch and open a PR — but do **not** merge without the user's confirmation. If the finding is ambiguous or needs design input, post a clarifying question on the thread instead of acting."
+          } > /tmp/codex-handoff.md
+
+          gh issue comment "${PR_NUMBER}" \
+            --repo "${REPO}" \
+            --body-file /tmp/codex-handoff.md
