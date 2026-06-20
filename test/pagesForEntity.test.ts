@@ -144,6 +144,49 @@ describe("pages_for_entity", () => {
     expect(r.excerpts[1].text).toBe("old notebook");
   });
 
+  // Regression: lib/notes.ts stores the literal string 'none' (not NULL) for
+  // pages without a parsed timestamp. In a naive ORDER BY entry_date DESC the
+  // text 'none' sorts AFTER 'YYYY-MM-DD' (because 'n' > '2' in ASCII), so
+  // undated pages would surface ahead of actually recent dated pages. The
+  // query uses NULLIF(entry_date, 'none') with a notebook-date fallback to
+  // fix this — same posture as lib/mind.ts's EFFECTIVE_DATE_SQL.
+  it("treats the 'none' sentinel as missing, not as a date that sorts last", async () => {
+    insertNotebook("nb-old", "Old", "2025-12-01T00:00:00Z");
+    insertNotebook("nb-new", "New", "2026-06-01T00:00:00Z");
+    // Recent dated page on the older-synced notebook
+    insertPage("p-recent", "nb-old", 0, "recent dated", "2026-05-20");
+    // Undated page (sentinel 'none') on the newer-synced notebook
+    insertPage("p-undated", "nb-new", 0, "undated sentinel", "none");
+    insertEntity("p-recent", "place", "Wuhan");
+    insertEntity("p-undated", "place", "Wuhan");
+
+    const r = await runTool({ kind: "place", name: "Wuhan" });
+    // The dated 2026-05-20 page is older than nb-new's synced_at (2026-06-01),
+    // so the undated page's effective date wins — both surface, ordered by
+    // effective date desc, neither ahead because of literal-string comparison.
+    expect(r.excerpts.length).toBe(2);
+    expect(r.excerpts[0].text).toBe("undated sentinel");
+    expect(r.excerpts[1].text).toBe("recent dated");
+    // entry_date for the undated row is exposed as null (not 'none') so the
+    // chat client can render it sensibly.
+    expect(r.excerpts[0].date).toBeNull();
+    expect(r.excerpts[1].date).toBe("2026-05-20");
+  });
+
+  it("'none' sentinel sorts behind a real future date (not ahead of it)", async () => {
+    // Tightest version of the regression: keep both pages in the same
+    // notebook so synced_at can't break the tie. The undated page must not
+    // surface ahead of the dated one purely because 'none' > digits in ASCII.
+    insertNotebook("nb-1", "Diary", "2025-01-01T00:00:00Z");
+    insertPage("p-dated", "nb-1", 0, "real date", "2026-05-20");
+    insertPage("p-undated", "nb-1", 1, "undated", "none");
+    insertEntity("p-dated", "person", "Ben");
+    insertEntity("p-undated", "person", "Ben");
+
+    const r = await runTool({ kind: "person", name: "Ben" });
+    expect(r.excerpts[0].text).toBe("real date");
+  });
+
   it("respects the limit (1-20, default 8)", async () => {
     insertNotebook("nb-1", "Diary", "2026-06-01T00:00:00Z");
     for (let i = 0; i < 15; i++) {

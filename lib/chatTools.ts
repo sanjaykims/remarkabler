@@ -801,13 +801,14 @@ function pagesForEntity(input: {
         `SELECT DISTINCT n.name AS notebook_name,
                         p.page_index,
                         p.ocr_text AS text,
-                        p.entry_date AS entry_date,
+                        NULLIF(p.entry_date, 'none') AS entry_date,
                         e.name AS entity_name
          FROM entry_entities e
          JOIN pages p ON p.id = e.page_id
          JOIN notebooks n ON n.id = p.notebook_id
          WHERE e.kind = ? AND e.name_norm = ? AND p.notebook_id != ?
-         ORDER BY COALESCE(p.entry_date, n.synced_at) DESC, p.page_index DESC
+         ORDER BY COALESCE(NULLIF(p.entry_date, 'none'), date(n.synced_at)) DESC,
+                  p.page_index DESC
          LIMIT ?`
       )
       .all(kind, norm, excludeId, limit) as Array<{
