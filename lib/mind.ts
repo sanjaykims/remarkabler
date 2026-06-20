@@ -9,7 +9,7 @@ import {
   decodeEmbedding,
   encodeEmbedding,
 } from "@/lib/embeddings";
-import { DISCIPLINE_ID } from "@/lib/notes";
+import { DISCIPLINE_ID, disciplineExcludeIdForMind } from "@/lib/notes";
 
 // ──────────────────────────────────────────────────────────────────────────
 // Stored PCA axes for the embedding map. Persisted to settings so the labels
@@ -159,8 +159,9 @@ export function getTopEntities(
       ORDER BY pages DESC, name ASC
       LIMIT ?`
   );
+  const excludeId = disciplineExcludeIdForMind();
   const fetchKind = (kind: string): EntityRank[] =>
-    (stmt.all(kind, DISCIPLINE_ID, n) as Array<{ name: string; pages: number }>);
+    (stmt.all(kind, excludeId, n) as Array<{ name: string; pages: number }>);
   return {
     people: fetchKind("person"),
     places: fetchKind("place"),
@@ -217,8 +218,13 @@ export async function analyzePending(
     const delEntities = db().prepare(
       `DELETE FROM entry_entities WHERE page_id = ?`
     );
+    // OR IGNORE so a noisy Claude response that returns the same
+    // (kind, name_norm) twice in one page doesn't violate the UNIQUE
+    // (page_id, kind, name_norm) constraint and roll back the whole
+    // per-page transaction. The first wins; duplicates are silently
+    // dropped — which is also the runtime invariant we want.
     const insEntity = db().prepare(
-      `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES (?, ?, ?, ?)`
+      `INSERT OR IGNORE INTO entry_entities(page_id, kind, name, name_norm) VALUES (?, ?, ?, ?)`
     );
 
     // Process serially so we don't fan out parallel Claude calls (the SDK is

@@ -114,7 +114,7 @@ describe("pages_for_entity", () => {
     expect(place.excerpts[0].text).toContain("Place");
   });
 
-  it("orders by entry_date desc, then page_index desc", async () => {
+  it("orders by entry_date desc (most recent first)", async () => {
     insertNotebook("nb-1", "Diary", "2026-06-01T00:00:00Z");
     insertPage("p-old", "nb-1", 0, "old mention", "2026-01-05");
     insertPage("p-new", "nb-1", 1, "new mention", "2026-05-20");
@@ -129,6 +129,29 @@ describe("pages_for_entity", () => {
       "mid mention",
       "old mention",
     ]);
+  });
+
+  // Within-date tie-break is page_index ASC so a multi-page same-day
+  // entry comes back in natural reading order — page 1, 2, 3 — instead
+  // of the page-6-then-5-then-4 order the original DESC sort produced.
+  it("within a single entry_date, orders by page_index ASC (reading order)", async () => {
+    insertNotebook("nb-1", "Diary", "2026-06-01T00:00:00Z");
+    // All same date, page_index 0..4. ASC tie-break → 0,1,2,3,4
+    for (let i = 0; i < 5; i++) {
+      insertPage(`p${i}`, "nb-1", i, `page ${i + 1}`, "2026-05-20");
+      insertEntity(`p${i}`, "project", "Sermorizer");
+    }
+    const r = await runTool({ kind: "project", name: "Sermorizer" });
+    expect(r.excerpts.map((e) => e.text)).toEqual([
+      "page 1",
+      "page 2",
+      "page 3",
+      "page 4",
+      "page 5",
+    ]);
+    // Page numbers in the API are 1-based, so they should match the
+    // reading order too.
+    expect(r.excerpts.map((e) => e.page)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it("falls back to synced_at for ordering when entry_date is null", async () => {

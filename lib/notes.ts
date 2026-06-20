@@ -809,11 +809,45 @@ export function buildChatContext(opts: { maxChars?: number } = {}): string {
 // flows through chat, retrieval, and the profile like any other notes.
 export const DISCIPLINE_ID = "github-discipline";
 
+// Sentinel notebook id that no real notebook will ever use — passed as the
+// "exclude" parameter when the user has discipline sharing turned ON, so
+// the WHERE clause `notebook_id != ?` filters nothing out.
+const NO_EXCLUDE_SENTINEL = "__none__";
+
 // User-controllable opt-in: when off, the discipline notebook is not fed to
 // chat retrieval or context, and Sync is blocked. Past entries stay in the DB.
 export function isDisciplineEnabled(): boolean {
   const v = getSetting("discipline_enabled");
   return v === null ? true : v === "1";
+}
+
+/**
+ * The notebook id to pass as the "exclude" parameter in chat-tool SQL
+ * queries so the user's discipline-sharing toggle is honored uniformly.
+ * Returns `DISCIPLINE_ID` when sharing is OFF (so `notebook_id != ?`
+ * excludes discipline content), and a sentinel `"__none__"` when sharing
+ * is ON (so `notebook_id != ?` excludes nothing).
+ *
+ * Centralised here so we can't drift between the ~10 chat tools that
+ * inlined this same ternary, and so the sentinel literal lives in one
+ * place if it ever needs to change.
+ *
+ * The /mind UI surfaces use a different posture (`disciplineNotebookIdForMind`)
+ * because they ALWAYS exclude discipline — themes/sentiment/entities on
+ * /mind never include discipline notes regardless of the toggle.
+ */
+export function disciplineExcludeIdForChat(): string {
+  return isDisciplineEnabled() ? NO_EXCLUDE_SENTINEL : DISCIPLINE_ID;
+}
+
+/**
+ * The notebook id to pass as the "exclude" parameter for /mind surfaces
+ * — heatmap, themes, sentiment, embedding map, entity rankings. /mind
+ * always excludes discipline content, regardless of the chat toggle.
+ * Returns `DISCIPLINE_ID` unconditionally.
+ */
+export function disciplineExcludeIdForMind(): string {
+  return DISCIPLINE_ID;
 }
 
 export function setDisciplineEnabled(enabled: boolean): void {

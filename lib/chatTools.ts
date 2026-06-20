@@ -1,6 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
-import { normaliseDates, isDisciplineEnabled, DISCIPLINE_ID } from "./notes";
+import {
+  normaliseDates,
+  isDisciplineEnabled,
+  DISCIPLINE_ID,
+  disciplineExcludeIdForChat,
+} from "./notes";
+import { normaliseEntityName } from "./mind";
 import { isLocationEnabled } from "./location";
 import {
   owntracksRouteContext,
@@ -349,7 +355,7 @@ async function searchDiary(input: {
   const query = String(input.query || "").trim();
   if (!query) return { excerpts: [], note: "Empty query." };
   const limit = Math.max(1, Math.min(20, Number(input.limit) || 8));
-  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  const excludeId = disciplineExcludeIdForChat();
 
   // Run FTS (literal) and semantic (meaning) in parallel; combine + dedupe.
   const [fts, sem] = await Promise.all([
@@ -413,7 +419,7 @@ function getEntriesByDate(input: { date?: string }): unknown {
   if (patterns.length === 0) {
     return { excerpts: [], note: `Couldn't parse "${raw}" as a date.` };
   }
-  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  const excludeId = disciplineExcludeIdForChat();
   const results: Array<{ notebook: string; page: number; text: string }> = [];
   const seen = new Set<string>();
   try {
@@ -448,7 +454,7 @@ function getEntriesByDate(input: { date?: string }): unknown {
 }
 
 function listNotebooks(): unknown {
-  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  const excludeId = disciplineExcludeIdForChat();
   try {
     const rows = db()
       .prepare(
@@ -497,7 +503,7 @@ function getNotebook(input: { notebook_id?: string }): unknown {
 
 function getRecentEntries(input: { days?: number }): unknown {
   const days = Math.max(1, Math.min(30, Number(input.days) || 7));
-  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  const excludeId = disciplineExcludeIdForChat();
   try {
     const rows = db()
       .prepare(
@@ -648,7 +654,7 @@ function getInsights(input: { limit?: number }): unknown {
 }
 
 function getWritingStats(): unknown {
-  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  const excludeId = disciplineExcludeIdForChat();
   try {
     const row = db()
       .prepare(
@@ -746,7 +752,7 @@ function topEntities(input: { kind?: string; limit?: number }): unknown {
     50,
     Math.max(1, Math.floor(Number(input.limit) || 10))
   );
-  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  const excludeId = disciplineExcludeIdForChat();
   try {
     const rows = db()
       .prepare(
@@ -787,14 +793,14 @@ function pagesForEntity(input: {
   }
   const rawName = String(input.name || "").trim();
   if (!rawName) return { excerpts: [], note: "Missing entity name." };
-  // We compare by name_norm (lowercase + whitespace-collapsed) so casing /
-  // extra spaces don't matter. Mirrors how the entity rows were written.
-  const norm = rawName.toLowerCase().replace(/\s+/g, " ").trim();
+  // Use the same normalisation the writer side stamps into name_norm
+  // (lib/mind.ts:normaliseEntityName) so casing / extra spaces match.
+  const norm = normaliseEntityName(rawName);
   const limit = Math.min(
     20,
     Math.max(1, Math.floor(Number(input.limit) || 8))
   );
-  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  const excludeId = disciplineExcludeIdForChat();
   try {
     const rows = db()
       .prepare(
@@ -808,7 +814,7 @@ function pagesForEntity(input: {
          JOIN notebooks n ON n.id = p.notebook_id
          WHERE e.kind = ? AND e.name_norm = ? AND p.notebook_id != ?
          ORDER BY COALESCE(NULLIF(p.entry_date, 'none'), date(n.synced_at)) DESC,
-                  p.page_index DESC
+                  p.page_index ASC
          LIMIT ?`
       )
       .all(kind, norm, excludeId, limit) as Array<{
@@ -850,7 +856,7 @@ function countEntriesMentioning(input: { term?: string }): unknown {
   if (terms.length === 0) return { count: 0, note: "Term not usable for search." };
   // AND is stricter than OR for counting "how often X" rather than "either X or Y".
   const q = terms.map((t) => `"${t}"`).join(" AND ");
-  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  const excludeId = disciplineExcludeIdForChat();
   try {
     const rows = db()
       .prepare(

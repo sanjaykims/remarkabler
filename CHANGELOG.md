@@ -1,5 +1,77 @@
 # Changelog
 
+## 2026-06-20 (Tier-2: cleanup — shared helpers, schema constraints, docs)
+
+Follow-up to Tier-1 (PR #50). Same review pass, lower severity — cleanup
+that compounds as the codebase grows.
+
+### Tightened `pages_for_entity` ordering
+
+Within-date tie-break changed from `p.page_index DESC` to `p.page_index ASC`
+so a multi-page same-day diary entry surfaces in natural reading order
+(page 1 → 2 → 3 → …) rather than reverse (last page first). Claude was
+reading conclusions before setups. New regression test pins the new
+behavior.
+
+### Schema constraints: UNIQUE + CHECK on `entry_entities`
+
+Added `CHECK(kind IN ('person', 'place', 'project'))` to the table
+definition and `CREATE UNIQUE INDEX idx_entry_entities_unique
+ON entry_entities(page_id, kind, name_norm)`. Includes a one-time dedup
+pass before the index creation in case any existing deployment has
+edge-case duplicates. Combined with `INSERT OR IGNORE` in
+`analyzePending`'s entity insert, the runtime invariant ("one
+(page, kind, name_norm) per page") is now enforced by the schema, not
+just by the caller's discipline.
+
+### Shared discipline-filter helper
+
+The `excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID`
+pattern was inlined at 8 sites in `chatTools.ts` plus a different
+posture in `lib/mind.ts`. Extracted to two helpers in `lib/notes.ts`:
+
+- `disciplineExcludeIdForChat()` — for chat tools, respects the toggle
+- `disciplineExcludeIdForMind()` — for `/mind` surfaces, always excludes
+
+The sentinel string `"__none__"` now lives in one place. The split
+between the two helpers makes the chat-vs-mind policy difference
+intentional and discoverable, instead of an accidental divergence.
+
+### `pages_for_entity` uses the shared `normaliseEntityName`
+
+Was inlining `rawName.toLowerCase().replace(/\s+/g, " ").trim()`. Now
+calls the exported `normaliseEntityName` from `lib/mind.ts` so the
+writer side and reader side can't drift.
+
+### `EntityRank` type imported, not redeclared
+
+`app/mind/page.tsx` was declaring its own `EntityRank` shape. Now
+imports `type { EntityRank } from "@/lib/mind"`.
+
+### Stale comment fixed in `lib/db.ts`
+
+The `archived_at` column comment claimed "archived messages still feed
+Claude so a cleared conversation continues seamlessly." That stopped
+being true when Clear became a real boundary. Comment now matches
+the actual posture: archived messages are filtered from chat history;
+continuity is via `chat_memories`.
+
+### `AGENTS.md` structure map synced
+
+Per CLAUDE.md's "Keep this in sync with the structure map in AGENTS.md"
+rule, the `db.ts`, `claude.ts`, `chatTools.ts`, and
+`chatMemoryBackfill.ts` rows are updated for `entry_entities`,
+`top_entities`, `pages_for_entity`, and the new
+`chunkedBackfillForConversation` helper.
+
+### Tests (+1, total 206)
+
+- `test/pagesForEntity.test.ts`: new test pinning `page_index ASC`
+  within-date tie-break (5-page same-day entry should surface 1,2,3,4,5
+  in that order). The previous "orders by entry_date desc, then
+  page_index desc" test was relabeled to drop the page_index claim
+  since its data didn't actually exercise the tie-break.
+
 ## 2026-06-20 (Tier-1: chat-memory backfill + entity write correctness)
 
 Codex + Claude code-review found five correctness issues across the

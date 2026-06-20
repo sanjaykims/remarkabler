@@ -48,8 +48,11 @@ export function db(): Database.Database {
   } catch {
     // column already exists
   }
-  // Archived chat messages are hidden from the chat view but kept in the DB,
-  // and still feed Claude so a cleared conversation continues seamlessly.
+  // Archived chat messages are hidden from the chat view and no longer feed
+  // Claude as raw history — the chat POST filters archived_at IS NULL so
+  // Clear is a real semantic boundary. Continuity across Clears is carried
+  // by the chat_memories layer (compact items extracted from each archive
+  // batch), not by replaying old raw messages.
   try {
     _db.exec(`ALTER TABLE chat_messages ADD COLUMN archived_at TEXT`);
   } catch {
@@ -138,7 +141,7 @@ export function db(): Database.Database {
     CREATE TABLE IF NOT EXISTS entry_entities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       page_id    TEXT NOT NULL,
-      kind       TEXT NOT NULL,
+      kind       TEXT NOT NULL CHECK (kind IN ('person', 'place', 'project')),
       name       TEXT NOT NULL,
       name_norm  TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -152,6 +155,22 @@ export function db(): Database.Database {
   _db.exec(
     `CREATE INDEX IF NOT EXISTS idx_entry_entities_kind_norm
        ON entry_entities(kind, name_norm)`
+  );
+  // Dedup any pre-existing (page_id, kind, name_norm) collisions before
+  // promoting the index to UNIQUE — older deployments may have a few
+  // duplicates from edge cases (Claude returning the same entity twice
+  // in one response with different casings) where the now-fixed
+  // delete-then-insert pattern wouldn't have caught them. Keep the
+  // newest row (highest id) so the freshest display casing survives.
+  _db.exec(
+    `DELETE FROM entry_entities
+       WHERE id NOT IN (
+         SELECT MAX(id) FROM entry_entities GROUP BY page_id, kind, name_norm
+       )`
+  );
+  _db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_entry_entities_unique
+       ON entry_entities(page_id, kind, name_norm)`
   );
   // Chat memory: each Clear becomes an archive batch, and the compressor
   // extracts a small set of durable items from the batch's transcript.
