@@ -8,6 +8,7 @@ import {
   countAnalyzed,
   countPending,
   getStoredAxisLabels,
+  getTopEntities,
 } from "@/lib/mind";
 import { embeddingsEnabled } from "@/lib/embeddings";
 import { reparseAllEntryDates, runMaintenanceSweep } from "@/lib/notes";
@@ -61,6 +62,7 @@ export async function GET() {
       sentiment: getSentimentSeries(),
       embeddingMap: embeddingsEnabled() ? getEmbeddingMap(500) : [],
       axisLabels: getStoredAxisLabels(),
+      entities: getTopEntities(10),
       counts: {
         analyzed: countAnalyzed(),
         pending: countPending(),
