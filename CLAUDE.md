@@ -98,8 +98,11 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - `lib/chatMemory.ts` — durable chat-memory layer. `compressBatch`
   (extract → embed → dedup → insert with bounded retry),
   `maybeCompressChatSessions` (in-flight-guarded sweep matching the
-  `analyzePending` shape), `recallChatMemories` (Voyage top-K cosine,
-  fail-open), `formatRecalledMemoriesBlock` (advisory framing for the
+  `analyzePending` shape; also runs `reembedMissingMemories`),
+  `recallChatMemories` (include-all for a small corpus, semantic top-K +
+  recency floor at scale; degrades to recency, fail-open),
+  `reembedMissingMemories` (bounded re-embed of NULL-embedding rows),
+  `formatRecalledMemoriesBlock` (advisory framing for the
   system prompt), `normaliseChatMemoryCategory` (6-value enum),
   `isDuplicateMemory` (exact text_norm + 0.88 cosine), and
   `resetBatchForRetry` (clears permanent-skip state).
@@ -185,10 +188,19 @@ features need the deployed instance to fully verify.
   catches whatever the inline trigger missed. Do NOT revert the POST
   filter to "all rows" — that would double-count cleared messages
   (once as raw history, once as recalled memory).
-- **Chat memory recall is fail-open.** `chatOverNotes` accepts
-  `recalledMemories` as a pre-rendered text block; it lives in the
-  dynamic context block (never cached). Recall errors return an empty
-  block, never throw — chat must never 500 because Voyage was down.
+- **Chat memory recall is fail-open AND embedding-optional.** `chatOverNotes`
+  accepts `recalledMemories` as a pre-rendered text block; it lives in the
+  dynamic context block (never cached). Recall must never throw — chat must
+  never 500 because Voyage was down. **Do NOT re-gate recall purely on
+  semantic similarity.** For a small corpus (≤ `RECALL_INCLUDE_ALL_MAX`)
+  `recallChatMemories` returns *all* non-deleted memories — embeddings are
+  used only to *order* them, never to *exclude* them — because a memory with
+  a NULL embedding (Voyage rate-limited during extraction) or sub-threshold
+  phrasing would otherwise be silently invisible even though it's right there
+  on `/memory`. That exact bug shipped once: memories the user could see were
+  never reaching Claude. When Voyage is down or the query can't be embedded,
+  recall degrades to **recency**, not emptiness. Semantic top-K only kicks in
+  at scale, and even then a recency floor is always blended in.
 - **Memory extraction is bounded-retry.** `MAX_EXTRACTION_ATTEMPTS = 2`.
   On parse failure the first attempt leaves the batch pending; the
   second attempt sets `memory_extracted_at` to mark permanent skip.

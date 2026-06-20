@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-06-20 (Fix: chat memory the user can see but Claude couldn't)
+
+**Bug:** durable chat memories were visible on `/memory` (e.g. a confirmed
+Wuhan/Shanghai business trip) but Claude answered "I can't find your trip"
+in chat. Root cause: recall was gated *entirely* on semantic embedding
+similarity. A memory only reached Claude if Voyage was reachable that turn,
+the stored row had a non-NULL embedding, AND its cosine to the current
+message cleared 0.4 and made the top-5. Two ways that failed:
+
+- **NULL embeddings on the rows.** `compressBatch` embedded each extracted
+  item with a separate Voyage call in a tight loop (up to 7 per cleared
+  chat). Voyage's free tier is 3 req/min, so the later calls 429'd, were
+  swallowed to null, and the memory was stored with no embedding —
+  permanently excluded from recall (`WHERE embedding IS NOT NULL`).
+- **Phrasing/threshold mismatch.** "Where am I going tomorrow?" is about
+  timing; the memory reads "Wuhan/Shanghai itinerary…". Cosine could fall
+  under 0.4 and get dropped even with a good embedding.
+
+**Fixes (`lib/chatMemory.ts`):**
+
+- **Recall is now include-all for a small corpus.** Up to
+  `RECALL_INCLUDE_ALL_MAX` (30) non-deleted memories, embeddings are used
+  only to *order* (most-relevant first), never to *exclude*. They all fit
+  in the prompt budget anyway, so gating could only hurt. At larger scale,
+  semantic top-K still applies but always blends in a most-recent floor so
+  brand-new memories are never invisible. Recall now **degrades to recency,
+  not emptiness**, when Voyage is unavailable. Raised `MAX_RECALL_CHARS`
+  2000 → 4000 so the include-all set fits.
+- **Write side no longer trips the rate limit.** `compressBatch` embeds all
+  extracted items in ONE `embedBatch` request instead of N sequential
+  calls, so memories keep their embeddings.
+- **Self-healing for existing bad data.** New `reembedMissingMemories` runs
+  in the memory sweep (`maybeCompressChatSessions`) and fills in embeddings
+  for any NULL-embedding rows, one batched Voyage call at a time.
+
+Recall tests rewritten to pin the corrected contract (NULL-embedding and
+sub-threshold items are surfaced; fail-open means recency; large-corpus
+blend). `npm run lint` + `npm test` (208) + `npm run build` clean.
+
 ## 2026-06-20 (UI refresh: single-font Clear Sans + design tokens)
 
 First pass of an editorial UI refresh. Replaces the implicit "system

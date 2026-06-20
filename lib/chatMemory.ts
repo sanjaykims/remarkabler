@@ -3,6 +3,7 @@ import { compressChatSession, modelChatMemory } from "./claude";
 import type { ChatMemoryDraft } from "./claude";
 import {
   embed,
+  embedBatch,
   embeddingsEnabled,
   encodeEmbedding,
   decodeEmbedding,
@@ -20,10 +21,20 @@ const MAX_TRANSCRIPT_CHARS = 16_000;
 const MAX_ITEMS_PER_BATCH = 7;
 const MAX_ITEM_TEXT_CHARS = 280;
 const MAX_EXCERPT_CHARS = 240;
-const MAX_RECALL_CHARS = 2000;
+const MAX_RECALL_CHARS = 4000;
 const DEDUP_COSINE_THRESHOLD = 0.88;
 const RECALL_MIN_SIMILARITY = 0.4;
 const RECALL_K = 5;
+// Below this many total memories, the whole set fits comfortably in the
+// prompt budget, so we include ALL of them rather than gating on semantic
+// similarity. Gating a small corpus can only hurt — it drops relevant items
+// (missing embedding, sub-threshold phrasing) for no benefit, since they'd
+// all fit anyway. Semantic top-K only earns its keep at scale.
+const RECALL_INCLUDE_ALL_MAX = 30;
+// In the large-corpus path, always blend in this many most-recent memories
+// alongside the semantic top-K, so a brand-new memory is never invisible
+// just because its phrasing doesn't match the current message.
+const RECALL_RECENT_FLOOR = 5;
 const MAX_EXTRACTION_ATTEMPTS = 2;
 const RECENT_MEMORY_PRIMER_COUNT = 15;
 
@@ -290,22 +301,39 @@ export async function compressBatch(
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
+  // Normalise + filter the drafts first, then embed them ALL in one Voyage
+  // request. Embedding each item with its own call (the previous behaviour)
+  // fired up to 7 requests in a tight loop — Voyage's free tier is 3/min, so
+  // the later items reliably 429'd, got swallowed to null, and were stored
+  // with no embedding. A single embedBatch call stays within the rate limit,
+  // so memories actually keep their embeddings (which recall and dedup need).
+  const prepared = items
+    .map((draft) => {
+      const trimmedText = truncateChars(draft.text.trim(), MAX_ITEM_TEXT_CHARS);
+      const norm = normaliseMemoryText(trimmedText);
+      return { draft, trimmedText, norm };
+    })
+    .filter((p) => p.trimmedText && p.norm);
+
+  let embeddings: Array<Float32Array | null> = prepared.map(() => null);
+  if (embeddingsEnabled() && prepared.length > 0) {
+    try {
+      const batched = await embedBatch(
+        prepared.map((p) => p.trimmedText),
+        "document"
+      );
+      if (batched && batched.length === prepared.length) embeddings = batched;
+    } catch {
+      // Leave embeddings null — recall now falls back to recency, and the
+      // maintenance sweep's re-embed pass will fill these in later.
+    }
+  }
+
   let inserted = 0;
   let duplicatesSkipped = 0;
-  for (const draft of items) {
-    const trimmedText = truncateChars(draft.text.trim(), MAX_ITEM_TEXT_CHARS);
-    if (!trimmedText) continue;
-    const norm = normaliseMemoryText(trimmedText);
-    if (!norm) continue;
-
-    let embedding: Float32Array | null = null;
-    if (embeddingsEnabled()) {
-      try {
-        embedding = await embed(trimmedText, "document");
-      } catch {
-        embedding = null;
-      }
-    }
+  for (let i = 0; i < prepared.length; i++) {
+    const { draft, trimmedText, norm } = prepared[i];
+    const embedding = embeddings[i];
 
     const dup = isDuplicateMemory({ text: trimmedText, embedding });
     if (dup.duplicate) {
@@ -430,6 +458,13 @@ export async function maybeCompressChatSessions(
       duplicatesSkipped += r.duplicatesSkipped;
       if (r.failed) failed++;
     }
+
+    // Repair any memories that were stored without an embedding (e.g. a
+    // Voyage rate-limit during extraction). Recall now falls back to recency
+    // so these are still surfaced, but a real embedding sharpens dedup and
+    // large-corpus recall. Bounded + best-effort.
+    await reembedMissingMemories();
+
     return {
       processed,
       inserted,
@@ -439,6 +474,51 @@ export async function maybeCompressChatSessions(
     };
   } finally {
     compressionInFlight = false;
+  }
+}
+
+const REEMBED_BATCH_LIMIT = 32;
+
+/**
+ * Fill in embeddings for non-deleted memories that have none. Processes up to
+ * REEMBED_BATCH_LIMIT in a single Voyage request so it stays within the rate
+ * limit; the next sweep picks up any remainder. Best-effort and fail-quiet —
+ * recall works without embeddings, this just improves it.
+ */
+export async function reembedMissingMemories(
+  limit: number = REEMBED_BATCH_LIMIT
+): Promise<{ repaired: number }> {
+  if (!embeddingsEnabled()) return { repaired: 0 };
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT id, text FROM chat_memories
+         WHERE deleted_at IS NULL AND embedding IS NULL
+         ORDER BY id DESC LIMIT ?`
+      )
+      .all(Math.max(1, Math.floor(limit))) as Array<{ id: number; text: string }>;
+    if (rows.length === 0) return { repaired: 0 };
+
+    const vectors = await embedBatch(
+      rows.map((r) => r.text),
+      "document"
+    );
+    if (!vectors || vectors.length !== rows.length) return { repaired: 0 };
+
+    const update = db().prepare(
+      `UPDATE chat_memories SET embedding = ? WHERE id = ? AND embedding IS NULL`
+    );
+    let repaired = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const v = vectors[i];
+      if (!v) continue;
+      update.run(encodeEmbedding(v), rows[i].id);
+      repaired++;
+    }
+    return { repaired };
+  } catch (e) {
+    console.warn("[chatMemory] reembed failed:", (e as Error).message);
+    return { repaired: 0 };
   }
 }
 
@@ -479,10 +559,17 @@ export type RecalledMemory = {
 };
 
 /**
- * Find the top-K non-deleted chat memories most semantically similar to
- * `message`. Fail-open: any error (no API key, Voyage outage, decode
- * failure) returns an empty list rather than throwing, so chat never 500s
- * because recall failed.
+ * Surface the chat memories relevant to `message`.
+ *
+ * Strategy (see RECALL_INCLUDE_ALL_MAX): for a SMALL corpus the whole set
+ * fits in the prompt budget, so we include everything — ordered most-relevant
+ * first when we can embed the query, most-recent first otherwise. Semantic
+ * gating is only applied to a LARGE corpus, and even then we always blend in
+ * the most-recent few so a brand-new memory is never invisible.
+ *
+ * Fail-open by design: a missing API key, Voyage outage, or decode failure
+ * degrades to RECENCY (not emptiness) so chat never loses durable context
+ * just because the embedding step hiccuped, and never 500s.
  */
 export async function recallChatMemories(
   message: string,
@@ -490,15 +577,13 @@ export async function recallChatMemories(
   minSim: number = RECALL_MIN_SIMILARITY
 ): Promise<{ items: RecalledMemory[] }> {
   try {
-    if (!message || !message.trim()) return { items: [] };
-    if (!embeddingsEnabled()) return { items: [] };
-    const queryVec = await embed(message, "query");
-    if (!queryVec) return { items: [] };
-
+    // Fetch the whole non-deleted set, newest first. Rows may or may not
+    // carry an embedding — recall must work either way.
     const rows = db()
       .prepare(
         `SELECT id, category, text, embedding, created_at FROM chat_memories
-         WHERE deleted_at IS NULL AND embedding IS NOT NULL`
+         WHERE deleted_at IS NULL
+         ORDER BY id DESC`
       )
       .all() as Array<{
       id: number;
@@ -507,28 +592,75 @@ export async function recallChatMemories(
       embedding: Buffer | null;
       created_at: string;
     }>;
+    if (rows.length === 0) return { items: [] };
 
-    const scored: RecalledMemory[] = [];
-    for (const r of rows) {
-      if (!r.embedding) continue;
-      const vec = decodeEmbedding(r.embedding);
-      if (!vec) continue;
-      const score = cosineSimilarity(queryVec, vec);
-      if (score < minSim) continue;
-      scored.push({
+    // Best-effort query embedding. Null is fine — we fall back to recency.
+    let queryVec: Float32Array | null = null;
+    if (message && message.trim() && embeddingsEnabled()) {
+      try {
+        queryVec = await embed(message, "query");
+      } catch {
+        queryVec = null;
+      }
+    }
+
+    // recencyRank: 0 = most recent (rows arrive id DESC). Score defaults to 0
+    // for rows we can't compare (no query vec, or no row embedding), so they
+    // naturally fall back to recency ordering.
+    const scored = rows.map((r, recencyRank) => {
+      let score = 0;
+      if (queryVec && r.embedding) {
+        const vec = decodeEmbedding(r.embedding);
+        if (vec) score = cosineSimilarity(queryVec, vec);
+      }
+      return {
         id: r.id,
         category: normaliseChatMemoryCategory(r.category),
         text: r.text,
         score,
         created_at: r.created_at,
-      });
+        recencyRank,
+      };
+    });
+
+    // Small corpus: include everything. Most-relevant first when we have a
+    // query vector, most-recent first otherwise. formatRecalledMemoriesBlock
+    // applies the final char-budget cap.
+    if (rows.length <= RECALL_INCLUDE_ALL_MAX) {
+      scored.sort(
+        (a, b) => b.score - a.score || a.recencyRank - b.recencyRank
+      );
+      return { items: scored.map(stripRecencyRank) };
     }
-    scored.sort((a, b) => b.score - a.score);
-    return { items: scored.slice(0, k) };
+
+    // Large corpus: semantic top-K above threshold, unioned with the most
+    // recent few (deduped by id, semantic ordering preserved).
+    const semantic = scored
+      .filter((s) => s.score >= minSim)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, k);
+    const recent = scored.slice(0, RECALL_RECENT_FLOOR);
+
+    const seen = new Set<number>();
+    const merged: RecalledMemory[] = [];
+    for (const s of [...semantic, ...recent]) {
+      if (seen.has(s.id)) continue;
+      seen.add(s.id);
+      merged.push(stripRecencyRank(s));
+    }
+    return { items: merged };
   } catch (e) {
     console.warn("[chatMemory] recall failed:", (e as Error).message);
     return { items: [] };
   }
+}
+
+function stripRecencyRank(
+  s: RecalledMemory & { recencyRank: number }
+): RecalledMemory {
+  const { recencyRank: _omit, ...rest } = s;
+  void _omit;
+  return rest;
 }
 
 function relativeAge(createdAt: string, now: Date = new Date()): string {

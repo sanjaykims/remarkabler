@@ -59,13 +59,14 @@ function stubEmbed(vec: Float32Array) {
 }
 
 describe("recallChatMemories", () => {
-  it("ranks by cosine similarity and returns the top K", async () => {
+  it("ranks by cosine similarity, most relevant first (small corpus)", async () => {
     insert("Prefers writing in the morning.", new Float32Array([1, 0, 0, 0]));
     insert("Has a dog named Hopper.", new Float32Array([0, 1, 0, 0]));
     insert("Works at Acme Corp.", new Float32Array([0, 0, 1, 0]));
     stubEmbed(new Float32Array([0.9, 0.1, 0, 0]));
     const { items } = await cmMod.recallChatMemories("when do you write?", 2, 0);
-    expect(items.length).toBe(2);
+    // Small corpus → all included; most relevant first.
+    expect(items.length).toBe(3);
     expect(items[0].text).toBe("Prefers writing in the morning.");
   });
 
@@ -78,43 +79,55 @@ describe("recallChatMemories", () => {
     expect(items.length).toBe(0);
   });
 
-  it("excludes rows with NULL embeddings", async () => {
-    insert("Has a dog named Hopper.", null);
+  it("INCLUDES rows with NULL embeddings (small corpus, recency fallback)", async () => {
+    // The regression this fixes: a memory stored without an embedding (e.g.
+    // Voyage rate-limited during extraction) must still reach Claude.
+    insert("Business trip departs Sunday for Wuhan.", null);
     stubEmbed(new Float32Array([1, 0, 0, 0]));
-    const { items } = await cmMod.recallChatMemories("dog?", 5, 0);
-    expect(items.length).toBe(0);
+    const { items } = await cmMod.recallChatMemories("where am I going?", 5);
+    expect(items.length).toBe(1);
+    expect(items[0].text).toBe("Business trip departs Sunday for Wuhan.");
   });
 
-  it("respects the minimum-similarity threshold", async () => {
+  it("does NOT drop sub-threshold items in a small corpus", async () => {
     insert("Prefers writing in the morning.", new Float32Array([1, 0, 0, 0]));
     insert("Works at Acme Corp.", new Float32Array([0, 0, 1, 0]));
-    // Query is orthogonal to the second row, near-parallel to the first.
+    // Query near-parallel to the first, orthogonal to the second.
     stubEmbed(new Float32Array([0.9, 0.1, 0, 0]));
     const { items } = await cmMod.recallChatMemories("morning?", 5, 0.4);
+    // Both included (small corpus); relevant one ranked first.
+    expect(items.length).toBe(2);
+    expect(items[0].text).toBe("Prefers writing in the morning.");
+  });
+
+  it("fails open to RECENCY when embed() returns null", async () => {
+    insert("Older fact.", new Float32Array([1, 0, 0, 0]));
+    insert("Newer fact.", new Float32Array([1, 0, 0, 0]));
+    vi.spyOn(embMod, "embed").mockResolvedValue(null);
+    const { items } = await cmMod.recallChatMemories("any?", 5);
+    // No semantic signal → recency order, newest first, nothing dropped.
+    expect(items.map((m) => m.text)).toEqual(["Newer fact.", "Older fact."]);
+  });
+
+  it("fails open to RECENCY when embed() throws", async () => {
+    insert("Prefers writing in the morning.", new Float32Array([1, 0, 0, 0]));
+    vi.spyOn(embMod, "embed").mockRejectedValue(new Error("voyage 500"));
+    const { items } = await cmMod.recallChatMemories("any?", 5);
     expect(items.length).toBe(1);
     expect(items[0].text).toBe("Prefers writing in the morning.");
   });
 
-  it("fails open: returns empty when embed() returns null", async () => {
-    insert("Prefers writing in the morning.", new Float32Array([1, 0, 0, 0]));
-    vi.spyOn(embMod, "embed").mockResolvedValue(null);
-    const { items } = await cmMod.recallChatMemories("any?", 5, 0);
+  it("empty corpus → empty result", async () => {
+    const { items } = await cmMod.recallChatMemories("anything?");
     expect(items).toEqual([]);
   });
 
-  it("fails open: returns empty when embed() throws", async () => {
-    insert("Prefers writing in the morning.", new Float32Array([1, 0, 0, 0]));
-    vi.spyOn(embMod, "embed").mockRejectedValue(new Error("voyage 500"));
-    const { items } = await cmMod.recallChatMemories("any?", 5, 0);
-    expect(items).toEqual([]);
-  });
-
-  it("empty input → empty result, no embed call", async () => {
+  it("empty input → no embed call, but still surfaces memories by recency", async () => {
     insert("Prefers writing in the morning.", new Float32Array([1, 0, 0, 0]));
     const spy = vi.spyOn(embMod, "embed");
     const { items } = await cmMod.recallChatMemories("");
-    expect(items).toEqual([]);
     expect(spy).not.toHaveBeenCalled();
+    expect(items.length).toBe(1);
   });
 
   it("normalises stored category through the recall path", async () => {
@@ -125,6 +138,24 @@ describe("recallChatMemories", () => {
     const { items } = await cmMod.recallChatMemories("any?", 5, 0);
     expect(items.length).toBe(1);
     expect(items[0].category).toBe("preference");
+  });
+
+  it("large corpus: blends semantic top-K with most-recent floor", async () => {
+    // 31 rows (> RECALL_INCLUDE_ALL_MAX = 30) forces the large-corpus path.
+    // Rows 1..29 are filler orthogonal to the query. The semantically
+    // matching row is OLD (inserted first, so least recent); a fresh,
+    // unrelated row is inserted last. The match must surface via top-K AND
+    // the fresh row must surface via the recency floor.
+    insert("OLD strongly relevant memory.", new Float32Array([1, 0, 0, 0]));
+    for (let i = 0; i < 29; i++) {
+      insert(`filler ${i}`, new Float32Array([0, 0, 1, 0]));
+    }
+    insert("BRAND NEW unrelated memory.", new Float32Array([0, 1, 0, 0]));
+    stubEmbed(new Float32Array([1, 0, 0, 0])); // matches the OLD relevant row
+    const { items } = await cmMod.recallChatMemories("relevant?", 5, 0.4);
+    const texts = items.map((m) => m.text);
+    expect(texts).toContain("OLD strongly relevant memory.");
+    expect(texts).toContain("BRAND NEW unrelated memory.");
   });
 });
 
