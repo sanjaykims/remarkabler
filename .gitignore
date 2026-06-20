@@ -8,6 +8,7 @@ data/*.db-journal
 data/*.db-shm
 data/*.db-wal
 data/files/
+design-system/
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts

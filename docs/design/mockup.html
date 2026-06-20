@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Remarkabler — design mockup</title>
+<!-- Fonts loaded here via CDN FOR PREVIEW ONLY. In the app they're self-hosted at build via next/font/google. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Inter:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sans: "Inter", system-ui, sans-serif;
+    --serif: "Newsreader", Georgia, serif;
+    --hand: "Caveat", "Comic Sans MS", cursive;
+    --bg: #fafaf9;       /* stone-50 */
+    --fg: #1c1917;       /* stone-900 */
+    --muted: #78716c;    /* stone-500 */
+    --border: #e7e5e4;   /* stone-200 */
+    --card: #fafaf9;
+    --accent: #d97706;   /* amber-600 — decorative on light */
+    --accent-text: #b45309; /* amber-700 — for amber text on light */
+  }
+  [data-theme="dark"] {
+    --bg: #000;
+    --fg: #f5f5f4;        /* stone-100 */
+    --muted: #a8a29e;     /* stone-400 */
+    --border: #292524;    /* stone-800 */
+    --card: #000;
+    --accent: #f59e0b;    /* amber-500 — dark */
+    --accent-text: #fbbf24; /* amber-400 — dark text */
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    background: #d6d3d1; /* stone-300 — page chrome behind the two panels */
+    color: #1c1917;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Two side-by-side preview panes, mobile-width each. */
+  .compare {
+    display: flex;
+    gap: 24px;
+    padding: 24px;
+    align-items: flex-start;
+    overflow-x: auto;
+  }
+  .pane {
+    flex: 0 0 420px;
+    border: 1px solid #a8a29e;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--fg);
+  }
+  .pane-label {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #57534e;
+    padding: 6px 12px;
+    background: #f5f5f4;
+    border-bottom: 1px solid #a8a29e;
+  }
+  .pane[data-theme="dark"] .pane-label {
+    color: #d6d3d1;
+    background: #1c1917;
+    border-bottom-color: #44403c;
+  }
+
+  /* App chrome ------------------------------------------------------- */
+  .app { display: flex; flex-direction: column; min-height: 720px; }
+  header.nav {
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    overflow-x: auto;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .wordmark {
+    font-family: var(--hand);
+    font-size: 22px;
+    line-height: 1;
+    font-weight: 700;
+    color: var(--fg);
+    margin-right: 6px;
+  }
+  .nav-link {
+    color: var(--fg);
+    text-decoration: none;
+    opacity: .65;
+    padding: 6px 2px;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+  }
+  .nav-link:hover { opacity: 1; }
+  .nav-link.active {
+    opacity: 1;
+    border-bottom-color: var(--accent);
+  }
+  .nav-link:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  main.body {
+    padding: 20px 16px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  /* Headings -------------------------------------------------------- */
+  h1.page {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.2;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .page-sub {
+    font-family: var(--sans);
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0;
+  }
+
+  /* Stats ---------------------------------------------------------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .stat {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+    background: var(--card);
+  }
+  .stat-value {
+    font-family: var(--sans);
+    font-feature-settings: "tnum";
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 1.1;
+  }
+  .stat-label {
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* Action buttons ------------------------------------------------- */
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .btn {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 12px 16px;
+    border-radius: 6px;
+    text-align: center;
+    text-decoration: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-primary {
+    background: var(--fg);
+    color: var(--bg);
+  }
+  .btn-secondary {
+    background: transparent;
+    color: var(--fg);
+    border-color: var(--border);
+  }
+  .btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Card ----------------------------------------------------------- */
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    background: var(--card);
+  }
+  .card h2 {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0 0 6px;
+  }
+  .card .row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; font-size: 13px;
+  }
+  .card .meta { color: var(--muted); font-size: 11px; }
+  .accent-link {
+    color: var(--accent-text);
+    text-decoration: underline;
+    text-decoration-color: var(--accent);
+    text-underline-offset: 3px;
+    font-family: var(--sans);
+    font-size: 12px;
+  }
+
+  /* Latest insight (serif body, sans meta) ------------------------- */
+  .insight-title {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    margin: 4px 0 2px;
+  }
+  .insight-body {
+    font-family: var(--serif);
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--fg);
+    opacity: .85;
+    margin: 0;
+  }
+
+  /* Chat ----------------------------------------------------------- */
+  .chat { display: flex; flex-direction: column; gap: 10px; }
+  .bubble {
+    max-width: 80%;
+    padding: 10px 14px;
+    border-radius: 18px;
+    font-size: 15px;
+    white-space: pre-wrap;
+  }
+  .bubble.user {
+    margin-left: auto;
+    background: var(--fg);
+    color: var(--bg);
+    font-family: var(--sans);
+    font-size: 14px;
+  }
+  .bubble.assistant {
+    margin-right: auto;
+    background: #f5f5f4; /* stone-100 */
+    color: var(--fg);
+    font-family: var(--serif);
+    line-height: 1.7;
+  }
+  [data-theme="dark"] .bubble.assistant {
+    background: #1c1917; /* stone-900 */
+  }
+
+  /* Diary excerpt (notebooks page) — flagship serif moment --------- */
+  .diary-meta {
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--muted);
+    margin: 0 0 4px;
+  }
+  .diary {
+    font-family: var(--serif);
+    font-size: 15px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    margin: 0;
+  }
+
+  /* Section (mind) ------------------------------------------------- */
+  .section h2 {
+    font-family: var(--serif);
+    font-size: 19px;
+    font-weight: 500;
+    margin: 0 0 2px;
+    letter-spacing: -0.005em;
+  }
+  .section .sub {
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--muted);
+    margin: 0 0 8px;
+  }
+
+  /* Focus demo ----------------------------------------------------- */
+  .focus-demo { display: flex; flex-wrap: wrap; gap: 8px; }
+  .focus-demo button {
+    font-family: var(--sans);
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .focus-demo button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Footnote / tokens panel --------------------------------------- */
+  .tokens {
+    max-width: 880px;
+    margin: 0 auto 36px;
+    padding: 20px 24px;
+    background: #fafaf9;
+    border: 1px solid #d6d3d1;
+    border-radius: 12px;
+    font-family: var(--sans);
+    font-size: 13px;
+    color: #1c1917;
+    line-height: 1.55;
+  }
+  .tokens h2 {
+    margin: 0 0 8px;
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .tokens code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #f5f5f4;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+  .swatch {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    vertical-align: -2px;
+    margin-right: 4px;
+    border: 1px solid rgba(0,0,0,.1);
+  }
+  .footer-note {
+    text-align: center;
+    color: #44403c;
+    font-family: var(--sans);
+    font-size: 12px;
+    padding: 8px 12px 28px;
+  }
+</style>
+</head>
+<body>
+
+<div class="compare">
+
+  <!-- =================== LIGHT ====================================== -->
+  <section class="pane">
+    <div class="pane-label">Light · prefers-color-scheme</div>
+    <div class="app">
+      <header class="nav">
+        <a class="wordmark" href="#">Remarkabler</a>
+        <a class="nav-link" href="#">Notebooks</a>
+        <a class="nav-link active" href="#">Chat</a>
+        <a class="nav-link" href="#">Mind</a>
+        <a class="nav-link" href="#">Insights</a>
+        <a class="nav-link" href="#">Memory</a>
+        <a class="nav-link" href="#">Cost</a>
+      </header>
+      <main class="body">
+
+        <div>
+          <h1 class="page">Today</h1>
+          <p class="page-sub">Your reMarkable notebooks, transcribed and understood by Claude.</p>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><div class="stat-value">12</div><div class="stat-label">Notebooks</div></div>
+          <div class="stat"><div class="stat-value">348</div><div class="stat-label">Pages read</div></div>
+          <div class="stat"><div class="stat-value">9</div><div class="stat-label">Insights</div></div>
+        </div>
+
+        <div class="actions">
+          <a class="btn btn-primary" href="#">Add a notebook</a>
+          <a class="btn btn-secondary" href="#">Chat with your notes</a>
+        </div>
+
+        <div class="card">
+          <div class="row">
+            <h2>Latest insight</h2>
+            <a class="accent-link" href="#">Open</a>
+          </div>
+          <div class="insight-title">A quieter week, but a more honest one</div>
+          <p class="insight-body">You wrote less this week and walked more — three loops past the river before sunrise. The notebook is thinner but the entries reach further: less about what happened, more about what you noticed about yourself while it happened.</p>
+          <div class="meta" style="margin-top:8px">2 days ago</div>
+        </div>
+
+        <div class="section">
+          <h2>Today's chat</h2>
+          <p class="sub">Sonnet 4.6 · 3 tools available</p>
+          <div class="chat">
+            <div class="bubble user">What did I write about the river this week?</div>
+            <div class="bubble assistant">You went three times — Tuesday, Friday, Sunday. On Friday you noted the light hitting the water "like cold honey" and that you felt unusually settled afterwards. Sunday's entry is shorter; you wrote that the walk has become a way of asking yourself a question without having to answer it.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <p class="diary-meta">page 4 · 2026-06-19</p>
+          <p class="diary">Slept badly again. The cat woke me at 4 and I couldn't get back. I tried the breathing thing Jin showed me. It worked for maybe twenty minutes. Then I started thinking about the talk on Friday and that was the end of sleep.
+
+Coffee at the corner place. The barista remembered I take it black now.</p>
+        </div>
+
+        <div>
+          <p style="font-family:var(--sans);font-size:11px;color:var(--muted);margin:0 0 6px;text-transform:uppercase;letter-spacing:.06em;">Focus ring demo (tab to see)</p>
+          <div class="focus-demo">
+            <button type="button" tabindex="0">Primary</button>
+            <button type="button" tabindex="0">Secondary</button>
+            <button type="button" tabindex="0">Ghost</button>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </section>
+
+  <!-- =================== DARK ====================================== -->
+  <section class="pane" data-theme="dark">
+    <div class="pane-label">Dark · AMOLED true black</div>
+    <div class="app">
+      <header class="nav">
+        <a class="wordmark" href="#">Remarkabler</a>
+        <a class="nav-link" href="#">Notebooks</a>
+        <a class="nav-link active" href="#">Chat</a>
+        <a class="nav-link" href="#">Mind</a>
+        <a class="nav-link" href="#">Insights</a>
+        <a class="nav-link" href="#">Memory</a>
+        <a class="nav-link" href="#">Cost</a>
+      </header>
+      <main class="body">
+
+        <div>
+          <h1 class="page">Today</h1>
+          <p class="page-sub">Your reMarkable notebooks, transcribed and understood by Claude.</p>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><div class="stat-value">12</div><div class="stat-label">Notebooks</div></div>
+          <div class="stat"><div class="stat-value">348</div><div class="stat-label">Pages read</div></div>
+          <div class="stat"><div class="stat-value">9</div><div class="stat-label">Insights</div></div>
+        </div>
+
+        <div class="actions">
+          <a class="btn btn-primary" href="#">Add a notebook</a>
+          <a class="btn btn-secondary" href="#">Chat with your notes</a>
+        </div>
+
+        <div class="card">
+          <div class="row">
+            <h2>Latest insight</h2>
+            <a class="accent-link" href="#">Open</a>
+          </div>
+          <div class="insight-title">A quieter week, but a more honest one</div>
+          <p class="insight-body">You wrote less this week and walked more — three loops past the river before sunrise. The notebook is thinner but the entries reach further: less about what happened, more about what you noticed about yourself while it happened.</p>
+          <div class="meta" style="margin-top:8px">2 days ago</div>
+        </div>
+
+        <div class="section">
+          <h2>Today's chat</h2>
+          <p class="sub">Sonnet 4.6 · 3 tools available</p>
+          <div class="chat">
+            <div class="bubble user">What did I write about the river this week?</div>
+            <div class="bubble assistant">You went three times — Tuesday, Friday, Sunday. On Friday you noted the light hitting the water "like cold honey" and that you felt unusually settled afterwards. Sunday's entry is shorter; you wrote that the walk has become a way of asking yourself a question without having to answer it.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <p class="diary-meta">page 4 · 2026-06-19</p>
+          <p class="diary">Slept badly again. The cat woke me at 4 and I couldn't get back. I tried the breathing thing Jin showed me. It worked for maybe twenty minutes. Then I started thinking about the talk on Friday and that was the end of sleep.
+
+Coffee at the corner place. The barista remembered I take it black now.</p>
+        </div>
+
+        <div>
+          <p style="font-family:var(--sans);font-size:11px;color:var(--muted);margin:0 0 6px;text-transform:uppercase;letter-spacing:.06em;">Focus ring demo (tab to see)</p>
+          <div class="focus-demo">
+            <button type="button" tabindex="0">Primary</button>
+            <button type="button" tabindex="0">Secondary</button>
+            <button type="button" tabindex="0">Ghost</button>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </section>
+
+</div>
+
+<!-- Tokens reference ----------------------------------------------- -->
+<div class="tokens">
+  <h2>Tokens (see <code>DESIGN.md</code> for full detail)</h2>
+  <p>
+    <strong>Fonts</strong> — sans: <code>Inter</code> (chrome) ·
+    serif: <code>Newsreader</code> (reading content) ·
+    hand: <code>Caveat</code> (wordmark + LockScreen, 1–2 spots).
+  </p>
+  <p>
+    <strong>Colors</strong> —
+    <span class="swatch" style="background:#fafaf9"></span><code>stone-50</code> light bg ·
+    <span class="swatch" style="background:#000"></span><code>#000</code> AMOLED dark bg ·
+    <span class="swatch" style="background:#d97706"></span><code>amber-600</code> accent (decorative, light) ·
+    <span class="swatch" style="background:#b45309"></span><code>amber-700</code> accent text (light) ·
+    <span class="swatch" style="background:#f59e0b"></span><code>amber-500</code> accent (dark).
+  </p>
+  <p>
+    <strong>Where serif lives</strong> — page H1s, mind section titles,
+    assistant chat bubbles (with <code>leading-relaxed</code>), insight
+    body, latest-insight preview, <em>diary excerpts in /notebooks</em>
+    (the most emotionally resonant change — handwritten content rendered
+    as a printed journal page), memory profile textarea.
+  </p>
+  <p>
+    <strong>Where serif is not</strong> — all chrome (nav, buttons,
+    badges, stat numbers, meta), all <code>text-xs</code>/<code>text-[10px]</code>,
+    cost calendar, Memory settings labels, theme cloud, entity rankings,
+    user chat bubbles.
+  </p>
+  <p>
+    <strong>Focus</strong> — amber 2px <code>:focus-visible</code> ring
+    (keyboard-only). <strong>Tap targets</strong> — 44px floor on touch,
+    buttons only (not inline links). <strong>Motion</strong> — smooth
+    scroll + <code>prefers-reduced-motion</code> guard.
+  </p>
+  <p>
+    <strong>Network posture</strong> — fonts are self-hosted at build
+    via <code>next/font/google</code>. The browser never hits Google at
+    runtime. This mockup file loads them via CDN <em>for preview only</em>.
+  </p>
+</div>
+
+<p class="footer-note">Mockup is for approval only · the app itself uses self-hosted fonts</p>
+
+</body>
+</html>
