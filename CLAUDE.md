@@ -154,6 +154,15 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - `app/share/route.ts` — PWA Web Share Target; `public/manifest.json` — PWA
   manifest.
 
+## GitHub Actions
+
+- `.github/workflows/codex-watcher.yml` — when Codex
+  (`chatgpt-codex-connector`) posts a review comment, review, or issue
+  comment, the workflow auto-pings `@claude` on the same thread so the
+  Claude Code GitHub App spawns a session to investigate. No new secrets;
+  uses the default `GITHUB_TOKEN`. Disable by deleting the file or
+  commenting out the `on:` triggers.
+
 ## Tests
 
 `npm test` runs Vitest over `test/*.test.ts` — pure-logic units only (no
