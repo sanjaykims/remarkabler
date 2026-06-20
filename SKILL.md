@@ -18,7 +18,9 @@ Companion docs — read in order if any is unfamiliar:
 | **this file** | One-page index. Where things live, what they do, what env vars exist. Skim first. |
 | **`AGENTS.md`** | Tool-agnostic onboarding (works for any AI agent, not just Claude). Includes the "what an AI can/can't do in this container" boundaries. |
 | **`CLAUDE.md`** | Claude-specific deep detail + the load-bearing "do not regress" rules with full reasoning. |
+| **`DESIGN.md`** | UI tokens: single-font Clear Sans, amber accent, color/spacing/focus rules. **Read before any UI change.** |
 | **`CHANGELOG.md`** | What changed and why, newest first. |
+| **`docs/design/mockup.html`** | Self-contained visual reference of the design tokens (light + dark side-by-side). |
 | **`docs/sessions/*.md`** | Per-session decision logs (model choices, cost trade-offs, etc.). |
 
 ## At a glance
@@ -28,10 +30,10 @@ Companion docs — read in order if any is unfamiliar:
 - **Deploy:** Railway, auto-deploys on every push to `main`. Persistent
   volume mounted at `/data` holds SQLite + uploaded PDFs.
 - **Owner:** non-technical, mobile-first (Android Chrome), KST timezone.
-- **Tests:** `npm test` runs Vitest (154 tests as of writing — pure-logic
-  units + a few DB-backed integration tests against throwaway SQLite).
-  `npm run build` is the integration safety net. Claude/Voyage features
-  need real keys, so they can only be fully verified on Railway.
+- **Tests:** `npm test` runs Vitest over pure-logic units and DB-backed
+  integration tests (against throwaway SQLite). `npm run lint` + `npm run
+  build` are the integration safety nets. Claude/Voyage features need real
+  keys, so they can only be fully verified on Railway.
 
 ## Modules (`lib/`)
 
@@ -110,6 +112,18 @@ Companion docs — read in order if any is unfamiliar:
 | `/mind` | Heatmap (6 months) + theme cloud + "Who, where, what" (top people/places/projects) + sentiment timeline + 3D embedding map (`Map3D.tsx`). Axis labels under the map. "Re-analyse" / "Re-label" buttons. |
 | `/memory` | Profile editor (the textarea) + Discipline, Location, OwnTracks, Models, Voyage status, Dropbox, Backup, **Chat memory** (collapsible), Export sections. |
 | `/usage` | Cost calendar (daily/monthly), feature breakdown. KST timezone. |
+
+## UI structure
+
+- **`components/`** — shared UI primitives. `cn` (class join), `Button` /
+  `LinkButton`, `Card`, `Section`, `Stat`, `Badge`. Server-safe and
+  hook-free so RSC pages can import them. See `DESIGN.md` for tokens.
+- **`app/Nav.tsx`** — client component, owns the active-link state
+  (amber underline). Rendered inside `app/layout.tsx`'s server-side
+  header.
+- **`public/fonts/clear-sans-{400,500,700,400-italic}.woff2`** —
+  self-hosted Clear Sans. Loaded via `next/font/local` in `layout.tsx`.
+  No build-time or runtime external font requests.
 
 ## Background sweep — `runMaintenanceSweep()` in `lib/notes.ts`
 

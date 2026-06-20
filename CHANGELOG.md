@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-06-20 (UI refresh: single-font Clear Sans + design tokens)
+
+First pass of an editorial UI refresh. Replaces the implicit "system
+fonts + inline class strings" state with an explicit design system:
+
+- **One font, self-hosted.** Clear Sans (Intel, Apache-2.0) loaded
+  via `next/font/local` from `public/fonts/` (~90 KB across four
+  faces — 400 / 400 italic / 500 / 700). No build-time or runtime
+  external font requests. Replaces the system-font default.
+- **`.font-semibold` remapped to weight 500.** Clear Sans has no
+  600 face; rather than letting the browser auto-bold from 700 (which
+  reads heavier than the previous system-font semibold did), a single
+  CSS rule in `app/globals.css` maps `font-semibold` to 500 Medium.
+- **Amber accent.** Tailwind's built-in `amber` scale aliased as
+  `accent` in the tailwind config. Used for the active-nav underline
+  and the `:focus-visible` keyboard ring. Same shade the cost calendar
+  already uses, so chart strokes now read as part of the system.
+- **Active nav state.** New `app/Nav.tsx` (client component, extracted
+  from the inline nav in `app/layout.tsx`) shows an amber underline on
+  the active route. Transparent border on inactive items prevents
+  layout shift on transition. `layout.tsx` stays a server component.
+- **Shared UI components** under `components/`: `cn`, `Button` +
+  `LinkButton`, `Card`, `Section` (lifted from `app/mind/page.tsx`),
+  `Stat` (de-duplicates the inline copies on `/` and `/usage`),
+  `Badge`. Server-safe, hook-free, no new deps.
+- **`leading-relaxed` on long-form reading surfaces** (chat assistant
+  bubbles, insight body, home insight preview, getting-started list).
+  Memory profile textarea already had it.
+- **44px tap-target floor on touch** (was 40px). Applied only to
+  buttons / `[role=button]` / `type=button|submit` — inline `<a>`
+  prose links unaffected.
+- **`prefers-reduced-motion` guard** disables `scroll-behavior: smooth`
+  when the user has motion reduction on.
+- **New `DESIGN.md`** at repo root captures the tokens, the `font-semibold`
+  remap, and the do-not-regress rules. **New `docs/design/mockup.html`**
+  is a self-contained light-and-dark visual reference for the same
+  tokens (open in a browser; loads Clear Sans via @fontsource on jsdelivr
+  for preview only).
+- Updates `SKILL.md`, `AGENTS.md`, `CLAUDE.md` to reference `DESIGN.md`
+  and document the do-not-regress rules.
+
+Verified: `npm run lint`, `npm run build`, `npm test` (206 passed) all
+clean. `app/mind/Map3D.tsx` deliberately untouched.
+
 ## 2026-06-20 (Tier-2: cleanup — shared helpers, schema constraints, docs)
 
 Follow-up to Tier-1 (PR #50). Same review pass, lower severity — cleanup

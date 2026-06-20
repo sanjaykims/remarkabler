@@ -158,7 +158,7 @@ export default function InsightsPage() {
                   {it.title || summarize(it.content)}
                 </span>
               </summary>
-              <div className="px-3 pb-3 text-sm whitespace-pre-wrap border-t border-stone-200 dark:border-stone-800 pt-2">
+              <div className="px-3 pb-3 text-sm whitespace-pre-wrap border-t border-stone-200 dark:border-stone-800 pt-2 leading-relaxed">
                 {it.content}
               </div>
             </details>

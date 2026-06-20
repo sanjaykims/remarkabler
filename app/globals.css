@@ -14,11 +14,25 @@
 body {
   @apply text-stone-900 dark:text-stone-100;
   background: #fafaf9; /* stone-50 */
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
   body {
     background: #000;
   }
+}
+
+/*
+ * Clear Sans ships 400/500/700 but NOT a 600 face. Tailwind's
+ * `font-semibold` applies font-weight:600 — without a real face the
+ * browser auto-bolds from 700, which reads heavier than intended.
+ * Remap every `font-semibold` to weight 500 (Clear Sans Medium), which
+ * visually approximates what the codebase had under system fonts.
+ * See DESIGN.md § Weight remap.
+ */
+.font-semibold {
+  font-weight: 500;
 }
 
 /*
@@ -29,6 +43,11 @@ html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
 }
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
 body,
 button,
 a,
@@ -37,6 +56,22 @@ textarea,
 select,
 [role="button"] {
   touch-action: manipulation;
+}
+
+/*
+ * Keyboard-only focus ring in amber. :focus-visible means mouse clicks
+ * don't trigger the ring, so it never clutters forms or buttons during
+ * normal pointer use.
+ */
+:focus-visible {
+  outline: 2px solid #d97706; /* amber-600 */
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+@media (prefers-color-scheme: dark) {
+  :focus-visible {
+    outline-color: #f59e0b; /* amber-500 */
+  }
 }
 
 /*
@@ -68,6 +103,6 @@ select,
   a[role="button"],
   [type="button"],
   [type="submit"] {
-    min-height: 40px;
+    min-height: 44px;
   }
 }

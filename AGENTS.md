@@ -11,11 +11,14 @@ one pass without re-deriving what we already know.
 > 2. **`CLAUDE.md`** — project specifics + hard rules that override defaults.
 > 3. **This file** — orientation, structure map, how to work, what you (the
 >    agent) can and can't do in this environment.
-> 4. **`docs/claude-harness.md`** (+ `.svg`/`.png`) — how the agent harness
+> 4. **`DESIGN.md`** — UI tokens (single-font Clear Sans, amber accent,
+>    color/spacing/focus). Read before any UI change. Companion preview at
+>    `docs/design/mockup.html`.
+> 5. **`docs/claude-harness.md`** (+ `.svg`/`.png`) — how the agent harness
 >    itself is wired (tools, context, subagents, permissions, MCP).
-> 5. **`docs/sessions/*.md`** — decision logs. Read the most recent before
+> 6. **`docs/sessions/*.md`** — decision logs. Read the most recent before
 >    touching embeddings, OCR model choice, cost, or backup.
-> 6. **`CHANGELOG.md`** — what changed and why, newest first.
+> 7. **`CHANGELOG.md`** — what changed and why, newest first.
 
 ---
 

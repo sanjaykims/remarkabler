@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { EntityRank } from "@/lib/mind";
+import { Section } from "@/components/Section";
 
 // The 3D map uses three.js / react-three-fiber which need `window`, so it
 // must be client-only. next/dynamic with ssr:false defers the chunk load
@@ -806,24 +807,3 @@ function EntityRankings({
   );
 }
 
-function Section({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-2">
-      <header>
-        <h2 className="text-lg font-medium">{title}</h2>
-        {subtitle && <p className="text-xs opacity-60">{subtitle}</p>}
-      </header>
-      <div className="rounded border border-stone-200 dark:border-stone-800 p-3">
-        {children}
-      </div>
-    </section>
-  );
-}
