@@ -248,21 +248,45 @@ export async function analyzePending(
         continue;
       }
       try {
-        upsert.run(
-          row.id,
-          JSON.stringify(result.themes),
-          result.sentiment,
-          result.summary || null,
-          model
-        );
-        delEntities.run(row.id);
-        for (const e of result.entities) {
-          insEntity.run(row.id, e.kind, e.name, normaliseEntityName(e.name));
-        }
+        // Wrap the per-page write in a transaction so the entry_analysis
+        // upsert + entry_entities delete + N inserts commit-or-rollback
+        // together. Without this, a mid-loop throw (SQLITE_BUSY, FK race
+        // on a concurrently-deleted page, SIGTERM mid-write) could leave
+        // entry_analysis updated but entry_entities partial — and the
+        // pending-pages filter (LEFT JOIN ... WHERE a.page_id IS NULL)
+        // would never pick the page up again.
+        //
+        // Empty-entities guard: only replace the existing set if the new
+        // result actually has entities. A noisy model response with
+        // entities:[] used to silently wipe a page's previously-good
+        // entity rows; we now treat empty as "no signal, keep the old
+        // set" instead of "explicit instruction to clear".
+        db().transaction(() => {
+          upsert.run(
+            row.id,
+            JSON.stringify(result.themes),
+            result.sentiment,
+            result.summary || null,
+            model
+          );
+          if (result.entities.length > 0) {
+            delEntities.run(row.id);
+            for (const e of result.entities) {
+              insEntity.run(
+                row.id,
+                e.kind,
+                e.name,
+                normaliseEntityName(e.name)
+              );
+            }
+          }
+        })();
         analyzed++;
       } catch (e) {
         // DB write failed (busy / locked / FK violation if the page was just
-        // deleted). Don't kill the loop — log and move on.
+        // deleted). Don't kill the loop — log and move on. Because the
+        // per-page block is transactional, the page's state is unchanged
+        // by this failure — it stays "pending" until the next sweep.
         console.warn(
           "[mind] analyze (db) failed:",
           row.id,
