@@ -412,7 +412,25 @@ function recordBatchFailure(
   return { inserted: 0, duplicatesSkipped: 0, failed: error };
 }
 
-let compressionInFlight = false;
+// In-flight guard with a time-bound. If a previous sweep hung mid-await
+// (Claude SDK with no explicit timeout, or a process killed without
+// running the finally), the lock stays set until process restart and
+// every subsequent sweep silently no-ops. Treat any lock older than
+// COMPRESSION_INFLIGHT_TIMEOUT_MS as stale and let the next caller
+// proceed. The hung sweep, if still alive, just continues — the work it
+// might race on is per-batch and idempotent (each batch is only "claimed"
+// once its memory_extracted_at is set, which is the last step).
+const COMPRESSION_INFLIGHT_TIMEOUT_MS = 5 * 60 * 1000;
+let compressionStartedAt: number | null = null;
+
+function compressionInFlight(): boolean {
+  if (compressionStartedAt === null) return false;
+  if (Date.now() - compressionStartedAt > COMPRESSION_INFLIGHT_TIMEOUT_MS) {
+    compressionStartedAt = null;
+    return false;
+  }
+  return true;
+}
 
 export type SweepResult = {
   processed: number;
@@ -426,7 +444,7 @@ export type SweepResult = {
 export async function maybeCompressChatSessions(
   limit: number = COMPRESS_DEFAULT_LIMIT
 ): Promise<SweepResult> {
-  if (compressionInFlight) {
+  if (compressionInFlight()) {
     return {
       processed: 0,
       inserted: 0,
@@ -436,7 +454,7 @@ export async function maybeCompressChatSessions(
       inFlight: true,
     };
   }
-  compressionInFlight = true;
+  compressionStartedAt = Date.now();
   try {
     const n = Math.max(1, Math.min(COMPRESS_MAX_LIMIT, Math.floor(limit)));
     const pending = db()
@@ -473,7 +491,7 @@ export async function maybeCompressChatSessions(
       remaining: pendingBatchCount(),
     };
   } finally {
-    compressionInFlight = false;
+    compressionStartedAt = null;
   }
 }
 
@@ -530,6 +548,43 @@ function pendingBatchCount(): number {
     )
     .get() as { c: number };
   return row.c;
+}
+
+export type PendingBatchDetail = {
+  id: number;
+  conversation_id: string;
+  created_at: string;
+  message_count: number;
+  user_char_count: number;
+  failed_attempts: number;
+  extraction_error: string | null;
+};
+
+/**
+ * One row per pending (not-yet-extracted) chat archive batch. Used by the
+ * /memory page so the user can SEE what's pending — id, age, attempts,
+ * the last extraction error if any — rather than just a "N pending" count
+ * with no detail and no way to debug.
+ */
+export function pendingBatchDetails(): PendingBatchDetail[] {
+  return db()
+    .prepare(
+      `SELECT id, conversation_id, created_at, message_count, user_char_count,
+              failed_attempts, extraction_error
+       FROM chat_archive_batches
+       WHERE memory_extracted_at IS NULL
+       ORDER BY id ASC`
+    )
+    .all() as PendingBatchDetail[];
+}
+
+/**
+ * Force-release the in-flight guard. Used by the manual "Process pending
+ * now" path so a sweep that crashed mid-await (and left the lock set)
+ * can be unblocked without a process restart.
+ */
+export function clearCompressionInFlight(): void {
+  compressionStartedAt = null;
 }
 
 /**

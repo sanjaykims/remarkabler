@@ -1000,11 +1000,22 @@ type ChatMemoryItem = {
   missing_embedding: 0 | 1;
 };
 
+type PendingBatchDetail = {
+  id: number;
+  conversation_id: string;
+  created_at: string;
+  message_count: number;
+  user_char_count: number;
+  failed_attempts: number;
+  extraction_error: string | null;
+};
+
 type ChatMemoryStatus = {
   total: number;
   last_extracted_at: string | null;
   missing_embedding: number;
   pending_batches: number;
+  pending_batch_details: PendingBatchDetail[];
   stuck_batches: number;
   stuck_batch_ids: number[];
   last_extraction_error: string | null;
@@ -1087,6 +1098,38 @@ function ChatMemorySection() {
     }
   }
 
+  const [processBusy, setProcessBusy] = useState(false);
+  const [processMsg, setProcessMsg] = useState<string | null>(null);
+
+  async function processPending() {
+    if (processBusy) return;
+    setProcessBusy(true);
+    setProcessMsg(null);
+    try {
+      const r = await fetch("/api/chat/memories/process", { method: "POST" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Sweep failed");
+      const sw = d.result || {};
+      if (sw.inFlight) {
+        setProcessMsg(
+          "A sweep is already running — give it a few seconds, then refresh."
+        );
+      } else {
+        setProcessMsg(
+          `Processed ${sw.processed || 0} batch${(sw.processed || 0) === 1 ? "" : "es"}` +
+            ` · ${sw.inserted || 0} memor${(sw.inserted || 0) === 1 ? "y" : "ies"} added` +
+            (sw.failed ? ` · ${sw.failed} failed (will retry on next sweep)` : "") +
+            (sw.remaining ? ` · ${sw.remaining} still pending` : "")
+        );
+      }
+      await load();
+    } catch (e) {
+      setProcessMsg((e as Error).message || "Sweep failed.");
+    } finally {
+      setProcessBusy(false);
+    }
+  }
+
   const [backfillBusy, setBackfillBusy] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
 
@@ -1153,6 +1196,47 @@ function ChatMemorySection() {
               ? ` · ${status.missing_embedding} without embedding`
               : ""}
           </p>
+          {status.pending_batches > 0 && (
+            <div className="rounded border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-2 space-y-1.5">
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                {status.pending_batches} batch
+                {status.pending_batches === 1 ? "" : "es"} waiting for
+                extraction. The background sweep is throttled to once every
+                5 minutes — tap below to run it now. (Your chat messages are
+                safe either way; they&rsquo;re preserved on Clear and only
+                hidden from the active chat view.)
+              </p>
+              {status.pending_batch_details &&
+                status.pending_batch_details.length > 0 && (
+                  <ul className="text-[11px] opacity-80 space-y-0.5">
+                    {status.pending_batch_details.slice(0, 5).map((b) => (
+                      <li key={b.id}>
+                        Batch #{b.id} · {b.message_count} message
+                        {b.message_count === 1 ? "" : "s"} ·{" "}
+                        {b.user_char_count.toLocaleString()} chars ·{" "}
+                        {formatLocalTime(b.created_at)}
+                        {b.failed_attempts > 0
+                          ? ` · attempt ${b.failed_attempts}/2`
+                          : ""}
+                        {b.extraction_error
+                          ? ` · last error: ${b.extraction_error}`
+                          : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              <button
+                onClick={processPending}
+                disabled={processBusy}
+                className="rounded border border-amber-400 dark:border-amber-700 px-3 py-1 text-xs text-amber-800 dark:text-amber-300 disabled:opacity-50"
+              >
+                {processBusy ? "Processing…" : "Process pending now"}
+              </button>
+              {processMsg && (
+                <p className="text-xs opacity-70">{processMsg}</p>
+              )}
+            </div>
+          )}
           {status.stuck_batches > 0 && (
             <div className="rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-2 space-y-1.5">
               <p className="text-xs text-red-700 dark:text-red-300">
