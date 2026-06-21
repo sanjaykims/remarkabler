@@ -1208,7 +1208,7 @@ function ChatMemorySection() {
               </p>
               {status.pending_batch_details &&
                 status.pending_batch_details.length > 0 && (
-                  <ul className="text-[11px] opacity-80 space-y-0.5">
+                  <ul className="text-[11px] opacity-80 space-y-0.5 break-words">
                     {status.pending_batch_details.slice(0, 5).map((b) => (
                       <li key={b.id}>
                         Batch #{b.id} · {b.message_count} message
@@ -1311,7 +1311,7 @@ function ChatMemorySection() {
                 <span className="shrink-0 rounded-full bg-stone-100 dark:bg-stone-800 px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-80">
                   {m.category}
                 </span>
-                <p className="text-sm leading-snug flex-1">{m.text}</p>
+                <p className="text-sm leading-snug flex-1 min-w-0 break-words">{m.text}</p>
               </div>
               <div className="flex items-center justify-between gap-2 text-[11px] opacity-60">
                 <span>{formatLocalTime(m.created_at)}</span>
