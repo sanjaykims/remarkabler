@@ -20,6 +20,13 @@ export default function LockScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const autoTried = useRef(false);
+  // Hard guard against concurrent unlock attempts. Two callers can race
+  // — the silent auto-attempt on mount and the tap-anywhere listener (or
+  // the button) — and WebAuthn doesn't take kindly to two
+  // navigator.credentials.get() calls in flight at once. busy is a React
+  // state and only updates on the next render, so a ref is needed for an
+  // immediate same-tick check.
+  const inFlight = useRef(false);
 
   useEffect(() => {
     fetch("/api/auth")
@@ -50,6 +57,8 @@ export default function LockScreen() {
   // `silent` is used by the automatic prompt: a failure there (e.g. iOS needs
   // a tap) should quietly fall back to the buttons, not show an error.
   async function unlockBiometric(silent = false) {
+    if (inFlight.current) return; // drop racing calls (e.g. tap + silent)
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     setUnlocking(true);
@@ -64,6 +73,7 @@ export default function LockScreen() {
       if (!silent) setError(friendly(e, "Couldn't unlock with biometrics."));
       setBusy(false);
       setUnlocking(false);
+      inFlight.current = false;
     }
   }
 
@@ -99,11 +109,24 @@ export default function LockScreen() {
     }
   }
 
-  // On a device that has unlocked before, prompt for the passkey automatically
-  // once the lock screen is visible — so returning from the background goes
-  // straight to Face ID / fingerprint with no extra tap.
+  // On a device that has unlocked before, surface Face ID / fingerprint
+  // automatically — opening the app should go straight to the biometric
+  // prompt with no extra aiming.
+  //
+  // Two paths:
+  //   (a) Silent auto-attempt on mount + on every foreground. Works on
+  //       Android Chrome.
+  //   (b) `pointerdown` anywhere on the page fires a non-silent attempt.
+  //       This is what iOS needs — WebAuthn there requires a real user
+  //       gesture in the web view's document, and the Springboard tap on
+  //       the app icon doesn't transfer. Listening on the document means
+  //       the user can tap ANYWHERE on the lock screen — they don't have
+  //       to aim at the small unlock button.
+  //
+  // Skipped entirely if the passcode-setup flow is open: the user is
+  // about to type into an input and shouldn't get a stray Face ID modal.
   useEffect(() => {
-    if (registered !== true || autoTried.current) return;
+    if (registered !== true || showPasscode) return;
     let known = false;
     try {
       known = localStorage.getItem(DEVICE_KNOWN_KEY) === "1";
@@ -112,16 +135,29 @@ export default function LockScreen() {
     }
     if (!known) return;
 
-    function attempt() {
+    function attemptSilent() {
       if (autoTried.current || document.visibilityState !== "visible") return;
       autoTried.current = true;
       unlockBiometric(true);
     }
-    attempt();
-    document.addEventListener("visibilitychange", attempt);
-    return () => document.removeEventListener("visibilitychange", attempt);
+    attemptSilent();
+    document.addEventListener("visibilitychange", attemptSilent);
+
+    // First user tap anywhere — covers iOS's user-gesture requirement and
+    // lets any platform unlock with a tap instead of a button-press. The
+    // inFlight guard inside unlockBiometric drops the call if the silent
+    // attempt above already opened a modal.
+    function onFirstTap() {
+      unlockBiometric(false);
+    }
+    document.addEventListener("pointerdown", onFirstTap, { once: true });
+
+    return () => {
+      document.removeEventListener("visibilitychange", attemptSilent);
+      document.removeEventListener("pointerdown", onFirstTap);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registered]);
+  }, [registered, showPasscode]);
 
   return (
     <main className="min-h-screen flex items-center justify-center px-6">
