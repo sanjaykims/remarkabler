@@ -38,10 +38,23 @@ body {
 /*
  * Smooth scroll + remove the legacy 300ms tap delay so 120Hz screens
  * feel as snappy as they can.
+ *
+ * `overflow-x: clip` on the document is a safety net: any unbreakable
+ * string (a long URL in a chat message, a path in an error, etc.) can
+ * blow past a flex/max-width child and push the body wider than the
+ * viewport, which on phones reads as "the app is wider than my screen".
+ * Clip never lets that happen. We pick `clip` over `hidden` because it
+ * doesn't establish a new scroll container and doesn't break
+ * `position: sticky` on descendants. Intentional internal scrollers
+ * (the nav with overflow-x-auto, etc.) keep working.
  */
 html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  overflow-x: clip;
+}
+body {
+  overflow-x: clip;
 }
 @media (prefers-reduced-motion: reduce) {
   html {
