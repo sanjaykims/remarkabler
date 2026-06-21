@@ -1003,7 +1003,7 @@ type ChatMemoryItem = {
 type PendingBatchDetail = {
   id: number;
   conversation_id: string;
-  created_at: string;
+  archived_at: string;
   message_count: number;
   user_char_count: number;
   failed_attempts: number;
@@ -1214,7 +1214,7 @@ function ChatMemorySection() {
                         Batch #{b.id} · {b.message_count} message
                         {b.message_count === 1 ? "" : "s"} ·{" "}
                         {b.user_char_count.toLocaleString()} chars ·{" "}
-                        {formatLocalTime(b.created_at)}
+                        {formatLocalTime(b.archived_at)}
                         {b.failed_attempts > 0
                           ? ` · attempt ${b.failed_attempts}/2`
                           : ""}
