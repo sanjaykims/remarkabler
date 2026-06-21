@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-06-21 (Fix: pending chat-memory batches stuck without recourse)
+
+The /memory page kept showing "1 pending" for a full day. Three pieces:
+
+- **`compressionInFlight` was a bare boolean.** If a sweep hung mid-await
+  (Claude SDK has no explicit timeout, defaults to 10 minutes; process
+  killed mid-call without running the `finally`) the lock stayed `true`
+  for the life of the process and every subsequent sweep silently
+  no-op'd. Replaced with a `compressionStartedAt` timestamp +
+  `COMPRESSION_INFLIGHT_TIMEOUT_MS = 5 min` — any lock older than that
+  is considered stale and the next caller proceeds.
+- **`compressChatSession` had no explicit timeout** on the Anthropic
+  `messages.create` call. Added a 60s timeout so a stalled HTTP fails
+  loudly (increments `failed_attempts`) rather than holding the sweep
+  open for the SDK's 10-minute default.
+- **No UI for "just pending" (non-stuck) batches.** The existing "Retry
+  stuck batches" button only fires when `failed_attempts >= 2`, so a
+  batch sitting at `failed_attempts < 2` with no error had no
+  surfacing and no nudge. Added:
+  - `pendingBatchDetails()` exposed via the `/api/chat/memories` GET
+    response (`pending_batch_details[]` — id, age, message count, char
+    count, attempts, last error).
+  - `POST /api/chat/memories/process` — force-clears the in-flight
+    guard and awaits a sweep so the caller sees the real result.
+  - `/memory` page: an amber pending-batches block with per-batch
+    detail + a "Process pending now" button, plus reassurance copy
+    that the underlying chat messages are preserved either way.
+
+Chat messages are **never** deleted by the extraction flow. Clear sets
+`archived_at` only; backfill `?reset=true` preserves rows and just
+NULLs `archive_batch_id`; permanent-skip doesn't touch messages. The
+record stays even when extraction can't recover.
+
 ## 2026-06-20 (Fix: chat memory the user can see but Claude couldn't)
 
 **Bug:** durable chat memories were visible on `/memory` (e.g. a confirmed

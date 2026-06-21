@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
+import { pendingBatchDetails } from "@/lib/chatMemory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,6 +91,7 @@ export async function GET() {
       last_extracted_at: counts.last_extracted_at,
       missing_embedding: counts.missing_embedding,
       pending_batches: counts.pending_batches,
+      pending_batch_details: pendingBatchDetails(),
       stuck_batches: counts.stuck_batches,
       stuck_batch_ids: stuckBatchRows.map((r) => r.id),
       last_extraction_error: lastErrorRow?.extraction_error ?? null,

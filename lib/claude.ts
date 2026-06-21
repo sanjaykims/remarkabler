@@ -1097,18 +1097,27 @@ export async function compressChatSession(opts: {
     );
   }
 
-  const resp = await client().messages.create({
-    model,
-    max_tokens: 500,
-    system: [
-      {
-        type: "text",
-        text: CHAT_MEMORY_EXTRACTION_GUIDANCE,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages: [{ role: "user", content: userParts.join("\n") }],
-  });
+  // Explicit 60s timeout: extraction is fire-and-forget from the chat
+  // route and runs under the sweep's in-flight guard. The Anthropic SDK's
+  // default is 10 minutes — if a request stalls, the sweep's lock stays
+  // held for that long and every other sweep-call no-ops. 60s is plenty
+  // for a 500-token reply over a 16K-char transcript; a longer stall is
+  // a hang we want to surface, not wait on.
+  const resp = await client().messages.create(
+    {
+      model,
+      max_tokens: 500,
+      system: [
+        {
+          type: "text",
+          text: CHAT_MEMORY_EXTRACTION_GUIDANCE,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      messages: [{ role: "user", content: userParts.join("\n") }],
+    },
+    { timeout: 60_000 }
+  );
   recordUsage("chat_memory_compress", model, resp.usage);
 
   const block = resp.content.find((b) => b.type === "text");
