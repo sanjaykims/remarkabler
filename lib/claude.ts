@@ -1097,16 +1097,23 @@ export async function compressChatSession(opts: {
     );
   }
 
-  // Explicit 60s timeout: extraction is fire-and-forget from the chat
-  // route and runs under the sweep's in-flight guard. The Anthropic SDK's
-  // default is 10 minutes — if a request stalls, the sweep's lock stays
-  // held for that long and every other sweep-call no-ops. 60s is plenty
-  // for a 500-token reply over a 16K-char transcript; a longer stall is
-  // a hang we want to surface, not wait on.
+  // max_tokens budgeting: up to MAX_ITEMS_PER_BATCH (7) items × ~520 chars
+  // each (280 text + 240 excerpt + JSON overhead) ≈ 3,640 chars ≈ ~1,000
+  // tokens of output. The original 500-token cap truncated the JSON
+  // mid-array on real conversations — Claude emitted partial output,
+  // parseChatMemories choked on "Unexpected end of JSON input", and the
+  // batch failed extraction. 2048 gives generous headroom; the parser
+  // also now salvages partial items as defense in depth (see
+  // parseChatMemories).
+  //
+  // 60s timeout: extraction is fire-and-forget from the chat route under
+  // the sweep's in-flight guard. The Anthropic SDK's default is 10 min,
+  // which would hold the sweep lock open through a stall; 60s is plenty
+  // for a ~1K-token reply over a 16K-char transcript.
   const resp = await client().messages.create(
     {
       model,
-      max_tokens: 500,
+      max_tokens: 2048,
       system: [
         {
           type: "text",
@@ -1119,14 +1126,26 @@ export async function compressChatSession(opts: {
     { timeout: 60_000 }
   );
   recordUsage("chat_memory_compress", model, resp.usage);
+  // If the response was cut off, salvage what we can (parseChatMemories
+  // handles truncated arrays) but surface a clear signal in parseError so
+  // the bounded-retry path can react if salvage yielded nothing.
+  const truncated = resp.stop_reason === "max_tokens";
 
   const block = resp.content.find((b) => b.type === "text");
   const raw = block && block.type === "text" ? block.text.trim() : "";
   const parsed = parseChatMemories(raw);
+  // If we salvaged items from a truncated reply, treat that as success —
+  // some memories is better than zero. Only surface the truncation as a
+  // parseError when salvage yielded nothing (so the bounded-retry path
+  // can react).
+  const parseError =
+    truncated && parsed.items.length === 0 && !parsed.parseError
+      ? "Truncated at max_tokens with no recoverable items"
+      : parsed.parseError;
   return {
     items: parsed.items,
     raw,
-    parseError: parsed.parseError,
+    parseError,
     model,
   };
 }
@@ -1134,6 +1153,12 @@ export async function compressChatSession(opts: {
 /**
  * Pure parser for compressChatSession's JSON output — lenient in the same
  * spirit as parseAxisLabels. Returns parseError = "" on success.
+ *
+ * Salvage path: if strict JSON.parse fails (the most common cause is
+ * Claude's reply hitting max_tokens and being truncated mid-array), scan
+ * for COMPLETE `{...}` object literals inside the items region and parse
+ * them individually. A truncated last item is dropped; the preceding
+ * complete items are returned. Better than losing the whole batch.
  */
 export function parseChatMemories(raw: string): {
   items: ChatMemoryDraft[];
@@ -1163,7 +1188,16 @@ export function parseChatMemories(raw: string): {
       parseError = (e as Error).message;
     }
   }
+
+  // Strict parse failed — try to salvage complete items from a truncated
+  // reply. Look for `[`, then walk forward extracting balanced `{...}`
+  // blocks. Stops at the first unbalanced one (the truncated tail).
   if (!parsed || typeof parsed !== "object") {
+    const salvaged = salvageItems(stripped);
+    if (salvaged.length > 0) {
+      const out = toDrafts(salvaged);
+      if (out.length > 0) return { items: out, parseError: "" };
+    }
     return { items: [], parseError: parseError || "Could not parse JSON" };
   }
 
@@ -1174,7 +1208,10 @@ export function parseChatMemories(raw: string): {
   if (!Array.isArray(itemsRaw)) {
     return { items: [], parseError: "Response missing items array" };
   }
+  return { items: toDrafts(itemsRaw), parseError: "" };
+}
 
+function toDrafts(itemsRaw: unknown[]): ChatMemoryDraft[] {
   const items: ChatMemoryDraft[] = [];
   for (const it of itemsRaw) {
     if (!it || typeof it !== "object") continue;
@@ -1194,5 +1231,69 @@ export function parseChatMemories(raw: string): {
       source_excerpt: excerpt,
     });
   }
-  return { items, parseError: "" };
+  return items;
+}
+
+/**
+ * Walk a partially-truncated JSON-ish string and pull out complete
+ * `{...}` object literals from inside the first `[` (the items array).
+ *
+ * The common truncation shape is `{"items":[{...},{...},{...partial...`
+ * — the OUTER object is itself unclosed, so we can't recover by walking
+ * the outermost braces; we have to skip past the array opener and walk
+ * the elements directly. Tracks brace depth while respecting string
+ * literals (a `}` inside `"text": "}"` doesn't close the object) and
+ * escape sequences. Stops at the first object whose closing `}` is
+ * missing (the truncated tail). JSON.parse each one individually —
+ * invalid ones are skipped.
+ */
+function salvageItems(text: string): unknown[] {
+  const arrayStart = text.indexOf("[");
+  if (arrayStart < 0) return [];
+  const out: unknown[] = [];
+  let i = arrayStart + 1;
+  while (i < text.length) {
+    if (text[i] !== "{") {
+      i++;
+      continue;
+    }
+    const start = i;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let closed = false;
+    for (; i < text.length; i++) {
+      const ch = text[i];
+      if (inString) {
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+      } else if (ch === "{") {
+        depth++;
+      } else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          closed = true;
+          i++;
+          break;
+        }
+      }
+    }
+    if (!closed) break; // truncated tail — drop it
+    const chunk = text.slice(start, i);
+    try {
+      out.push(JSON.parse(chunk));
+    } catch {
+      // skip malformed individual object
+    }
+  }
+  return out;
 }
