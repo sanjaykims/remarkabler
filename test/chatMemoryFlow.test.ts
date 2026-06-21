@@ -80,6 +80,29 @@ function clearChat(conversationId: string): number | null {
   })();
 }
 
+describe("chat-memory flow: pendingBatchDetails", () => {
+  it("returns one row per pending batch with schema-matching columns", async () => {
+    // Regression for a real bug: the SELECT referenced `created_at`, but
+    // chat_archive_batches has `archived_at`. SQLite threw, /api/chat/memories
+    // 500'd, and /memory rendered "Loading…" + "No chat memories yet" at
+    // once. Exercising the real query against the real schema would have
+    // caught it.
+    insertMsg("user", "morning thoughts");
+    insertMsg("assistant", "ack");
+    clearChat("default");
+    const cm = await import("@/lib/chatMemory");
+    const rows = cm.pendingBatchDetails();
+    expect(rows.length).toBe(1);
+    const row = rows[0];
+    expect(row.id).toBeGreaterThan(0);
+    expect(row.conversation_id).toBe("default");
+    expect(typeof row.archived_at).toBe("string"); // not undefined → column exists
+    expect(row.message_count).toBe(2);
+    expect(row.failed_attempts).toBe(0);
+    expect(row.extraction_error).toBeNull();
+  });
+});
+
 describe("chat-memory flow: Clear creates an archive batch", () => {
   it("populates a batch with start/end ids, count, user char count", () => {
     insertMsg("user", "Hello, I prefer mornings");

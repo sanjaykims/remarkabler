@@ -553,7 +553,7 @@ function pendingBatchCount(): number {
 export type PendingBatchDetail = {
   id: number;
   conversation_id: string;
-  created_at: string;
+  archived_at: string;
   message_count: number;
   user_char_count: number;
   failed_attempts: number;
@@ -565,11 +565,16 @@ export type PendingBatchDetail = {
  * /memory page so the user can SEE what's pending — id, age, attempts,
  * the last extraction error if any — rather than just a "N pending" count
  * with no detail and no way to debug.
+ *
+ * NOTE: the timestamp column on chat_archive_batches is `archived_at`, not
+ * `created_at`. Using the wrong name throws at query time, which 500s the
+ * whole /api/chat/memories GET and renders /memory as "Loading…" + "No
+ * chat memories yet" simultaneously. Test/chatMemoryFlow pins this.
  */
 export function pendingBatchDetails(): PendingBatchDetail[] {
   return db()
     .prepare(
-      `SELECT id, conversation_id, created_at, message_count, user_char_count,
+      `SELECT id, conversation_id, archived_at, message_count, user_char_count,
               failed_attempts, extraction_error
        FROM chat_archive_batches
        WHERE memory_extracted_at IS NULL
