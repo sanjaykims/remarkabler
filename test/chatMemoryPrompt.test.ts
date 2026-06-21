@@ -117,4 +117,42 @@ describe("parseChatMemories", () => {
     expect(items).toEqual([]);
     expect(parseError).toBe("");
   });
+
+  it("salvages complete items from a max_tokens-truncated reply", () => {
+    // Real-world failure: Claude's reply got cut off mid-array (the
+    // "Unexpected end of JSON input" error). Salvage path pulls complete
+    // {...} objects out and drops the truncated tail. Better than losing
+    // the whole batch.
+    const truncated =
+      '{"items":[' +
+      '{"category":"intent","text":"Will depart for biz trip Sunday June 21.","source_excerpt":"Leaving on upcoming sunday."},' +
+      '{"category":"fact","text":"Confirmed Wuhan trip.","source_excerpt":"trip got fixed."},' +
+      '{"category":"feeling","text":"Tired from long work days.","source_excer'; // truncated mid-string
+    const { items, parseError } = parseChatMemories(truncated);
+    expect(items.length).toBe(2);
+    expect(items[0].text).toContain("Sunday June 21");
+    expect(items[1].text).toContain("Wuhan");
+    // Salvage success → no parseError (some items beats zero).
+    expect(parseError).toBe("");
+  });
+
+  it("salvage respects strings: braces inside text don't end the object early", () => {
+    const truncated =
+      '{"items":[' +
+      '{"category":"fact","text":"likes the song } from that album","source_excerpt":""},' +
+      '{"category":"intent","text":"plan to visit { restaurant","source_excerpt":""},' +
+      '{"category":"feeling","text":"unfinished';
+    const { items } = parseChatMemories(truncated);
+    expect(items.length).toBe(2);
+    expect(items[0].text).toBe("likes the song } from that album");
+    expect(items[1].text).toBe("plan to visit { restaurant");
+  });
+
+  it("truncated reply with zero salvageable items → parseError", () => {
+    // First object itself is truncated → nothing to recover.
+    const truncated = '{"items":[{"category":"intent","text":"unfinish';
+    const { items, parseError } = parseChatMemories(truncated);
+    expect(items).toEqual([]);
+    expect(parseError).not.toBe("");
+  });
 });
