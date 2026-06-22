@@ -481,7 +481,7 @@ export default function MemoryPage() {
                 setDirty(true);
               }}
               rows={18}
-              className="w-full rounded border border-stone-300 dark:border-stone-700 bg-transparent p-3 text-sm leading-relaxed whitespace-pre-wrap"
+              className="w-full rounded border border-stone-300 dark:border-stone-700 bg-transparent p-3 text-base leading-relaxed whitespace-pre-wrap"
             />
           ) : (
             <p className="text-sm opacity-70 rounded border border-stone-200 dark:border-stone-800 p-4">

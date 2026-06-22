@@ -114,11 +114,24 @@ select,
  * Also enforce a 16px minimum font-size on every form input on touch.
  * iOS Safari auto-zooms into any input/textarea whose font-size is
  * under 16px when the user taps to focus — leaving them stuck zoomed in
- * after they finish typing, which the user (correctly) found very
- * annoying in the chat. 16px is the iOS no-zoom threshold; `max(16px,
- * 1em)` preserves any deliberately-larger size while enforcing the
- * floor. Scoped to touch devices so desktop's design (text-sm inputs
- * etc.) is unchanged.
+ * after typing, which is annoying enough that the user (correctly)
+ * filed it.
+ *
+ * `!important` is deliberate here. Class selectors (Tailwind utilities
+ * like `.text-sm`, specificity 0,1,0) beat element selectors
+ * (`input`/`textarea`, specificity 0,0,1), so without it this rule is
+ * silently overridden by any input that carries `text-sm` — which the
+ * chat composer and the memory profile textarea both did before this
+ * commit. (Thanks to Codex review on PR #62 for catching exactly that.)
+ * Per-input className changes belt-and-suspenders this; the global
+ * rule remains as a safety net for any input added later. iOS auto-
+ * zoom on focus is a hard accessibility constraint, not a stylistic
+ * choice — there's no legitimate reason to want a sub-16px input on
+ * touch, so the !important is justified.
+ *
+ * `max(16px, 1em)` preserves any deliberately-larger inherited size
+ * while enforcing the 16px floor. Scoped to touch devices so desktop's
+ * `text-sm` inputs render at 14px as designed.
  */
 @media (hover: none) and (pointer: coarse) {
   button:not(:disabled),
@@ -130,6 +143,6 @@ select,
   input,
   textarea,
   select {
-    font-size: max(16px, 1em);
+    font-size: max(16px, 1em) !important;
   }
 }

@@ -526,7 +526,7 @@ export default function ChatPage() {
           }
           disabled={busy}
           rows={2}
-          className="w-full bg-transparent resize-none outline-none px-1 text-sm placeholder:opacity-50"
+          className="w-full bg-transparent resize-none outline-none px-1 text-base placeholder:opacity-50"
         />
         <div className="flex items-center justify-between">
           <input
