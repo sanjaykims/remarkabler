@@ -5,6 +5,7 @@ import {
   startRegistration,
   startAuthentication,
 } from "@simplewebauthn/browser";
+import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
 import { setUnlocking } from "./lockState";
 import { track } from "./analytics";
 
@@ -27,38 +28,64 @@ export default function LockScreen() {
   // state and only updates on the next render, so a ref is needed for an
   // immediate same-tick check.
   const inFlight = useRef(false);
-  // Pre-fetched WebAuthn options. The reason this exists: iOS Safari
-  // treats "transient user activation" as expired after even one short
-  // await between the user's tap and navigator.credentials.get(). The
-  // /api/auth login-options roundtrip takes ~200-500ms on LTE — enough
-  // for activation to lapse, so the FIRST tap silently fails and the
-  // user has to tap a SECOND time. Pre-fetching options on mount lets
-  // the click handler resolve them with at most a microtask wait (when
-  // the prefetch is already complete) and call startAuthentication
-  // within the same activation window as the click event.
+  // Pre-fetched WebAuthn options.
   //
-  // Stored as a PROMISE rather than a value-or-null so the click handler
-  // and the background prefetch can never both have a login-options
-  // request in flight at the same time. The server tracks the WebAuthn
-  // challenge in a single `fc_challenge` cookie that each login-options
-  // call overwrites: if two such requests are concurrent, whichever
-  // response arrives last wins, and the cookie may end up holding a
-  // challenge the user did NOT sign — login-verify then fails. Codex
-  // caught exactly that race on PR #64. Storing the in-flight promise
-  // and always awaiting it (instead of firing a parallel "live fetch"
-  // when the value isn't ready yet) keeps exactly one challenge in play
-  // at a time.
+  // The real iOS gotcha (which several previous attempts missed): iOS
+  // Safari requires `navigator.credentials.get()` to be invoked
+  // SYNCHRONOUSLY within the click event handler's run. Not just "within
+  // the spec's 5s activation window", and not even "after one microtask
+  // boundary" — actually synchronously, no `await` between the click
+  // and the call. The previous version stored the prefetch as a Promise
+  // and `await`ed it before calling startAuthentication. Even when the
+  // Promise was already resolved, the `await` introduced a microtask
+  // boundary and iOS treated activation as consumed. Modal didn't open
+  // on the first tap; second tap worked because by then state had
+  // changed enough that the timing differed.
   //
-  // The server-side cookie has a 5-minute TTL, so a pre-fetched
-  // challenge is good as long as the user taps within five minutes of
-  // opening the app.
-  const cachedAuthOptionsPromise = useRef<Promise<unknown> | null>(null);
+  // Two slots, used in this priority order at click time:
+  //
+  //   1. `cachedAuthOptionsValue` — the resolved options object.
+  //      The click handler can read this synchronously and pass it
+  //      straight to startAuthentication. startAuthentication is async
+  //      but its body runs synchronously up to its own await, and that
+  //      await is AFTER the navigator.credentials.get() call — so the
+  //      Face ID modal opens inside the same synchronous run as the
+  //      click event. THIS is the iOS-compatible path.
+  //
+  //   2. `cachedAuthOptionsPromise` — the in-flight prefetch promise.
+  //      If we haven't received the response yet, the click handler
+  //      awaits this promise (losing activation, same as a live fetch
+  //      would). But we use the SAME promise, never fire a parallel
+  //      one, so the server's single fc_challenge cookie never gets
+  //      overwritten by a stale response (the race Codex caught on PR
+  //      #64).
+  //
+  // The challenge cookie has a 5-minute TTL; the prefetched challenge
+  // is good as long as the user taps within that window.
+  const cachedAuthOptionsValue =
+    useRef<PublicKeyCredentialRequestOptionsJSON | null>(null);
+  const cachedAuthOptionsPromise =
+    useRef<Promise<PublicKeyCredentialRequestOptionsJSON> | null>(null);
 
   useEffect(() => {
+    // Kick off the options prefetch in parallel with the registration
+    // check, gated on the "known device" localStorage flag — same flag
+    // the auto-trigger uses. This way the cached value is usually ready
+    // by the time the user taps. Wasted ~5KB on an unknown device is
+    // fine.
+    let known = false;
+    try {
+      known = localStorage.getItem(DEVICE_KNOWN_KEY) === "1";
+    } catch {
+      // localStorage unavailable
+    }
+    if (known) prefetchAuthOptions();
+
     fetch("/api/auth")
       .then((r) => r.json())
       .then((d) => setRegistered(!!d.registered))
       .catch(() => setRegistered(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function post(payload: object) {
@@ -81,57 +108,110 @@ export default function LockScreen() {
   }
 
   // Start a prefetch of WebAuthn login-options if one isn't already in
-  // flight. Idempotent — multiple callers (mount effect, retry-after-
-  // failure path) can call this freely. Self-clears the cached promise
-  // on rejection so a subsequent call can retry.
+  // flight. Stores the in-flight Promise in one slot and, on resolution,
+  // moves the value into a second slot the click handler can read
+  // SYNCHRONOUSLY. Idempotent; safe to call from multiple places.
   function prefetchAuthOptions() {
-    if (cachedAuthOptionsPromise.current) return;
-    const p = post({ action: "login-options" });
+    if (cachedAuthOptionsValue.current || cachedAuthOptionsPromise.current) return;
+    const p = post({
+      action: "login-options",
+    }) as Promise<PublicKeyCredentialRequestOptionsJSON>;
     cachedAuthOptionsPromise.current = p;
-    p.catch(() => {
-      // Only clear if we're still the current cache — a parallel reset
-      // shouldn't wipe a successor.
+    p.then((options) => {
+      if (cachedAuthOptionsPromise.current === p) {
+        cachedAuthOptionsPromise.current = null;
+        cachedAuthOptionsValue.current = options;
+      }
+    }).catch(() => {
       if (cachedAuthOptionsPromise.current === p) {
         cachedAuthOptionsPromise.current = null;
       }
     });
   }
 
+  // Continuation after we have options in hand. Sends the signed
+  // assertion to login-verify and reloads on success.
+  function completeUnlock(
+    credPromise: Promise<Awaited<ReturnType<typeof startAuthentication>>>,
+    silent: boolean
+  ) {
+    credPromise
+      .then((cred) => post({ action: "login-verify", response: cred }))
+      .then(() => {
+        rememberDevice();
+        track("unlock_success", { method: "biometric" });
+        location.reload();
+      })
+      .catch((e) => {
+        if (!silent) setError(friendly(e, "Couldn't unlock with biometrics."));
+        setBusy(false);
+        setUnlocking(false);
+        inFlight.current = false;
+        prefetchAuthOptions();
+      });
+  }
+
   // `silent` is used by the automatic prompt: a failure there (e.g. iOS needs
   // a tap) should quietly fall back to the buttons, not show an error.
-  async function unlockBiometric(silent = false) {
-    if (inFlight.current) return; // drop racing calls (e.g. tap + silent)
+  //
+  // CRITICAL: this function is NOT `async` for the fast (cached-value)
+  // path. iOS Safari requires navigator.credentials.get() to be invoked
+  // synchronously within the click event handler — even an await on a
+  // resolved Promise introduces a microtask boundary that iOS treats as
+  // consuming user activation. The fast path therefore calls
+  // startAuthentication() synchronously (its body runs to its own
+  // internal `await navigator.credentials.get(...)` synchronously, so
+  // the Face ID modal opens inside the same tick as the click event).
+  // The result is then awaited via .then() chaining in completeUnlock.
+  function unlockBiometric(silent = false) {
+    if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setError(null);
     setUnlocking(true);
-    // Take the in-flight prefetch promise if there is one; otherwise
-    // fire a fresh login-options call. Either way there's exactly ONE
-    // login-options request in play, so the server's single
-    // fc_challenge cookie can't be overwritten by a stale parallel
-    // response after we've already signed an assertion. Clear the
-    // shared slot before awaiting so a concurrent prefetchAuthOptions()
-    // call won't see a stale reference and won't fire a second request
-    // in parallel.
-    const optionsPromise =
-      cachedAuthOptionsPromise.current ?? post({ action: "login-options" });
-    cachedAuthOptionsPromise.current = null;
-    try {
-      const options = await optionsPromise;
-      const cred = await startAuthentication({ optionsJSON: options });
-      await post({ action: "login-verify", response: cred });
-      rememberDevice();
-      track("unlock_success", { method: "biometric" });
-      location.reload();
-    } catch (e) {
-      if (!silent) setError(friendly(e, "Couldn't unlock with biometrics."));
-      setBusy(false);
-      setUnlocking(false);
-      inFlight.current = false;
-      // Refresh the cache so a retry doesn't lose the user gesture
-      // again on its own server roundtrip.
+
+    // FAST PATH: cached value present. SYNCHRONOUS call to
+    // startAuthentication keeps iOS user activation alive.
+    const value = cachedAuthOptionsValue.current;
+    if (value) {
+      cachedAuthOptionsValue.current = null;
+      // startAuthentication is async, but its body runs synchronously up
+      // to its OWN await — which is `await navigator.credentials.get(…)`.
+      // So invoking it here triggers the Face ID modal synchronously
+      // within this function's synchronous prefix, which is itself
+      // inside the click handler. No microtask boundary before the
+      // navigator.credentials.get() call.
+      const credPromise = startAuthentication({ optionsJSON: value });
+      completeUnlock(credPromise, silent);
+      // Re-prime the cache for a possible retry without waiting on
+      // anything (don't .then-chain here — that's a microtask too).
       prefetchAuthOptions();
+      return;
     }
+
+    // SLOW PATH: no cached value yet. Take the in-flight prefetch
+    // promise (or fire one) and await it. Activation may be lost here
+    // on iOS, but there's no race — exactly one login-options request
+    // is ever in play, so the fc_challenge cookie stays consistent with
+    // the assertion we sign (Codex's PR #64 race fix preserved).
+    const promise =
+      cachedAuthOptionsPromise.current ??
+      (post({
+        action: "login-options",
+      }) as Promise<PublicKeyCredentialRequestOptionsJSON>);
+    cachedAuthOptionsPromise.current = null;
+    promise
+      .then((options) => {
+        const credPromise = startAuthentication({ optionsJSON: options });
+        completeUnlock(credPromise, silent);
+      })
+      .catch((e) => {
+        if (!silent) setError(friendly(e, "Couldn't unlock with biometrics."));
+        setBusy(false);
+        setUnlocking(false);
+        inFlight.current = false;
+        prefetchAuthOptions();
+      });
   }
 
   async function unlockPasscode() {
