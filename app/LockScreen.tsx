@@ -32,16 +32,27 @@ export default function LockScreen() {
   // await between the user's tap and navigator.credentials.get(). The
   // /api/auth login-options roundtrip takes ~200-500ms on LTE — enough
   // for activation to lapse, so the FIRST tap silently fails and the
-  // user has to tap a SECOND time (when the options are now cached by
-  // the browser, the round-trip is fast enough to preserve activation).
-  // Pre-fetching options on mount lets the click handler call
-  // startAuthentication synchronously (no preceding await) and the Face
-  // ID modal opens within the same tick as the click event. The server
-  // generates a fresh challenge each fetch and stores it in a 5-min
-  // cookie, so a pre-fetched challenge is good as long as the user taps
-  // within five minutes.
-  const cachedAuthOptions = useRef<unknown>(null);
-  const optionsFetchInFlight = useRef(false);
+  // user has to tap a SECOND time. Pre-fetching options on mount lets
+  // the click handler resolve them with at most a microtask wait (when
+  // the prefetch is already complete) and call startAuthentication
+  // within the same activation window as the click event.
+  //
+  // Stored as a PROMISE rather than a value-or-null so the click handler
+  // and the background prefetch can never both have a login-options
+  // request in flight at the same time. The server tracks the WebAuthn
+  // challenge in a single `fc_challenge` cookie that each login-options
+  // call overwrites: if two such requests are concurrent, whichever
+  // response arrives last wins, and the cookie may end up holding a
+  // challenge the user did NOT sign — login-verify then fails. Codex
+  // caught exactly that race on PR #64. Storing the in-flight promise
+  // and always awaiting it (instead of firing a parallel "live fetch"
+  // when the value isn't ready yet) keeps exactly one challenge in play
+  // at a time.
+  //
+  // The server-side cookie has a 5-minute TTL, so a pre-fetched
+  // challenge is good as long as the user taps within five minutes of
+  // opening the app.
+  const cachedAuthOptionsPromise = useRef<Promise<unknown> | null>(null);
 
   useEffect(() => {
     fetch("/api/auth")
@@ -69,20 +80,21 @@ export default function LockScreen() {
     }
   }
 
-  // Fetch fresh WebAuthn options into the cache. Best-effort: silent
-  // failure is fine because unlockBiometric will fall back to a live
-  // fetch (it just won't preserve iOS user activation on that path).
-  async function prefetchAuthOptions() {
-    if (cachedAuthOptions.current || optionsFetchInFlight.current) return;
-    optionsFetchInFlight.current = true;
-    try {
-      const options = await post({ action: "login-options" });
-      cachedAuthOptions.current = options;
-    } catch {
-      // ignore — fallback path in unlockBiometric will retry
-    } finally {
-      optionsFetchInFlight.current = false;
-    }
+  // Start a prefetch of WebAuthn login-options if one isn't already in
+  // flight. Idempotent — multiple callers (mount effect, retry-after-
+  // failure path) can call this freely. Self-clears the cached promise
+  // on rejection so a subsequent call can retry.
+  function prefetchAuthOptions() {
+    if (cachedAuthOptionsPromise.current) return;
+    const p = post({ action: "login-options" });
+    cachedAuthOptionsPromise.current = p;
+    p.catch(() => {
+      // Only clear if we're still the current cache — a parallel reset
+      // shouldn't wipe a successor.
+      if (cachedAuthOptionsPromise.current === p) {
+        cachedAuthOptionsPromise.current = null;
+      }
+    });
   }
 
   // `silent` is used by the automatic prompt: a failure there (e.g. iOS needs
@@ -93,15 +105,19 @@ export default function LockScreen() {
     setBusy(true);
     setError(null);
     setUnlocking(true);
-    // Consume the cached options synchronously so there's no await
-    // between this click handler and the navigator.credentials.get()
-    // call inside startAuthentication. iOS Safari's user-activation
-    // requirement is the whole reason this cache exists; see the
-    // cachedAuthOptions field comment for why.
-    const cached = cachedAuthOptions.current;
-    cachedAuthOptions.current = null;
+    // Take the in-flight prefetch promise if there is one; otherwise
+    // fire a fresh login-options call. Either way there's exactly ONE
+    // login-options request in play, so the server's single
+    // fc_challenge cookie can't be overwritten by a stale parallel
+    // response after we've already signed an assertion. Clear the
+    // shared slot before awaiting so a concurrent prefetchAuthOptions()
+    // call won't see a stale reference and won't fire a second request
+    // in parallel.
+    const optionsPromise =
+      cachedAuthOptionsPromise.current ?? post({ action: "login-options" });
+    cachedAuthOptionsPromise.current = null;
     try {
-      const options = cached ?? (await post({ action: "login-options" }));
+      const options = await optionsPromise;
       const cred = await startAuthentication({ optionsJSON: options });
       await post({ action: "login-verify", response: cred });
       rememberDevice();
@@ -114,7 +130,7 @@ export default function LockScreen() {
       inFlight.current = false;
       // Refresh the cache so a retry doesn't lose the user gesture
       // again on its own server roundtrip.
-      void prefetchAuthOptions();
+      prefetchAuthOptions();
     }
   }
 
