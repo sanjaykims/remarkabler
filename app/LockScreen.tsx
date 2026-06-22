@@ -181,11 +181,18 @@ export default function LockScreen() {
       // within this function's synchronous prefix, which is itself
       // inside the click handler. No microtask boundary before the
       // navigator.credentials.get() call.
+      //
+      // Do NOT re-prime the cache here. The Face ID modal is open and
+      // the user is signing challenge A; a fresh login-options POST
+      // would replace the server's single fc_challenge cookie with
+      // challenge B, and if its response landed before our
+      // login-verify, the server would check the (still-correct)
+      // signed assertion for A against cookie B and reject a valid
+      // unlock. (Codex caught this on PR #66.) The cache gets re-primed
+      // by completeUnlock's catch block on failure; on success the
+      // location.reload() refreshes everything.
       const credPromise = startAuthentication({ optionsJSON: value });
       completeUnlock(credPromise, silent);
-      // Re-prime the cache for a possible retry without waiting on
-      // anything (don't .then-chain here — that's a microtask too).
-      prefetchAuthOptions();
       return;
     }
 
