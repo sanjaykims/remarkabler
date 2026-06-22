@@ -110,6 +110,15 @@ select,
  * Tap target floor — on touch devices, any interactive element should
  * be at least 44px tall (Apple HIG / Material guidance). Don't enforce
  * on desktop where mouse precision is fine.
+ *
+ * Also enforce a 16px minimum font-size on every form input on touch.
+ * iOS Safari auto-zooms into any input/textarea whose font-size is
+ * under 16px when the user taps to focus — leaving them stuck zoomed in
+ * after they finish typing, which the user (correctly) found very
+ * annoying in the chat. 16px is the iOS no-zoom threshold; `max(16px,
+ * 1em)` preserves any deliberately-larger size while enforcing the
+ * floor. Scoped to touch devices so desktop's design (text-sm inputs
+ * etc.) is unchanged.
  */
 @media (hover: none) and (pointer: coarse) {
   button:not(:disabled),
@@ -117,5 +126,10 @@ select,
   [type="button"],
   [type="submit"] {
     min-height: 44px;
+  }
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1em);
   }
 }
