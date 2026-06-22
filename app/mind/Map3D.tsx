@@ -172,39 +172,35 @@ function AxisEndLabel({
   );
 }
 
-// Three thin lines through the origin so the user has a stable orientation
-// reference while rotating. Subtle — not the focus, just a frame.
+// Three axes through the origin so the user has a stable orientation
+// reference while rotating. Rendered as thin cylinders (not lines) because
+// WebGL `lineBasicMaterial.linewidth` is ignored by every major browser on
+// every desktop platform — the axes always render at exactly 1 pixel, which
+// is invisible on dense phone displays. Cylinder geometry gives real,
+// device-independent thickness. Still neutral (stone-500) so they don't
+// fight the points for attention.
 function Axes() {
-  const len = 1.2;
+  const len = 1.2; // half-length: axis runs from -len to +len
+  const radius = 0.007; // thin but actually visible on a phone
+  const color = "#78716c"; // stone-500 — reads on both warm-paper and AMOLED
+  const opacity = 0.55;
   return (
     <group>
-      <line>
-        <bufferGeometry attach="geometry">
-          <bufferAttribute
-            attach="attributes-position"
-            args={[new Float32Array([-len, 0, 0, len, 0, 0]), 3]}
-          />
-        </bufferGeometry>
-        <lineBasicMaterial attach="material" color="#a8a29e" opacity={0.18} transparent />
-      </line>
-      <line>
-        <bufferGeometry attach="geometry">
-          <bufferAttribute
-            attach="attributes-position"
-            args={[new Float32Array([0, -len, 0, 0, len, 0]), 3]}
-          />
-        </bufferGeometry>
-        <lineBasicMaterial attach="material" color="#a8a29e" opacity={0.18} transparent />
-      </line>
-      <line>
-        <bufferGeometry attach="geometry">
-          <bufferAttribute
-            attach="attributes-position"
-            args={[new Float32Array([0, 0, -len, 0, 0, len]), 3]}
-          />
-        </bufferGeometry>
-        <lineBasicMaterial attach="material" color="#a8a29e" opacity={0.18} transparent />
-      </line>
+      {/* X axis — horizontal. Default cylinder is along Y, so rotate 90° about Z. */}
+      <mesh rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[radius, radius, 2 * len, 12]} />
+        <meshBasicMaterial color={color} transparent opacity={opacity} />
+      </mesh>
+      {/* Y axis — vertical (matches default cylinder orientation). */}
+      <mesh>
+        <cylinderGeometry args={[radius, radius, 2 * len, 12]} />
+        <meshBasicMaterial color={color} transparent opacity={opacity} />
+      </mesh>
+      {/* Z axis — depth. Rotate 90° about X. */}
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[radius, radius, 2 * len, 12]} />
+        <meshBasicMaterial color={color} transparent opacity={opacity} />
+      </mesh>
     </group>
   );
 }

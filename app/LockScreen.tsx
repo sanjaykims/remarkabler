@@ -111,20 +111,27 @@ export default function LockScreen() {
 
   // On a device that has unlocked before, surface Face ID / fingerprint
   // automatically — opening the app should go straight to the biometric
-  // prompt with no extra aiming.
+  // prompt without making the user aim at a button.
   //
-  // Two paths:
-  //   (a) Silent auto-attempt on mount + on every foreground. Works on
-  //       Android Chrome.
-  //   (b) `pointerdown` anywhere on the page fires a non-silent attempt.
-  //       This is what iOS needs — WebAuthn there requires a real user
-  //       gesture in the web view's document, and the Springboard tap on
-  //       the app icon doesn't transfer. Listening on the document means
-  //       the user can tap ANYWHERE on the lock screen — they don't have
-  //       to aim at the small unlock button.
+  // Two paths, picked by platform because the constraints differ:
   //
-  // Skipped entirely if the passcode-setup flow is open: the user is
-  // about to type into an input and shouldn't get a stray Face ID modal.
+  //   Android Chrome: silent auto-attempt on mount + on every foreground.
+  //     The browser allows navigator.credentials.get() without a user
+  //     gesture, so the Face ID/fingerprint prompt just opens.
+  //
+  //   iOS Safari: silent auto won't work — WebAuthn there requires
+  //     "transient user activation". The Springboard tap that opened the
+  //     app doesn't carry over into the web view's document. We install a
+  //     `click` listener on the document so the user's first tap ANYWHERE
+  //     on the lock screen activates the page and fires Face ID. (Tried
+  //     `pointerdown` first; the HTML spec only treats pointerdown as
+  //     activating for pointerType="mouse", NOT touch. Touch needs
+  //     touchend or click to activate. Click works on every platform.)
+  //     Skipping silent on iOS also avoids a tiny inFlight race where the
+  //     silent attempt's brief lock could swallow the user's tap.
+  //
+  // Skipped entirely if showPasscode is true — the passcode-setup flow
+  // has an input field and shouldn't get a stray Face ID modal.
   useEffect(() => {
     if (registered !== true || showPasscode) return;
     let known = false;
@@ -135,26 +142,38 @@ export default function LockScreen() {
     }
     if (!known) return;
 
-    function attemptSilent() {
-      if (autoTried.current || document.visibilityState !== "visible") return;
-      autoTried.current = true;
-      unlockBiometric(true);
-    }
-    attemptSilent();
-    document.addEventListener("visibilitychange", attemptSilent);
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const isIOS =
+      /iPhone|iPad|iPod/.test(ua) ||
+      (/Mac/.test(ua) &&
+        typeof navigator !== "undefined" &&
+        navigator.maxTouchPoints > 1);
 
-    // First user tap anywhere — covers iOS's user-gesture requirement and
-    // lets any platform unlock with a tap instead of a button-press. The
-    // inFlight guard inside unlockBiometric drops the call if the silent
-    // attempt above already opened a modal.
-    function onFirstTap() {
-      unlockBiometric(false);
+    // Android-style silent auto-attempt — skipped on iOS.
+    let visListener: (() => void) | null = null;
+    if (!isIOS) {
+      visListener = () => {
+        if (autoTried.current || document.visibilityState !== "visible") return;
+        autoTried.current = true;
+        unlockBiometric(true);
+      };
+      visListener();
+      document.addEventListener("visibilitychange", visListener);
     }
-    document.addEventListener("pointerdown", onFirstTap, { once: true });
+
+    // Universal: first click anywhere on the page fires the prompt. On
+    // iOS this is mandatory (and finally works because `click` actually
+    // establishes user activation for touch). On any platform it lets the
+    // user tap anywhere instead of finding the small unlock button.
+    const onFirstClick = () => {
+      unlockBiometric(false);
+    };
+    document.addEventListener("click", onFirstClick, { once: true });
 
     return () => {
-      document.removeEventListener("visibilitychange", attemptSilent);
-      document.removeEventListener("pointerdown", onFirstTap);
+      if (visListener)
+        document.removeEventListener("visibilitychange", visListener);
+      document.removeEventListener("click", onFirstClick);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registered, showPasscode]);
