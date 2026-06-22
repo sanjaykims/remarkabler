@@ -27,6 +27,21 @@ export default function LockScreen() {
   // state and only updates on the next render, so a ref is needed for an
   // immediate same-tick check.
   const inFlight = useRef(false);
+  // Pre-fetched WebAuthn options. The reason this exists: iOS Safari
+  // treats "transient user activation" as expired after even one short
+  // await between the user's tap and navigator.credentials.get(). The
+  // /api/auth login-options roundtrip takes ~200-500ms on LTE — enough
+  // for activation to lapse, so the FIRST tap silently fails and the
+  // user has to tap a SECOND time (when the options are now cached by
+  // the browser, the round-trip is fast enough to preserve activation).
+  // Pre-fetching options on mount lets the click handler call
+  // startAuthentication synchronously (no preceding await) and the Face
+  // ID modal opens within the same tick as the click event. The server
+  // generates a fresh challenge each fetch and stores it in a 5-min
+  // cookie, so a pre-fetched challenge is good as long as the user taps
+  // within five minutes.
+  const cachedAuthOptions = useRef<unknown>(null);
+  const optionsFetchInFlight = useRef(false);
 
   useEffect(() => {
     fetch("/api/auth")
@@ -54,6 +69,22 @@ export default function LockScreen() {
     }
   }
 
+  // Fetch fresh WebAuthn options into the cache. Best-effort: silent
+  // failure is fine because unlockBiometric will fall back to a live
+  // fetch (it just won't preserve iOS user activation on that path).
+  async function prefetchAuthOptions() {
+    if (cachedAuthOptions.current || optionsFetchInFlight.current) return;
+    optionsFetchInFlight.current = true;
+    try {
+      const options = await post({ action: "login-options" });
+      cachedAuthOptions.current = options;
+    } catch {
+      // ignore — fallback path in unlockBiometric will retry
+    } finally {
+      optionsFetchInFlight.current = false;
+    }
+  }
+
   // `silent` is used by the automatic prompt: a failure there (e.g. iOS needs
   // a tap) should quietly fall back to the buttons, not show an error.
   async function unlockBiometric(silent = false) {
@@ -62,8 +93,15 @@ export default function LockScreen() {
     setBusy(true);
     setError(null);
     setUnlocking(true);
+    // Consume the cached options synchronously so there's no await
+    // between this click handler and the navigator.credentials.get()
+    // call inside startAuthentication. iOS Safari's user-activation
+    // requirement is the whole reason this cache exists; see the
+    // cachedAuthOptions field comment for why.
+    const cached = cachedAuthOptions.current;
+    cachedAuthOptions.current = null;
     try {
-      const options = await post({ action: "login-options" });
+      const options = cached ?? (await post({ action: "login-options" }));
       const cred = await startAuthentication({ optionsJSON: options });
       await post({ action: "login-verify", response: cred });
       rememberDevice();
@@ -74,6 +112,9 @@ export default function LockScreen() {
       setBusy(false);
       setUnlocking(false);
       inFlight.current = false;
+      // Refresh the cache so a retry doesn't lose the user gesture
+      // again on its own server roundtrip.
+      void prefetchAuthOptions();
     }
   }
 
@@ -141,6 +182,11 @@ export default function LockScreen() {
       known = false;
     }
     if (!known) return;
+
+    // Warm the WebAuthn options cache so the next tap can fire
+    // navigator.credentials.get() synchronously and keep its user
+    // activation alive on iOS. See cachedAuthOptions field comment.
+    void prefetchAuthOptions();
 
     const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
     const isIOS =
