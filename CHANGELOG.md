@@ -13,9 +13,15 @@ the app itself.
 - **Bundled `.rm` renderer** (unused until Phase 1b): a Python venv at
   `/opt/renderer` with `rmc` + `rmscene` + `cairosvg` (+ `svglib`/`reportlab`
   fallback), plus `docker/rm2pdf` (`.rm` → SVG → PDF wrapper on PATH) and
-  `docker/patch_rm_palette.py` (adds the firmware-≥3.14 highlighter color id
-  that rmc 0.3.0 omits). Proven end-to-end (build + boot + render) in a
-  sandbox worktree earlier this session.
+  `docker/patch_rm_palette.py`, which restores the firmware-≥3.14 highlighter
+  color id (9). Verified against a clean PyPI `rmc==0.3.0`: its palette really
+  does omit id 9 (13 keys, 9 absent; only a `#! PenColor.HIGHLIGHT` comment
+  remains), so highlighter-colored strokes would `KeyError: 9`. The patch is
+  necessity-gated on the *live* `RM_PALETTE` dict — it inserts only when 9 is
+  missing and no-ops (no duplicate key) once present — which also fixes the
+  earlier silent-no-op guard that matched that same comment string. Renderer
+  proven end-to-end (build + boot + render) in a sandbox worktree earlier this
+  session.
 - `.dockerignore` keeps `.env`, `data/` (the SQLite diary + tokens), `.git`,
   and `node_modules` out of the image. Empty `docker/certs/` CA hook is a
   no-op on Railway.

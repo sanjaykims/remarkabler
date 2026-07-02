@@ -288,8 +288,11 @@ features need the deployed instance to fully verify.
   in 2025–2026: `rmapi-js` (maintained, pure-JS, ESM) reads the cloud, and
   `rmc`+`cairosvg` (Python) render `.rm` v6 → SVG → PDF server-side
   (validated on real firmware-3.x samples; caveats: never use `rmc -t pdf`
-  — it needs Inkscape — and patch rmc's RM_PALETTE for firmware ≥3.14
-  highlighter color IDs). **Phase 0 (shipped): `lib/remarkableCloud.ts`
+  — it needs Inkscape — and patch rmc's RM_PALETTE, which in `rmc==0.3.0`
+  genuinely omits the firmware-≥3.14 highlighter color id 9 and crashes with
+  `KeyError: 9` on those pages. `docker/patch_rm_palette.py` restores it,
+  necessity-gated on the *live* dict so it inserts only when 9 is missing).
+  **Phase 0 (shipped): `lib/remarkableCloud.ts`
   pairs via a one-time code from my.remarkable.com and LISTS notebooks
   read-only — no ingestion, no renderer, no deploy change.** Phase 1 adds
   the renderer (needs a Dockerfile — repo is Nixpacks today) behind a
