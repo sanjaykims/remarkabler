@@ -86,6 +86,18 @@ export default function MemoryPage() {
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [dropboxBusy, setDropboxBusy] = useState(false);
 
+  type RemarkableStatus = {
+    paired: boolean;
+    pairedAt: string | null;
+    lastListAt: string | null;
+    lastError: string | null;
+    notebookCount: number | null;
+  };
+  const [remarkable, setRemarkable] = useState<RemarkableStatus | null>(null);
+  const [rmCode, setRmCode] = useState("");
+  const [rmBusy, setRmBusy] = useState(false);
+  const [rmMsg, setRmMsg] = useState<string | null>(null);
+
   type EmbedStatus = {
     enabled: boolean;
     model: string;
@@ -394,6 +406,77 @@ export default function MemoryPage() {
     }
   }
 
+  async function loadRemarkable() {
+    try {
+      setRemarkable(await fetch("/api/remarkable/status").then((r) => r.json()));
+    } catch {
+      setRemarkable(null);
+    }
+  }
+
+  async function pairRemarkableCloud() {
+    if (rmBusy) return;
+    setRmBusy(true);
+    setRmMsg(null);
+    try {
+      const r = await fetch("/api/remarkable/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: rmCode.trim() }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d.ok) {
+        setRmCode("");
+        setRmMsg(
+          d.error
+            ? `Paired, but listing failed: ${d.error}`
+            : `Paired ✓ — found ${d.count ?? 0} notebook${d.count === 1 ? "" : "s"}.`
+        );
+      } else {
+        setRmMsg(d.error || "Pairing failed.");
+      }
+      if (d.status) setRemarkable(d.status);
+    } catch (e) {
+      setRmMsg((e as Error).message);
+    } finally {
+      setRmBusy(false);
+    }
+  }
+
+  async function refreshRemarkableCloud() {
+    if (rmBusy) return;
+    setRmBusy(true);
+    setRmMsg(null);
+    try {
+      const r = await fetch("/api/remarkable/refresh", { method: "POST" });
+      const d = await r.json().catch(() => ({}));
+      setRmMsg(
+        d.ok
+          ? `Found ${d.count ?? 0} notebook${d.count === 1 ? "" : "s"}.`
+          : d.error || "Couldn't reach reMarkable."
+      );
+      if (d.status) setRemarkable(d.status);
+    } catch (e) {
+      setRmMsg((e as Error).message);
+    } finally {
+      setRmBusy(false);
+    }
+  }
+
+  async function disconnectRemarkableCloud() {
+    if (rmBusy) return;
+    if (!confirm("Disconnect reMarkable cloud? You'll need a new pairing code to reconnect.")) return;
+    setRmBusy(true);
+    setRmMsg(null);
+    try {
+      const r = await fetch("/api/remarkable/disconnect", { method: "POST" });
+      const d = await r.json().catch(() => ({}));
+      if (d.status) setRemarkable(d.status);
+    } finally {
+      setRmBusy(false);
+    }
+  }
+
   useEffect(() => {
     load();
     loadDisc();
@@ -405,6 +488,7 @@ export default function MemoryPage() {
     loadBackup();
     loadEmbed();
     loadDropbox();
+    loadRemarkable();
   }, []);
 
   function getPosition(): Promise<GeolocationPosition> {
@@ -1020,6 +1104,101 @@ export default function MemoryPage() {
             >
               {dropboxBusy ? "Disconnecting…" : "Disconnect Dropbox"}
             </button>
+          </>
+        )}
+      </section>
+
+      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+        <h2 className="font-medium">
+          reMarkable cloud{" "}
+          <span className="text-[10px] uppercase tracking-wide rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 px-2 py-0.5 align-middle">
+            beta
+          </span>
+        </h2>
+        <p className="text-xs opacity-70">
+          Connect straight to your reMarkable account so notebooks are picked
+          up automatically — no &ldquo;Export to Dropbox&rdquo; tap. Right now
+          this only <strong>reads your notebook list</strong> to prove the
+          connection works; automatic import is the next step. Your Dropbox
+          setup keeps working either way.
+        </p>
+
+        {remarkable === null ? (
+          <p className="text-xs opacity-60">Loading…</p>
+        ) : remarkable.paired ? (
+          <>
+            <p className="text-xs opacity-70">
+              Connected ✓
+              {typeof remarkable.notebookCount === "number" && (
+                <> · {remarkable.notebookCount} notebook{remarkable.notebookCount === 1 ? "" : "s"} found</>
+              )}
+              {remarkable.lastListAt && (
+                <> · last checked {formatLocalTime(remarkable.lastListAt)}</>
+              )}
+            </p>
+            {remarkable.lastError && (
+              <p className="text-xs text-red-600 break-words">
+                Last error: {remarkable.lastError}
+              </p>
+            )}
+            {rmMsg && <p className="text-xs opacity-80 break-words">{rmMsg}</p>}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={refreshRemarkableCloud}
+                disabled={rmBusy}
+                className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs disabled:opacity-50"
+              >
+                {rmBusy ? "Checking…" : "Check again"}
+              </button>
+              <button
+                onClick={disconnectRemarkableCloud}
+                disabled={rmBusy}
+                className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs disabled:opacity-50"
+              >
+                Disconnect
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <ol className="text-xs opacity-80 space-y-1 list-decimal list-inside leading-relaxed">
+              <li>
+                On your phone or computer, open{" "}
+                <a
+                  className="underline"
+                  href="https://my.remarkable.com/device/browser/connect"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  my.remarkable.com/device/browser/connect
+                </a>{" "}
+                (sign in if asked).
+              </li>
+              <li>It shows a one-time 8-character code. Type it below.</li>
+            </ol>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                inputMode="text"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={rmCode}
+                onChange={(e) => setRmCode(e.target.value)}
+                placeholder="8-char code"
+                disabled={rmBusy}
+                maxLength={8}
+                className="w-32 rounded border border-stone-300 dark:border-stone-700 px-3 py-2 bg-transparent tracking-widest"
+              />
+              <button
+                onClick={pairRemarkableCloud}
+                disabled={rmBusy || rmCode.trim().length !== 8}
+                className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+              >
+                {rmBusy ? "Pairing…" : "Pair"}
+              </button>
+            </div>
+            {rmMsg && <p className="text-xs opacity-80 break-words">{rmMsg}</p>}
           </>
         )}
       </section>

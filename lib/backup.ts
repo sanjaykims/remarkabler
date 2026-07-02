@@ -22,6 +22,9 @@ const SENSITIVE_SETTING_KEYS = [
   "dropbox_oauth_state",
   "dropbox_oauth_redirect",
   "dropbox_last_error",
+  // reMarkable cloud device token — a long-lived credential to the user's
+  // tablet account. Redact it from off-site backups, same as Dropbox's.
+  "remarkable_device_token",
 ];
 
 export function redactSensitiveSettings(stagedDbPath: string): void {

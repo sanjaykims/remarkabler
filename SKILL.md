@@ -96,6 +96,10 @@ Companion docs — read in order if any is unfamiliar:
 - **Backup:** `backup` (GET status, POST run-now).
 - **Dropbox:** `dropbox/connect`, `/callback`, `/status`, `/disconnect`,
   `/export` (toggle + run the opt-in diary auto-export back to Dropbox).
+- **reMarkable cloud (beta, Phase 0 — read-only):** `remarkable/connect`
+  (pair via one-time code + list), `/refresh` (re-list), `/disconnect`,
+  `/status`. Backed by `lib/remarkableCloud.ts` (rmapi-js). Zero-tap ingest
+  is the goal; ingestion/rendering not built yet.
 - **Discipline:** `discipline` (GET + POST sync), `discipline/settings` (enable toggle).
 - **Location:** `location` (GET + POST manual log), `location/settings`, `owntracks` (`?token=` push endpoint).
 - **Export:** `export` (raw bundle Markdown: profile+diary+chats+insights),
