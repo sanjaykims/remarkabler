@@ -37,10 +37,12 @@ RUN npm run build \
 # ---- Runner: app + reMarkable .rm renderer ----
 FROM ${BASE}-slim AS runner
 WORKDIR /app
+# No ENV PORT here on purpose: Railway injects PORT at runtime and `next
+# start` honors it (falling back to 3000 when unset). Baking PORT could
+# shadow Railway's value.
 ENV NODE_ENV=production \
     DATA_DIR=/data \
-    NEXT_TELEMETRY_DISABLED=1 \
-    PORT=3000
+    NEXT_TELEMETRY_DISABLED=1
 
 # libcairo2 is the only system lib cairosvg needs (SVG -> PDF). Everything
 # else in the renderer is pip-installed into an isolated venv.
