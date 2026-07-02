@@ -67,11 +67,23 @@ reviewer should scrutinise this most.**
 
 - Track each reMarkable **page** by its stable `pageId` (uuid) and its
   content `hash`.
-- On sync, diff: render + OCR only pages whose hash is new or changed;
-  leave unchanged pages untouched; handle deleted pages.
+- **Separate content from ordering — two distinct updates per sync
+  (Codex #76):**
+  - *Content* (expensive: render + OCR + embed + analyze): do this ONLY for
+    pages whose content `hash` is new or changed.
+  - *Ordering* (cheap: a `page_index` integer write, no render/OCR): re-sync
+    for **every** page from the notebook's `.content` page order on **every**
+    sync. Rationale: inserting or reordering a page leaves the other pages'
+    stroke content — and thus their content hashes — unchanged, but shifts
+    their position. Every reader (diary export, notebook view, chat) orders
+    by `pages.page_index`, so a content-hash-only diff would leave stale
+    reading order and page numbers after an insertion. Ordering must track
+    `.content` regardless of content hashes.
+  - Handle deleted/trashed pages (drop or tombstone — see open questions).
 - A cloud notebook maps to a `notebooks` row; its pages map to `pages` rows
   keyed by reMarkable pageId (not `notebookId:index`, because inserting a
-  page shifts indices).
+  page shifts indices). `page_index` becomes derived ordering metadata,
+  refreshed from `.content` each sync; the pageId is the stable identity.
 
 This is real schema + pipeline work and is the main reason Phase 1 is gated.
 
@@ -124,8 +136,12 @@ This is real schema + pipeline work and is the main reason Phase 1 is gated.
   2. `listItems(true)` → for each notebook, compare doc `hash` to stored.
   3. Changed/new notebook → `raw.getEntries()` → diff per-page hashes →
      render + OCR only changed pages → upsert those `pages` rows → refresh
-     embeddings/analysis/entry-date for them → regenerate the affected
-     per-day Dropbox markdown (reuse existing export).
+     embeddings/analysis/entry-date for them.
+  4. **Always re-sync `page_index` for the whole notebook from `.content`
+     page order** (cheap integer writes), even for pages whose content hash
+     didn't change — so inserts/reorders don't leave stale reading order
+     (Codex #76). Then regenerate the affected per-day Dropbox markdown
+     (reuse existing export).
 - Wire one `void getMaybeSyncRemarkable()()` into `runMaintenanceSweep`
   (lazy require, like Dropbox).
 
