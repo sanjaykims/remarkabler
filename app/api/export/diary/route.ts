@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
 import { TZ_OFFSET_MIN, parseSqliteUtc } from "@/lib/format";
+import { DISCIPLINE_ID } from "@/lib/notes";
 import {
   buildDiaryMarkdown,
   type DiaryPageRow,
@@ -38,22 +39,30 @@ function fmtExportedAt(): string {
 export async function GET() {
   if (!isAuthenticated()) return LOCKED();
 
+  // Order groups every notebook's pages contiguously in page order, so the
+  // date carry-forward in buildDiaryMarkdown is correct. Day grouping and
+  // chronological ordering happen in the builder from carried dates.
+  //
+  // The github-discipline notebook stores GitHub repo text files as pages
+  // (lib/notes.ts) — it is NOT transcribed diary content, so exclude it
+  // here just as /mind does. Excluded unconditionally: the diary export is
+  // always "your handwriting only".
   const rows = db()
     .prepare(
-      `SELECT p.id, p.entry_date, p.page_index, p.ocr_text,
+      `SELECT p.id, p.notebook_id, p.entry_date, p.page_index, p.ocr_text,
               n.name AS notebook_name,
               a.themes, a.sentiment
        FROM pages p
        JOIN notebooks n ON n.id = p.notebook_id
        LEFT JOIN entry_analysis a ON a.page_id = p.id
        WHERE p.ocr_text IS NOT NULL AND p.ocr_text != ''
+         AND p.notebook_id != ?
        ORDER BY
-         CASE WHEN p.entry_date IS NULL OR p.entry_date = 'none' THEN 1 ELSE 0 END ASC,
-         p.entry_date ASC,
          n.synced_at ASC NULLS LAST,
+         p.notebook_id ASC,
          p.page_index ASC`
     )
-    .all() as DiaryPageRow[];
+    .all(DISCIPLINE_ID) as DiaryPageRow[];
 
   const entityRows = db()
     .prepare(

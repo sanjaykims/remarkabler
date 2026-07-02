@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-07-02 (Diary export follow-ups from Codex review of #69)
+
+Two P2 correctness fixes Codex caught on the diary-export PR:
+
+1. **Exclude the discipline notebook.** The GitHub "discipline" sync
+   stores repo text files as `pages` under `notebook_id = DISCIPLINE_ID`
+   (`github-discipline`) — not diary content, and `/mind` already excludes
+   it. The diary export selected every page, so those files leaked into the
+   download (as "Undated entries"). The route now filters
+   `p.notebook_id != DISCIPLINE_ID` unconditionally.
+2. **Carry entry dates forward in the export.** A freshly processed
+   multi-page notebook keeps `entry_date = 'none'` on continuation pages
+   until a `reparseAllEntryDates` sweep runs, so exporting before that
+   scattered a session's later pages into "Undated entries" out of order.
+   `buildDiaryMarkdown` now carries the last-seen date forward within each
+   notebook (read-only, mirroring `reparseAllEntryDates`), so continuation
+   pages land under their day. New `carryForwardDates` helper, unit-tested
+   (17 tests total in `test/diaryExport.test.ts`).
+
+`npm run lint` + `npm test` (229) + `npm run build` clean.
+
 ## 2026-06-25 (Diary Markdown export — portable, tool-agnostic backup)
 
 New **`GET /api/export/diary`** + a "Download diary (Markdown)" button in the

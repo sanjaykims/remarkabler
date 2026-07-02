@@ -6,10 +6,11 @@
 
 export type DiaryPageRow = {
   id: string;
-  entry_date: string | null;
-  page_index: number;
-  ocr_text: string;
+  notebook_id: string;
   notebook_name: string;
+  page_index: number;
+  entry_date: string | null;
+  ocr_text: string;
   themes: string | null;
   sentiment: number | null;
 };
@@ -36,6 +37,38 @@ export function parseThemes(raw: string | null): string[] {
   }
 }
 
+// Carry the last-seen diary date forward within each notebook, in page
+// order — the same rule as reparseAllEntryDates (lib/notes.ts), but
+// read-only. The user writes a "YYYY-MM-DD-HHMM-KST" header once per
+// session; continuation pages inherit it. Without this, a freshly
+// processed multi-page notebook (whose continuation pages still read
+// entry_date='none' until a reparse sweep runs) would scatter its later
+// pages into the "Undated" section instead of under their day.
+//
+// `rows` MUST arrive grouped by notebook, in page order (the route orders
+// by synced_at, notebook_id, page_index). We reset the carry at each
+// notebook boundary defensively regardless.
+export type EnrichedRow = { row: DiaryPageRow; effectiveDate: string | null };
+
+export function carryForwardDates(rows: DiaryPageRow[]): EnrichedRow[] {
+  const out: EnrichedRow[] = [];
+  let currentNotebook: string | null = null;
+  let carry: string | null = null;
+  for (const row of rows) {
+    if (row.notebook_id !== currentNotebook) {
+      currentNotebook = row.notebook_id;
+      carry = null;
+    }
+    if (isDatedEntry(row.entry_date)) {
+      carry = row.entry_date;
+    }
+    // Pages before the first dated page in a notebook keep a null effective
+    // date and fall to the "Undated" section.
+    out.push({ row, effectiveDate: isDatedEntry(row.entry_date) ? row.entry_date : carry });
+  }
+  return out;
+}
+
 function pageMetaLine(
   r: DiaryPageRow,
   entities: PageEntities | undefined
@@ -59,10 +92,10 @@ function pageMetaLine(
 /**
  * Build the full diary Markdown document.
  *
- * `rows` MUST already be ordered by the route: dated pages first (oldest →
- * newest by entry_date, then notebook, then page_index), undated pages
- * last. This function does run-length grouping on that order, so it does
- * not re-sort — keeping it a pure, order-preserving transform.
+ * `rows` MUST arrive grouped by notebook, in page order (so date
+ * carry-forward is correct). Day grouping and chronological ordering are
+ * computed here from the carried-forward effective dates, so the caller
+ * does not need to pre-sort by date.
  */
 export function buildDiaryMarkdown(opts: {
   rows: DiaryPageRow[];
@@ -71,12 +104,26 @@ export function buildDiaryMarkdown(opts: {
 }): string {
   const { rows, entitiesByPage, exportedAt } = opts;
 
-  const dated = rows.filter((r) => isDatedEntry(r.entry_date));
-  const undated = rows.filter((r) => !isDatedEntry(r.entry_date));
+  const enriched = carryForwardDates(rows);
 
-  const dates = dated.map((r) => r.entry_date as string);
-  const firstDate = dates.length ? dates[0] : "";
-  const lastDate = dates.length ? dates[dates.length - 1] : "";
+  // Group dated pages by their effective date, preserving insertion
+  // (notebook/page) order within each day. Sort day keys — YYYY-MM-DD
+  // sorts lexicographically, which is chronological.
+  const byDate = new Map<string, DiaryPageRow[]>();
+  const undated: DiaryPageRow[] = [];
+  for (const e of enriched) {
+    if (e.effectiveDate === null) {
+      undated.push(e.row);
+      continue;
+    }
+    const list = byDate.get(e.effectiveDate);
+    if (list) list.push(e.row);
+    else byDate.set(e.effectiveDate, [e.row]);
+  }
+  const sortedDates = [...byDate.keys()].sort();
+
+  const firstDate = sortedDates.length ? sortedDates[0] : "";
+  const lastDate = sortedDates.length ? sortedDates[sortedDates.length - 1] : "";
   const notebookCount = new Set(rows.map((r) => r.notebook_name)).size;
 
   const lines: string[] = [];
@@ -104,20 +151,17 @@ export function buildDiaryMarkdown(opts: {
     lines.push("");
   }
 
-  let currentDate = "";
-  for (const r of dated) {
-    const d = r.entry_date as string;
-    if (d !== currentDate) {
-      lines.push("---");
+  for (const d of sortedDates) {
+    lines.push("---");
+    lines.push("");
+    lines.push(`## ${d}`);
+    lines.push("");
+    for (const r of byDate.get(d) as DiaryPageRow[]) {
+      lines.push(pageMetaLine(r, entitiesByPage.get(r.id)));
       lines.push("");
-      lines.push(`## ${d}`);
+      lines.push(r.ocr_text.trim());
       lines.push("");
-      currentDate = d;
     }
-    lines.push(pageMetaLine(r, entitiesByPage.get(r.id)));
-    lines.push("");
-    lines.push(r.ocr_text.trim());
-    lines.push("");
   }
 
   if (undated.length > 0) {
