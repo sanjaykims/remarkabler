@@ -58,15 +58,40 @@ describe("filterNotebooks", () => {
     expect(nbs.map((n) => n.id).sort()).toEqual(["nb1", "nb2"]);
   });
 
-  it("maps to the display shape with name/hash/lastModified/parent", () => {
+  it("maps to the display shape with name/hash/lastModified/parent/folder", () => {
     const nb = filterNotebooks(entries).find((n) => n.id === "nb1")!;
     expect(nb).toEqual({
       id: "nb1",
       name: "Diary 2026",
       hash: "h1",
-      lastModified: "1700000000",
+      // 10-digit epoch seconds → normalized to ISO for display.
+      lastModified: new Date(1700000000 * 1000).toISOString(),
       parent: "",
+      folder: "",
     });
+  });
+
+  it("resolves the containing folder's display name from CollectionType entries", () => {
+    const nb = filterNotebooks(entries).find((n) => n.id === "nb2")!;
+    expect(nb.folder).toBe("My Folder");
+  });
+
+  it("sorts newest-first by lastModified", () => {
+    const nbs = filterNotebooks(entries);
+    expect(nbs.map((n) => n.id)).toEqual(["nb2", "nb1"]); // nb2 edited later
+  });
+
+  it("normalizes epoch-milliseconds timestamps too", () => {
+    const nbs = filterNotebooks([
+      {
+        id: "x",
+        hash: "h",
+        type: "DocumentType",
+        fileType: "notebook",
+        lastModified: "1780801738496", // 13-digit ms
+      },
+    ]);
+    expect(nbs[0].lastModified).toBe(new Date(1780801738496).toISOString());
   });
 
   it("falls back to (untitled) when visibleName is missing", () => {

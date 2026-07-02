@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-03 (reMarkable cloud — folder chips + readable dates on the import list)
+
+With 134 notebooks in the account, the flat unsorted list buried the user's
+Diary folder. Now: `filterNotebooks` resolves each notebook's containing
+folder name from the CollectionType entries in the same listing (new `folder`
+field), normalizes reMarkable's epoch-ms/s `lastModified` to ISO (it rendered
+as a raw number like `1780801738496`), and sorts newest-first. `/memory` shows
+tappable folder filter chips (e.g. "Diary (31)") above the list and a
+`folder · edited <local time>` line per row. Old persisted lists (no folder
+data) degrade gracefully until the next "Check again". Tests +3 (suite 260).
+
 ## 2026-07-02 (reMarkable cloud — Phase 1b: render + on-demand import, quality-gated)
 
 On-demand import of ONE cloud notebook, behind a human quality gate: pull the
