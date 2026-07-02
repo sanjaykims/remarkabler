@@ -3,6 +3,9 @@ import { TZ_OFFSET_MIN, parseSqliteUtc } from "./format";
 import { DISCIPLINE_ID } from "./notes";
 import {
   buildDiaryMarkdown,
+  buildDayFiles,
+  effectiveDateKeys,
+  UNDATED_FILE,
   type DiaryPageRow,
   type PageEntities,
 } from "./diaryExport";
@@ -23,10 +26,13 @@ function fmtExportedAt(): string {
     .replace("T", " ");
 }
 
-export function renderDiaryMarkdown(): string {
-  // Notebook-walk order so date carry-forward in buildDiaryMarkdown is
-  // correct. The github-discipline notebook (GitHub repo text files) is
-  // excluded unconditionally — it is not diary content, same as /mind.
+// Shared fetch: all diary pages (discipline notebook excluded) in
+// notebook-walk order so carry-forward is correct, plus the per-page
+// entity map.
+function fetchDiaryData(): {
+  rows: DiaryPageRow[];
+  entitiesByPage: Map<string, PageEntities>;
+} {
   const rows = db()
     .prepare(
       `SELECT p.id, p.notebook_id, p.entry_date, p.page_index, p.ocr_text,
@@ -60,10 +66,39 @@ export function renderDiaryMarkdown(): string {
       bucket[e.kind].push(e.name);
     }
   }
+  return { rows, entitiesByPage };
+}
 
-  return buildDiaryMarkdown({
-    rows,
-    entitiesByPage,
-    exportedAt: fmtExportedAt(),
-  });
+// One combined Markdown document — used by the download route.
+export function renderDiaryMarkdown(): string {
+  const { rows, entitiesByPage } = fetchDiaryData();
+  return buildDiaryMarkdown({ rows, entitiesByPage, exportedAt: fmtExportedAt() });
+}
+
+// One file per day (+ undated.md) — used by the Dropbox per-day export.
+// Map key is the filename (e.g. "2026-06-19.md").
+export function renderDiaryDayFiles(): Map<string, string> {
+  const { rows, entitiesByPage } = fetchDiaryData();
+  return buildDayFiles({ rows, entitiesByPage, exportedAt: fmtExportedAt() });
+}
+
+/**
+ * The day-file names one notebook's pages could have changed, so the
+ * Dropbox export can re-upload just those instead of the whole vault.
+ * Excludes the discipline notebook (returns [] for it).
+ */
+export function affectedDayFileNames(notebookId: string): string[] {
+  if (notebookId === DISCIPLINE_ID) return [];
+  const rows = db()
+    .prepare(
+      `SELECT notebook_id, entry_date
+       FROM pages
+       WHERE notebook_id = ? AND ocr_text IS NOT NULL AND ocr_text != ''
+       ORDER BY page_index ASC`
+    )
+    .all(notebookId) as Array<{ notebook_id: string; entry_date: string | null }>;
+  const { dates, hasUndated } = effectiveDateKeys(rows);
+  const names = dates.map((d) => `${d}.md`);
+  if (hasUndated) names.push(UNDATED_FILE);
+  return names;
 }

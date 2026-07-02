@@ -139,16 +139,21 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - `lib/dropbox.ts` — Dropbox auto-ingest: OAuth (refresh-token flow),
   read-only folder polling, dedupe by `notebooks.dropbox_file_id`. Watcher
   is fired from `runMaintenanceSweep` so it runs alongside the other
-  background jobs. Also the **opt-in diary auto-export**
-  (`maybeExportDiaryToDropbox`, fired from `processNotebook`): writes the
-  rendered diary Markdown back to Dropbox after each ingest. This is the
-  ONE path that needs the `files.content.write` scope — off by default
-  (`dropbox_export_enabled` setting), and it fails-open with an actionable
-  "enable the write scope + reconnect" message. Ingest stays read-only.
-- `lib/diaryExport.ts` (pure Markdown assembly + date carry-forward,
-  unit-tested) + `lib/diaryExportDb.ts` (`renderDiaryMarkdown`: the
-  DB-backed renderer shared by `GET /api/export/diary` and the Dropbox
-  auto-export). Excludes the `github-discipline` notebook, same as `/mind`.
+  background jobs. Also the **opt-in per-day diary auto-export**
+  (`maybeExportDiaryToDropbox`, fired from `processNotebook` with the
+  notebook id): writes ONE Markdown file per day into `dropboxExportFolder`
+  after each ingest, re-uploading only the day files that notebook touched
+  (`affectedDayFileNames`) — a full every-day sync runs on demand from the
+  `/memory` toggle (probe one file for scope, then background the rest).
+  This is the ONE path that needs the `files.content.write` scope — off by
+  default (`dropbox_export_enabled`), fails-open with an actionable "enable
+  the write scope + reconnect" message. Ingest stays read-only.
+- `lib/diaryExport.ts` (pure, unit-tested: `buildDiaryMarkdown` combined
+  doc for the download, `buildDayFiles` per-day map for Dropbox, plus
+  `carryForwardDates` / `effectiveDateKeys`) + `lib/diaryExportDb.ts`
+  (DB-backed `renderDiaryMarkdown`, `renderDiaryDayFiles`,
+  `affectedDayFileNames`). Excludes the `github-discipline` notebook,
+  same as `/mind`.
 - `lib/location.ts` + `lib/owntracks.ts` — OwnTracks ingestion, stay
   clustering, reverse-geocoding; `lib/github.ts` — discipline repo fetch;
   `lib/cleanup.ts`, `lib/upload.ts`, `lib/extractText.ts`, `lib/format.ts` —

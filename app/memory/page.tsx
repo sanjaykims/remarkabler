@@ -77,7 +77,7 @@ export default function MemoryPage() {
     lastSkipped: string | null;
     lastRevokeWarning: string | null;
     exportEnabled: boolean;
-    exportPath: string;
+    exportFolder: string;
     exportLastAt: string | null;
     exportLastError: string | null;
   };
@@ -280,7 +280,12 @@ export default function MemoryPage() {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "Couldn't update export setting.");
       if (enable) {
-        if (d.ran?.ok) setExportMsg("Saved to Dropbox ✓");
+        if (d.ran?.ok)
+          setExportMsg(
+            d.fullSyncStarted
+              ? "Write access works ✓ — syncing every day in the background. Check back in a minute."
+              : "Saved to Dropbox ✓"
+          );
         else if (d.ran?.error) setExportMsg(d.ran.error);
       }
       await loadDropbox();
@@ -303,7 +308,12 @@ export default function MemoryPage() {
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "Export failed.");
-      if (d.ran?.ok) setExportMsg("Saved to Dropbox ✓");
+      if (d.ran?.ok)
+        setExportMsg(
+          d.fullSyncStarted
+            ? "Syncing every day to Dropbox in the background…"
+            : "Saved to Dropbox ✓"
+        );
       else if (d.ran?.error) setExportMsg(d.ran.error);
       else if (d.ran?.skipped) setExportMsg(`Skipped: ${d.ran.skipped}`);
       await loadDropbox();
@@ -946,13 +956,16 @@ export default function MemoryPage() {
             <div className="rounded border border-stone-200 dark:border-stone-800 p-3 space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium">Auto-save diary Markdown</p>
+                  <p className="text-sm font-medium">
+                    Auto-save diary Markdown (one file per day)
+                  </p>
                   <p className="text-xs opacity-70">
-                    After each diary is transcribed, write a fresh
-                    <code className="mx-1">{dropbox.exportPath}</code>
-                    into your Dropbox — a portable text copy for Obsidian,
-                    NotebookLM, or offline backup. Needs write access:
-                    in the Dropbox app console enable
+                    After each diary is transcribed, write a Markdown file per
+                    day into
+                    <code className="mx-1">{dropbox.exportFolder}/</code>
+                    in your Dropbox (e.g. <code>2026-06-19.md</code>) — a
+                    portable daily-notes vault for Obsidian or offline backup.
+                    Needs write access: in the Dropbox app console enable
                     <code className="mx-1">files.content.write</code>, then
                     Disconnect + Connect again.
                   </p>

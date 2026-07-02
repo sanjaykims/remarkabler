@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-07-02 (Diary auto-export is now one Markdown file per day)
+
+Changed the Dropbox auto-export from a single `diary.md` to **one file per
+day** in a folder (`/Remarkabler/diary/2026-06-19.md`, … + `undated.md`) —
+a proper daily-notes vault for Obsidian, and a cleaner backup layout.
+
+- New pure builders in `lib/diaryExport.ts`: `buildDayFiles` (filename→md
+  map), `effectiveDateKeys` (which days a notebook touches, via
+  carry-forward). `buildDiaryMarkdown` (the combined single doc) stays for
+  the download button.
+- `lib/diaryExportDb.ts`: `renderDiaryDayFiles` + `affectedDayFileNames`
+  alongside `renderDiaryMarkdown` (shared `fetchDiaryData`).
+- **Efficient incremental upload.** After each ingest, only the day files
+  that notebook actually touched are re-uploaded (usually 1–5), not the
+  whole vault (`maybeExportDiaryToDropbox({ notebookId })`).
+- **Timeout-safe full sync.** The `/memory` toggle / "Export now" probes
+  write access with a single-file upload (instant scope feedback), then
+  runs the full every-day sync in the background so a multi-year diary
+  can't blow the request budget.
+- Export target is now a folder setting (`dropbox_export_folder`, default
+  `/Remarkabler/diary`); status exposes `exportFolder`. Any old
+  single-file `diary.md` is left in place — harmless; delete it if you like.
+- 11 new tests (per-day builders + DB renderers + affected-names). Suite
+  244. `npm run lint` + `npm run build` clean.
+
+The download button (`GET /api/export/diary`) is unchanged — still one
+combined file (a single HTTP response can't be a folder without a zip).
+
 ## 2026-07-02 (Automatic diary Markdown export back to Dropbox — opt-in)
 
 Makes the diary Markdown export *automatic*: after each notebook is

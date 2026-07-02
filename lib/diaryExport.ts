@@ -194,3 +194,134 @@ export function buildDiaryMarkdown(opts: {
 
   return lines.join("\n");
 }
+
+// ── Per-day file export ────────────────────────────────────────────────────
+// Instead of one combined document, produce one Markdown file per day
+// (plus an "undated.md" when needed) — a proper daily-notes vault for
+// Obsidian and a natural backup layout. Same carry-forward + metadata rules
+// as buildDiaryMarkdown; the map key is the filename.
+
+/**
+ * Effective date keys touched by a set of rows (for one notebook), using the
+ * same carry-forward rule. Lets the Dropbox export upload ONLY the day files
+ * a freshly-ingested notebook could have changed, instead of re-uploading
+ * the whole vault every time. `rows` must be that notebook's pages in page
+ * order.
+ */
+export function effectiveDateKeys(
+  rows: Array<{ notebook_id: string; entry_date: string | null }>
+): { dates: string[]; hasUndated: boolean } {
+  const dates = new Set<string>();
+  let hasUndated = false;
+  let currentNotebook: string | null = null;
+  let carry: string | null = null;
+  for (const r of rows) {
+    if (r.notebook_id !== currentNotebook) {
+      currentNotebook = r.notebook_id;
+      carry = null;
+    }
+    if (isDatedEntry(r.entry_date)) carry = r.entry_date;
+    const eff = isDatedEntry(r.entry_date) ? r.entry_date : carry;
+    if (eff) dates.add(eff);
+    else hasUndated = true;
+  }
+  return { dates: [...dates], hasUndated };
+}
+
+// The filename for undated pages within the export folder.
+export const UNDATED_FILE = "undated.md";
+
+function renderDayFile(
+  date: string,
+  pages: DiaryPageRow[],
+  entitiesByPage: Map<string, PageEntities>,
+  exportedAt: string
+): string {
+  const notebooks = new Set(pages.map((p) => p.notebook_name));
+  const lines: string[] = [];
+  lines.push("---");
+  lines.push(`title: "${date}"`);
+  lines.push("source: Remarkabler");
+  lines.push(`date: ${date}`);
+  lines.push(`notebooks: ${notebooks.size}`);
+  lines.push(`pages: ${pages.length}`);
+  lines.push(`exported: ${exportedAt || "unknown"}`);
+  lines.push("---");
+  lines.push("");
+  lines.push(`# ${date}`);
+  lines.push("");
+  for (const r of pages) {
+    lines.push(pageMetaLine(r, entitiesByPage.get(r.id)));
+    lines.push("");
+    lines.push(r.ocr_text.trim());
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function renderUndatedFile(
+  pages: DiaryPageRow[],
+  entitiesByPage: Map<string, PageEntities>,
+  exportedAt: string
+): string {
+  const lines: string[] = [];
+  lines.push("---");
+  lines.push('title: "Undated entries"');
+  lines.push("source: Remarkabler");
+  lines.push(`pages: ${pages.length}`);
+  lines.push(`exported: ${exportedAt || "unknown"}`);
+  lines.push("---");
+  lines.push("");
+  lines.push("# Undated entries");
+  lines.push("");
+  lines.push("_Pages with no diary timestamp to parse. Grouped by notebook._");
+  lines.push("");
+  let currentNotebook = "";
+  for (const r of pages) {
+    if (r.notebook_name !== currentNotebook) {
+      lines.push(`### ${r.notebook_name}`);
+      lines.push("");
+      currentNotebook = r.notebook_name;
+    }
+    lines.push(`_page ${r.page_index + 1}_`);
+    lines.push("");
+    lines.push(r.ocr_text.trim());
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Build a map of { filename → Markdown } — one file per day (`2026-06-19.md`)
+ * plus `undated.md` if there are undated pages. `rows` must arrive grouped
+ * by notebook, in page order.
+ */
+export function buildDayFiles(opts: {
+  rows: DiaryPageRow[];
+  entitiesByPage: Map<string, PageEntities>;
+  exportedAt: string;
+}): Map<string, string> {
+  const { rows, entitiesByPage, exportedAt } = opts;
+  const enriched = carryForwardDates(rows);
+
+  const byDate = new Map<string, DiaryPageRow[]>();
+  const undated: DiaryPageRow[] = [];
+  for (const e of enriched) {
+    if (e.effectiveDate === null) {
+      undated.push(e.row);
+      continue;
+    }
+    const list = byDate.get(e.effectiveDate);
+    if (list) list.push(e.row);
+    else byDate.set(e.effectiveDate, [e.row]);
+  }
+
+  const files = new Map<string, string>();
+  for (const [date, pages] of byDate) {
+    files.set(`${date}.md`, renderDayFile(date, pages, entitiesByPage, exportedAt));
+  }
+  if (undated.length > 0) {
+    files.set(UNDATED_FILE, renderUndatedFile(undated, entitiesByPage, exportedAt));
+  }
+  return files;
+}

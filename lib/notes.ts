@@ -141,9 +141,12 @@ export async function processNotebook(id: string): Promise<void> {
     // cycle. Best-effort and internally guarded — never affects this notebook.
     try {
       const { maybeExportDiaryToDropbox } = (await import("./dropbox")) as {
-        maybeExportDiaryToDropbox: () => Promise<unknown>;
+        maybeExportDiaryToDropbox: (opts?: {
+          notebookId?: string;
+        }) => Promise<unknown>;
       };
-      await maybeExportDiaryToDropbox();
+      // Only re-upload the day files THIS notebook touched (usually 1–5).
+      await maybeExportDiaryToDropbox({ notebookId: id });
     } catch (e) {
       console.warn("[notes] diary auto-export failed:", (e as Error).message);
     }

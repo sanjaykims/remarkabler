@@ -121,3 +121,55 @@ describe("renderDiaryMarkdown", () => {
     expect(md).toContain("_No transcribed diary pages yet._");
   });
 });
+
+describe("renderDiaryDayFiles", () => {
+  it("produces one file per day and excludes the discipline notebook", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    addPage("nb1", 0, "june 19 entry", "2026-06-19");
+    addPage("nb1", 1, "still june 19", "none"); // carries forward
+    addNotebook("nb2", "Diary 2026", "2026-06-20 00:00:00");
+    addPage("nb2", 0, "june 20 entry", "2026-06-20");
+    addNotebook(notesMod.DISCIPLINE_ID, "Discipline", "2026-06-21 00:00:00");
+    addPage(notesMod.DISCIPLINE_ID, 0, "REPO FILE", null);
+
+    const files = exportMod.renderDiaryDayFiles();
+    expect([...files.keys()].sort()).toEqual([
+      "2026-06-19.md",
+      "2026-06-20.md",
+    ]);
+    expect(files.get("2026-06-19.md")).toContain("still june 19");
+    // Discipline content never appears in any file.
+    for (const md of files.values()) expect(md).not.toContain("REPO FILE");
+  });
+});
+
+describe("affectedDayFileNames", () => {
+  it("returns the day files a notebook's pages touch (with carry-forward)", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    addPage("nb1", 0, "start", "2026-06-19");
+    addPage("nb1", 1, "cont", "none"); // still 06-19
+    addPage("nb1", 2, "next day", "2026-06-20");
+
+    expect(exportMod.affectedDayFileNames("nb1").sort()).toEqual([
+      "2026-06-19.md",
+      "2026-06-20.md",
+    ]);
+  });
+
+  it("includes undated.md when a notebook has pages before its first date", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    addPage("nb1", 0, "floating", "none");
+    addPage("nb1", 1, "dated", "2026-06-19");
+
+    expect(exportMod.affectedDayFileNames("nb1").sort()).toEqual([
+      "2026-06-19.md",
+      "undated.md",
+    ]);
+  });
+
+  it("returns [] for the discipline notebook", () => {
+    addNotebook(notesMod.DISCIPLINE_ID, "Discipline", "2026-06-21 00:00:00");
+    addPage(notesMod.DISCIPLINE_ID, 0, "repo", "none");
+    expect(exportMod.affectedDayFileNames(notesMod.DISCIPLINE_ID)).toEqual([]);
+  });
+});
