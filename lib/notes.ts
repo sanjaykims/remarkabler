@@ -285,14 +285,18 @@ export function extractEntryDate(text: string): string | null {
   if (!text) return null;
   // Match the diary header in all the forms the user actually writes /
   // Claude's OCR produces:
-  //   2026-06-14-22-30-kst   ← the user's handwritten format (hour and
-  //                            minute split by a dash, lowercase kst)
-  //   2026-06-14-2230-KST    ← legacy compact form
-  //   2026-06-14 22:30 KST   ← occasional reformat
-  // KST is matched case-insensitively. We anchor near the top of the page
-  // by accepting any preceding whitespace / hyphen separators.
+  //   2026-06-14-22-30-kst        ← compact dashes, lowercase kst
+  //   2026-06-14-2230-KST         ← legacy compact form
+  //   2026-06-14 22:30 KST        ← space + colon
+  //   2026-06-14 - 17 - 19 - KST  ← SPACED separators (what the user
+  //                                 actually handwrites on the tablet)
+  //   2026 - 06 - 14 - 17 - 19 - KST  ← fully spaced
+  // `\s*` around every separator makes the parser tolerant of whatever
+  // spacing the handwriting/OCR produces — the earlier pattern required
+  // tight separators and silently dropped spaced headers into "undated".
+  // KST is matched case-insensitively.
   const m = text.match(
-    /(\d{4})-(\d{2})-(\d{2})[\s\-T]\d{2}[\s\-:]?\d{2}[\s\-]*kst/i
+    /(\d{4})\s*-\s*(\d{2})\s*-\s*(\d{2})\s*[-\sT]\s*\d{2}\s*[-:\s]?\s*\d{2}\s*[-\s]*kst/i
   );
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
