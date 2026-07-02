@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildDiaryMarkdown,
+  carryForwardDates,
   isDatedEntry,
   parseThemes,
   type DiaryPageRow,
@@ -8,12 +9,13 @@ import {
 } from "@/lib/diaryExport";
 
 // Pure-logic unit tests for the diary Markdown export. No DB, no network —
-// the route feeds pre-ordered rows in; this pins the grouping, ordering,
-// frontmatter, and metadata rendering.
+// the route feeds notebook-ordered rows in; this pins carry-forward,
+// grouping, ordering, frontmatter, and metadata rendering.
 
 function row(over: Partial<DiaryPageRow>): DiaryPageRow {
   return {
     id: "p1",
+    notebook_id: "nb1",
     entry_date: "2026-06-19",
     page_index: 0,
     ocr_text: "text",
@@ -50,7 +52,67 @@ describe("parseThemes", () => {
 
 const noEntities = new Map<string, PageEntities>();
 
+describe("carryForwardDates", () => {
+  it("carries a dated page's date forward to later undated pages in the same notebook", () => {
+    const out = carryForwardDates([
+      row({ id: "a", notebook_id: "nb1", page_index: 0, entry_date: "2026-06-19" }),
+      row({ id: "b", notebook_id: "nb1", page_index: 1, entry_date: "none" }),
+      row({ id: "c", notebook_id: "nb1", page_index: 2, entry_date: null }),
+    ]);
+    expect(out.map((e) => e.effectiveDate)).toEqual([
+      "2026-06-19",
+      "2026-06-19",
+      "2026-06-19",
+    ]);
+  });
+
+  it("leaves pages before the first dated page undated", () => {
+    const out = carryForwardDates([
+      row({ id: "a", notebook_id: "nb1", page_index: 0, entry_date: "none" }),
+      row({ id: "b", notebook_id: "nb1", page_index: 1, entry_date: "2026-06-19" }),
+    ]);
+    expect(out.map((e) => e.effectiveDate)).toEqual([null, "2026-06-19"]);
+  });
+
+  it("resets the carry at a notebook boundary", () => {
+    const out = carryForwardDates([
+      row({ id: "a", notebook_id: "nb1", page_index: 0, entry_date: "2026-06-19" }),
+      row({ id: "b", notebook_id: "nb2", page_index: 0, entry_date: "none" }),
+    ]);
+    // nb2's page must NOT inherit nb1's date.
+    expect(out.map((e) => e.effectiveDate)).toEqual(["2026-06-19", null]);
+  });
+
+  it("switches the carried date when a later page has its own", () => {
+    const out = carryForwardDates([
+      row({ id: "a", notebook_id: "nb1", page_index: 0, entry_date: "2026-06-19" }),
+      row({ id: "b", notebook_id: "nb1", page_index: 1, entry_date: "none" }),
+      row({ id: "c", notebook_id: "nb1", page_index: 2, entry_date: "2026-06-22" }),
+      row({ id: "d", notebook_id: "nb1", page_index: 3, entry_date: "none" }),
+    ]);
+    expect(out.map((e) => e.effectiveDate)).toEqual([
+      "2026-06-19",
+      "2026-06-19",
+      "2026-06-22",
+      "2026-06-22",
+    ]);
+  });
+});
+
 describe("buildDiaryMarkdown", () => {
+  it("keeps carried-forward continuation pages under their day, not Undated", () => {
+    const md = buildDiaryMarkdown({
+      rows: [
+        row({ id: "a", notebook_id: "nb1", page_index: 0, entry_date: "2026-06-19", ocr_text: "page one" }),
+        row({ id: "b", notebook_id: "nb1", page_index: 1, entry_date: "none", ocr_text: "page two same session" }),
+      ],
+      entitiesByPage: noEntities,
+      exportedAt: "x",
+    });
+    expect(md).not.toContain("## Undated entries");
+    expect(md.match(/^## 2026-06-19$/gm)?.length).toBe(1);
+    expect(md).toContain("page two same session");
+  });
   it("emits YAML frontmatter with counts and date range", () => {
     const md = buildDiaryMarkdown({
       rows: [
@@ -101,9 +163,10 @@ describe("buildDiaryMarkdown", () => {
   it("puts undated pages in a dedicated section grouped by notebook", () => {
     const md = buildDiaryMarkdown({
       rows: [
-        row({ id: "a", entry_date: "2026-06-19" }),
-        row({ id: "u1", entry_date: "none", notebook_name: "Loose Pages", page_index: 4 }),
-        row({ id: "u2", entry_date: null, notebook_name: "Loose Pages", page_index: 5 }),
+        row({ id: "a", notebook_id: "nb1", entry_date: "2026-06-19" }),
+        // Separate notebook with no dated page → genuinely undated.
+        row({ id: "u1", notebook_id: "nbLoose", entry_date: "none", notebook_name: "Loose Pages", page_index: 4 }),
+        row({ id: "u2", notebook_id: "nbLoose", entry_date: null, notebook_name: "Loose Pages", page_index: 5 }),
       ],
       entitiesByPage: noEntities,
       exportedAt: "x",
