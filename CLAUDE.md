@@ -42,8 +42,9 @@ and generate an accumulating record of "insights" about themselves.
   are `NEXT_PUBLIC_*` vars, so they are inlined at build time — set them in
   Railway before the build (changing them triggers a rebuild).
 - Optional Dropbox auto-ingest: set `DROPBOX_APP_KEY` + `DROPBOX_APP_SECRET`
-  (Dropbox app with `files.metadata.read` + `files.content.read` scopes only)
-  and `APP_BASE_URL` (the canonical https URL of the deployment, e.g.
+  (Dropbox app with `files.metadata.read` + `files.content.read`; read-only
+  by default — see the diary-export note below for the one optional write
+  scope) and `APP_BASE_URL` (the canonical https URL of the deployment, e.g.
   `https://your-app.up.railway.app`). Optional: `DROPBOX_INGEST_PATH`
   (defaults to `/Diary`), `OCR_CONCURRENCY_LIMIT` (defaults to 2, max 5)
   caps the shared OCR budget across manual uploads + Dropbox ingest. The
@@ -138,7 +139,16 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - `lib/dropbox.ts` — Dropbox auto-ingest: OAuth (refresh-token flow),
   read-only folder polling, dedupe by `notebooks.dropbox_file_id`. Watcher
   is fired from `runMaintenanceSweep` so it runs alongside the other
-  background jobs.
+  background jobs. Also the **opt-in diary auto-export**
+  (`maybeExportDiaryToDropbox`, fired from `processNotebook`): writes the
+  rendered diary Markdown back to Dropbox after each ingest. This is the
+  ONE path that needs the `files.content.write` scope — off by default
+  (`dropbox_export_enabled` setting), and it fails-open with an actionable
+  "enable the write scope + reconnect" message. Ingest stays read-only.
+- `lib/diaryExport.ts` (pure Markdown assembly + date carry-forward,
+  unit-tested) + `lib/diaryExportDb.ts` (`renderDiaryMarkdown`: the
+  DB-backed renderer shared by `GET /api/export/diary` and the Dropbox
+  auto-export). Excludes the `github-discipline` notebook, same as `/mind`.
 - `lib/location.ts` + `lib/owntracks.ts` — OwnTracks ingestion, stay
   clustering, reverse-geocoding; `lib/github.ts` — discipline repo fetch;
   `lib/cleanup.ts`, `lib/upload.ts`, `lib/extractText.ts`, `lib/format.ts` —
@@ -146,7 +156,7 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - API routes (`app/api/*`): `auth`, `notebooks`, `chat`, `insights`, `usage`,
   `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
   `mind/axis-labels`, `mind/reparse-dates`), `embeddings`, `backup`,
-  `discipline`, `dropbox/{connect,callback,status,disconnect}`,
+  `discipline`, `dropbox/{connect,callback,status,disconnect,export}`,
   `location`, `owntracks`, `export` (+ `export/diary` diary-only Markdown,
   `export/book` Opus editor pass), `settings`,
   `chat/memories` (GET list+status / DELETE soft-delete /

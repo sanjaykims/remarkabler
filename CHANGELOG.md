@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-07-02 (Automatic diary Markdown export back to Dropbox — opt-in)
+
+Makes the diary Markdown export *automatic*: after each notebook is
+ingested + OCR'd, Remarkabler regenerates the diary and writes it back
+into Dropbox as `/Remarkabler/diary.md` (overwrite). So the portable
+text copy stays current with no manual "Download" tap.
+
+- **Opt-in, and needs one new Dropbox scope.** The Dropbox app is
+  read-only by design (`files.metadata.read` + `files.content.read`).
+  Writing back needs `files.content.write` added in the Dropbox app
+  console + a reconnect. Off by default (`dropbox_export_enabled`); the
+  Memory → Dropbox section has a toggle + "Export now" + last-saved
+  status. If the scope is missing, the export fails-open with an
+  actionable message ("enable files.content.write, then reconnect") — it
+  never breaks ingest.
+- `maybeExportDiaryToDropbox` (in `lib/dropbox.ts`) is fired from
+  `processNotebook`, so both Dropbox ingests and manual uploads refresh
+  the export. Best-effort + in-flight-guarded.
+- New `uploadTextFile` (Dropbox `/2/files/upload`, overwrite) — the only
+  write call in the integration.
+- New `POST /api/dropbox/export` (`{ enabled?, runNow? }`) toggles + tests.
+- Rendering is shared with the download route via
+  `lib/diaryExportDb.ts:renderDiaryMarkdown` (DRY) — same output both
+  ways, discipline notebook excluded, dates carried forward.
+- 4 new DB-backed tests in `test/diaryExportDb.test.ts` (discipline
+  exclusion, carry-forward, entity/theme rendering, empty diary). Suite
+  233. `npm run lint` + `npm run build` clean.
+
+Ingest remains strictly read-only; only this opt-in export ever writes.
+
 ## 2026-07-02 (Diary export follow-ups from Codex review of #69)
 
 Two P2 correctness fixes Codex caught on the diary-export PR:
