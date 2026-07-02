@@ -96,7 +96,9 @@ Companion docs — read in order if any is unfamiliar:
 - **Dropbox:** `dropbox/connect`, `/callback`, `/status`, `/disconnect`.
 - **Discipline:** `discipline` (GET + POST sync), `discipline/settings` (enable toggle).
 - **Location:** `location` (GET + POST manual log), `location/settings`, `owntracks` (`?token=` push endpoint).
-- **Export:** `export` (raw bundle Markdown), `export/book` (Opus editor pass).
+- **Export:** `export` (raw bundle Markdown: profile+diary+chats+insights),
+  `export/diary` (diary-only Markdown, per-day, for Obsidian/NotebookLM/backup —
+  no LLM cost), `export/book` (Opus editor pass).
 - **Settings:** `settings/models` (which model runs each role), `auth`.
 - **PWA share:** `app/share/route.ts`.
 - **Usage:** `usage` (cost calendar data).

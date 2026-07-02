@@ -946,9 +946,27 @@ export default function MemoryPage() {
       <ChatMemorySection />
 
       <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
-        <h2 className="font-medium">Export — book draft</h2>
+        <h2 className="font-medium">Export</h2>
 
         <div className="space-y-1.5">
+          <p className="text-xs opacity-70">
+            <strong>Diary as Markdown.</strong> Just your transcribed diary,
+            one entry per day (oldest first), as plain text you own. A
+            portable backup that outlives this app — drop it into Obsidian,
+            upload it to Google NotebookLM for an audio &ldquo;podcast&rdquo;
+            of your month, or keep it as offline insurance. Instant download,
+            zero cost.
+          </p>
+          <a
+            href="/api/export/diary"
+            download
+            className="inline-block rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm"
+          >
+            Download diary (Markdown)
+          </a>
+        </div>
+
+        <div className="space-y-1.5 pt-3 border-t border-stone-200 dark:border-stone-800">
           <p className="text-xs opacity-70">
             <strong>Raw bundle.</strong> Everything in one Markdown file:
             profile, every diary (chronological), every chat (including
