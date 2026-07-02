@@ -22,6 +22,13 @@ and generate an accumulating record of "insights" about themselves.
   `korean-news-study-en/remarkable-app` via a "split" workflow; that bridge is
   retired. Do not recreate it, and ignore the old repo.
 - Deployed on **Railway**, which auto-deploys on every push to `main`.
+  **Build is now a `Dockerfile`** (`railway.json` builder `DOCKERFILE`), not
+  Nixpacks — the image bundles a Python `.rm` renderer (`rmc` + `cairosvg`
+  in a venv at `/opt/renderer`, wrapper `rm2pdf` on PATH) alongside Node for
+  the reMarkable-cloud feature. Multi-stage: `nikolaik/python-nodejs` base;
+  builder compiles better-sqlite3, runner is the slim variant. To revert to
+  Nixpacks, set the builder back — one line. Renderer helper files live in
+  `docker/` (`rm2pdf`, `patch_rm_palette.py`, empty `certs/` CA hook).
 - Railway config: env vars `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`
   (set to `claude-opus-4-7`), `DATA_DIR=/data`; a persistent volume is mounted
   at `/data` and holds the SQLite database and uploaded PDFs. Optional
@@ -64,6 +71,9 @@ and generate an accumulating record of "insights" about themselves.
   repo's text files into a notebook and folds them into the profile. Requires
   the Railway network policy to allow outbound calls to `api.github.com`.
 - `npm run start` honors the host-provided `PORT`. `npm run build` must pass.
+  The `Dockerfile` must also build (Railway uses it) — but note it needs a
+  running Docker daemon + outbound apt/pip, which the sandbox may lack;
+  Railway is the real build test.
 
 ## Stack
 
@@ -278,8 +288,11 @@ features need the deployed instance to fully verify.
   in 2025–2026: `rmapi-js` (maintained, pure-JS, ESM) reads the cloud, and
   `rmc`+`cairosvg` (Python) render `.rm` v6 → SVG → PDF server-side
   (validated on real firmware-3.x samples; caveats: never use `rmc -t pdf`
-  — it needs Inkscape — and patch rmc's RM_PALETTE for firmware ≥3.14
-  highlighter color IDs). **Phase 0 (shipped): `lib/remarkableCloud.ts`
+  — it needs Inkscape — and patch rmc's RM_PALETTE, which in `rmc==0.3.0`
+  genuinely omits the firmware-≥3.14 highlighter color id 9 and crashes with
+  `KeyError: 9` on those pages. `docker/patch_rm_palette.py` restores it,
+  necessity-gated on the *live* dict so it inserts only when 9 is missing).
+  **Phase 0 (shipped): `lib/remarkableCloud.ts`
   pairs via a one-time code from my.remarkable.com and LISTS notebooks
   read-only — no ingestion, no renderer, no deploy change.** Phase 1 adds
   the renderer (needs a Dockerfile — repo is Nixpacks today) behind a

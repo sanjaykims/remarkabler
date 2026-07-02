@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# rm2pdf INPUT.rm OUTPUT.pdf
+#
+# Render one reMarkable v6 `.rm` page to a single-page PDF:
+#   .rm --(rmc)--> SVG --(cairosvg, else svglib/reportlab)--> PDF
+#
+# cairosvg is the higher-fidelity path (needs libcairo2); svglib+reportlab is
+# a pure-Python fallback so a missing system Cairo can't break rendering.
+# Runs entirely from the isolated renderer venv at /opt/renderer.
+set -euo pipefail
+
+if [ "$#" -ne 2 ]; then
+  echo "usage: rm2pdf INPUT.rm OUTPUT.pdf" >&2
+  exit 2
+fi
+in="$1"
+out="$2"
+tmp="$(mktemp --suffix=.svg)"
+trap 'rm -f "$tmp"' EXIT
+
+/opt/renderer/bin/rmc -t svg "$in" -o "$tmp"
+
+# cairosvg is the high-fidelity path. Let its stderr through (don't swallow
+# it) so a failure that forces the lower-fidelity fallback is diagnosable.
+if /opt/renderer/bin/cairosvg "$tmp" -o "$out"; then
+  exit 0
+fi
+echo "rm2pdf: cairosvg failed for '$in'; using svglib/reportlab fallback (may be lower fidelity)" >&2
+
+# Fallback: svglib + reportlab (pure Python).
+/opt/renderer/bin/python - "$tmp" "$out" <<'PY'
+import sys
+from svglib.svglib import svg2rlg
+from reportlab.graphics import renderPDF
+drawing = svg2rlg(sys.argv[1])
+if drawing is None:
+    raise SystemExit("svglib could not parse the SVG")
+renderPDF.drawToFile(drawing, sys.argv[2])
+PY
