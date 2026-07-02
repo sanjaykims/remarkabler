@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   buildDiaryMarkdown,
+  buildDayFiles,
   carryForwardDates,
+  effectiveDateKeys,
   isDatedEntry,
   parseThemes,
+  UNDATED_FILE,
   type DiaryPageRow,
   type PageEntities,
 } from "@/lib/diaryExport";
@@ -224,5 +227,93 @@ describe("buildDiaryMarkdown", () => {
     expect(md).toContain("pages: 0");
     expect(md).toContain("_No transcribed diary pages yet._");
     expect(md).not.toContain("range:");
+  });
+});
+
+describe("effectiveDateKeys", () => {
+  it("collects carried-forward dates and flags undated tails", () => {
+    const r = effectiveDateKeys([
+      { notebook_id: "nb1", entry_date: "2026-06-19" },
+      { notebook_id: "nb1", entry_date: "none" }, // carries 06-19
+      { notebook_id: "nb1", entry_date: "2026-06-20" },
+    ]);
+    expect(r.dates.sort()).toEqual(["2026-06-19", "2026-06-20"]);
+    expect(r.hasUndated).toBe(false);
+  });
+
+  it("flags hasUndated when a notebook starts before any date", () => {
+    const r = effectiveDateKeys([
+      { notebook_id: "nb1", entry_date: "none" },
+      { notebook_id: "nb1", entry_date: "2026-06-19" },
+    ]);
+    expect(r.dates).toEqual(["2026-06-19"]);
+    expect(r.hasUndated).toBe(true);
+  });
+
+  it("resets carry across notebooks", () => {
+    const r = effectiveDateKeys([
+      { notebook_id: "nb1", entry_date: "2026-06-19" },
+      { notebook_id: "nb2", entry_date: "none" }, // must NOT inherit nb1
+    ]);
+    expect(r.dates).toEqual(["2026-06-19"]);
+    expect(r.hasUndated).toBe(true);
+  });
+});
+
+describe("buildDayFiles", () => {
+  const noEnt = new Map<string, PageEntities>();
+
+  it("produces one file per day, keyed by filename", () => {
+    const files = buildDayFiles({
+      rows: [
+        row({ id: "a", notebook_id: "nb1", entry_date: "2026-06-19" }),
+        row({ id: "b", notebook_id: "nb1", entry_date: "2026-06-20", page_index: 1 }),
+      ],
+      entitiesByPage: noEnt,
+      exportedAt: "x",
+    });
+    expect([...files.keys()].sort()).toEqual(["2026-06-19.md", "2026-06-20.md"]);
+    expect(files.get("2026-06-19.md")).toContain("# 2026-06-19");
+    expect(files.get("2026-06-19.md")).toContain("date: 2026-06-19");
+  });
+
+  it("keeps carried-forward continuation pages in the same day file", () => {
+    const files = buildDayFiles({
+      rows: [
+        row({ id: "a", notebook_id: "nb1", entry_date: "2026-06-19", ocr_text: "one" }),
+        row({ id: "b", notebook_id: "nb1", entry_date: "none", page_index: 1, ocr_text: "two" }),
+      ],
+      entitiesByPage: noEnt,
+      exportedAt: "x",
+    });
+    expect([...files.keys()]).toEqual(["2026-06-19.md"]);
+    const day = files.get("2026-06-19.md") as string;
+    expect(day).toContain("one");
+    expect(day).toContain("two");
+    expect(files.has(UNDATED_FILE)).toBe(false);
+  });
+
+  it("writes undated.md only when there are undated pages", () => {
+    const files = buildDayFiles({
+      rows: [
+        row({ id: "a", notebook_id: "nbLoose", entry_date: "none", notebook_name: "Loose", ocr_text: "floating" }),
+      ],
+      entitiesByPage: noEnt,
+      exportedAt: "x",
+    });
+    expect(files.has(UNDATED_FILE)).toBe(true);
+    expect(files.get(UNDATED_FILE)).toContain("floating");
+  });
+
+  it("renders entities in a day file", () => {
+    const ent = new Map<string, PageEntities>([
+      ["a", { person: ["Jin"], place: [], project: [] }],
+    ]);
+    const files = buildDayFiles({
+      rows: [row({ id: "a", notebook_id: "nb1", entry_date: "2026-06-19" })],
+      entitiesByPage: ent,
+      exportedAt: "x",
+    });
+    expect(files.get("2026-06-19.md")).toContain("people: Jin");
   });
 });

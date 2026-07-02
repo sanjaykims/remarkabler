@@ -6,13 +6,18 @@ import {
 } from "@/lib/db";
 import { createNotebook, processNotebook } from "@/lib/notes";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload";
-import { renderDiaryMarkdown } from "@/lib/diaryExportDb";
+import {
+  renderDiaryDayFiles,
+  affectedDayFileNames,
+} from "@/lib/diaryExportDb";
+import { UNDATED_FILE } from "@/lib/diaryExport";
 
-// Where the auto-exported diary Markdown is written inside the user's
-// Dropbox. Overridable via the `dropbox_export_path` setting. Kept in a
-// dedicated folder (not the ingest folder) so it can never be mistaken for
-// a notebook to re-ingest — and the ingest guard only accepts PDFs anyway.
-const DEFAULT_EXPORT_PATH = "/Remarkabler/diary.md";
+// Folder inside the user's Dropbox where the per-day diary Markdown files
+// are written (one file per day, e.g. `2026-06-19.md`, + `undated.md`).
+// Overridable via the `dropbox_export_folder` setting. A dedicated folder
+// (not the ingest folder) so the files can never be mistaken for notebooks
+// to re-ingest — and the ingest guard only accepts PDFs anyway.
+const DEFAULT_EXPORT_FOLDER = "/Remarkabler/diary";
 
 // Dropbox auto-ingest. reMarkable Connect's "Export to integration" pushes a
 // flattened PDF of a notebook to a user-chosen Dropbox folder. This module
@@ -272,10 +277,11 @@ export type DropboxStatus = {
   lastSeenFileCount: number | null;
   lastSkipped: string | null;
   lastRevokeWarning: string | null;
-  // Auto-export of the diary Markdown back into Dropbox (opt-in; needs the
-  // files.content.write scope added to the Dropbox app + a reconnect).
+  // Auto-export of the diary Markdown back into Dropbox — one file per day
+  // in exportFolder (opt-in; needs the files.content.write scope added to
+  // the Dropbox app + a reconnect).
   exportEnabled: boolean;
-  exportPath: string;
+  exportFolder: string;
   exportLastAt: string | null;
   exportLastError: string | null;
 };
@@ -284,9 +290,10 @@ export function dropboxExportEnabled(): boolean {
   return getSetting("dropbox_export_enabled") === "1";
 }
 
-export function dropboxExportPath(): string {
-  const p = (getSetting("dropbox_export_path") || "").trim();
-  return p || DEFAULT_EXPORT_PATH;
+export function dropboxExportFolder(): string {
+  const raw = (getSetting("dropbox_export_folder") || "").trim();
+  const p = raw || DEFAULT_EXPORT_FOLDER;
+  return p.replace(/\/+$/, ""); // no trailing slash
 }
 
 export function setDropboxExportEnabled(enabled: boolean): void {
@@ -321,7 +328,7 @@ export function dropboxStatus(): DropboxStatus {
     lastSkipped: getSetting("dropbox_last_skipped"),
     lastRevokeWarning: getSetting("dropbox_last_revoke_warning"),
     exportEnabled: dropboxExportEnabled(),
-    exportPath: dropboxExportPath(),
+    exportFolder: dropboxExportFolder(),
     exportLastAt: getSetting("dropbox_export_last_at"),
     exportLastError: getSetting("dropbox_export_last_error"),
   };
@@ -637,27 +644,61 @@ let exportInFlight = false;
 
 export type DiaryExportResult = {
   ok: boolean;
-  skipped?: "disabled" | "not-connected" | "in-flight";
+  written?: number;
+  skipped?: "disabled" | "not-connected" | "in-flight" | "nothing";
   error?: string;
 };
 
 /**
- * Regenerate the diary Markdown and write it back into Dropbox (overwrite).
+ * Write the diary as one Markdown file per day into the export folder.
+ *
+ * `opts.notebookId` restricts the upload to the day files THAT notebook
+ * could have changed (the common per-ingest path — usually 1–5 files).
+ * Omit it for a full sync of every day (the manual "Export now" / first
+ * enable). Overwrites; never deletes.
+ *
  * Opt-in (dropbox_export_enabled) and best-effort — never throws, so it
  * can't break the ingest/OCR pipeline it's fired from. On a missing-scope
- * failure it records an actionable message pointing at the fix.
+ * failure it records an actionable message and stops early.
  */
-export async function maybeExportDiaryToDropbox(): Promise<DiaryExportResult> {
+export async function maybeExportDiaryToDropbox(
+  opts?: { notebookId?: string; onlyNewest?: boolean }
+): Promise<DiaryExportResult> {
   if (!dropboxExportEnabled()) return { ok: false, skipped: "disabled" };
   if (!dropboxConnected()) return { ok: false, skipped: "not-connected" };
   if (exportInFlight) return { ok: false, skipped: "in-flight" };
   exportInFlight = true;
   try {
-    const md = renderDiaryMarkdown();
-    await uploadTextFile(dropboxExportPath(), md);
+    const files = renderDiaryDayFiles(); // filename -> markdown (all days)
+    // Which files to upload:
+    //   onlyNewest → a single file (a fast write-access probe)
+    //   notebookId → just that notebook's affected days (per-ingest path)
+    //   neither    → every day (full sync)
+    let names: string[];
+    if (opts?.onlyNewest) {
+      names = newestFileName(files);
+    } else if (opts?.notebookId) {
+      names = affectedDayFileNames(opts.notebookId).filter((n) => files.has(n));
+    } else {
+      names = [...files.keys()];
+    }
+    if (names.length === 0) {
+      setSetting("dropbox_export_last_at", new Date().toISOString());
+      clearSetting("dropbox_export_last_error");
+      return { ok: true, written: 0, skipped: "nothing" };
+    }
+
+    const folder = dropboxExportFolder();
+    let written = 0;
+    for (const name of names) {
+      // Sequential + best-effort. On the first failure, stop and surface
+      // it (a scope error would fail every file identically anyway).
+      await uploadTextFile(`${folder}/${name}`, files.get(name) as string);
+      written++;
+    }
     setSetting("dropbox_export_last_at", new Date().toISOString());
     clearSetting("dropbox_export_last_error");
-    return { ok: true };
+    return { ok: true, written };
   } catch (e) {
     const msg = friendlyExportError(e);
     setSetting("dropbox_export_last_error", msg);
@@ -666,6 +707,17 @@ export async function maybeExportDiaryToDropbox(): Promise<DiaryExportResult> {
   } finally {
     exportInFlight = false;
   }
+}
+
+// Pick a single file to write as a quick write-access probe: the most
+// recent day (or undated.md if there are no dated files). Empty when the
+// diary is empty.
+function newestFileName(files: Map<string, string>): string[] {
+  const dated = [...files.keys()]
+    .filter((n) => /^\d{4}-\d{2}-\d{2}\.md$/.test(n))
+    .sort();
+  if (dated.length) return [dated[dated.length - 1]];
+  return files.has(UNDATED_FILE) ? [UNDATED_FILE] : [];
 }
 
 // Turn an upload failure into a message the user can act on. The common one
