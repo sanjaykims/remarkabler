@@ -112,6 +112,8 @@ export default function MemoryPage() {
   const [rmImportMsg, setRmImportMsg] = useState<Record<string, string>>({});
   // Folder filter for the notebook list ("" = all folders).
   const [rmFolder, setRmFolder] = useState<string>("");
+  // Per-notebook compare state (the Phase 1b quality-gate report).
+  const [rmComparingId, setRmComparingId] = useState<string | null>(null);
 
   type EmbedStatus = {
     enabled: boolean;
@@ -520,6 +522,39 @@ export default function MemoryPage() {
       setRmImportMsg((m) => ({ ...m, [nb.id]: (e as Error).message }));
     } finally {
       setRmImportingId(null);
+    }
+  }
+
+  async function compareRemarkableNotebook(nb: RemarkableNotebook) {
+    if (rmComparingId) return;
+    setRmComparingId(nb.id);
+    setRmImportMsg((m) => ({
+      ...m,
+      [nb.id]: "Comparing the two transcriptions… this takes ~30s.",
+    }));
+    try {
+      const r = await fetch("/api/remarkable/compare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: nb.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d.ok && d.report) {
+        const extra =
+          d.daysOnlyImported && d.daysOnlyImported.length > 0
+            ? `\n\n(Days only in the new import, nothing to compare against: ${d.daysOnlyImported.join(", ")})`
+            : "";
+        setRmImportMsg((m) => ({
+          ...m,
+          [nb.id]: `Compared ${d.daysCompared} day${d.daysCompared === 1 ? "" : "s"}:\n\n${d.report}${extra}`,
+        }));
+      } else {
+        setRmImportMsg((m) => ({ ...m, [nb.id]: d.error || "Comparison failed." }));
+      }
+    } catch (e) {
+      setRmImportMsg((m) => ({ ...m, [nb.id]: (e as Error).message }));
+    } finally {
+      setRmComparingId(null);
     }
   }
 
@@ -1278,16 +1313,26 @@ export default function MemoryPage() {
                                     : ""}
                                 </p>
                               </div>
-                              <button
-                                onClick={() => importRemarkableNotebook(nb)}
-                                disabled={rmImportingId !== null}
-                                className="shrink-0 rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-xs disabled:opacity-50"
-                              >
-                                {rmImportingId === nb.id ? "Importing…" : "Import"}
-                              </button>
+                              <div className="shrink-0 flex items-center gap-1.5">
+                                <button
+                                  onClick={() => compareRemarkableNotebook(nb)}
+                                  disabled={rmComparingId !== null || rmImportingId !== null}
+                                  className="rounded border border-stone-300 dark:border-stone-700 px-2.5 py-1.5 text-xs disabled:opacity-50"
+                                  title="Compare this import's transcription to your existing entries for the same dates"
+                                >
+                                  {rmComparingId === nb.id ? "Comparing…" : "Compare"}
+                                </button>
+                                <button
+                                  onClick={() => importRemarkableNotebook(nb)}
+                                  disabled={rmImportingId !== null || rmComparingId !== null}
+                                  className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-xs disabled:opacity-50"
+                                >
+                                  {rmImportingId === nb.id ? "Importing…" : "Import"}
+                                </button>
+                              </div>
                             </div>
                             {rmImportMsg[nb.id] && (
-                              <p className="text-xs opacity-80 break-words">
+                              <p className="text-xs opacity-80 break-words whitespace-pre-wrap">
                                 {rmImportMsg[nb.id]}
                               </p>
                             )}

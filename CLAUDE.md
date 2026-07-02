@@ -186,7 +186,8 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
   `mind/axis-labels`, `mind/reparse-dates`), `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect,export}`,
-  `location`, `owntracks`, `remarkable/{connect,refresh,disconnect,status,import}`,
+  `location`, `owntracks`,
+  `remarkable/{connect,refresh,disconnect,status,import,compare}`,
   `export` (+ `export/diary` diary-only Markdown,
   `export/book` Opus editor pass), `settings`,
   `chat/memories` (GET list+status / DELETE soft-delete /

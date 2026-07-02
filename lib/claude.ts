@@ -903,6 +903,47 @@ export async function composeBook(opts: {
 }
 
 /**
+ * Judge whether the new server-rendered (reMarkable cloud) transcription of a
+ * diary preserves the handwriting as well as the trusted Dropbox-rendered one.
+ * Used by the Phase 1b quality gate: same days, two OCR passes, one verdict.
+ */
+export async function compareTranscriptions(
+  days: Array<{ date: string; existing: string; imported: string }>
+): Promise<string> {
+  const model = modelChat();
+  const body = days
+    .map(
+      (d) =>
+        `### ${d.date}\n\n[VERSION A — existing/trusted]\n${d.existing}\n\n[VERSION B — new cloud import]\n${d.imported}`
+    )
+    .join("\n\n---\n\n");
+  const resp = await client().messages.create({
+    model,
+    max_tokens: 1500,
+    system: [
+      "You compare two OCR transcriptions of the SAME handwritten diary pages",
+      "(mixed Korean/English). Version A came from the device maker's own PDF",
+      "render (trusted baseline). Version B came from a new server-side render",
+      "of the raw pen strokes. The HANDWRITING is identical — only the",
+      "rendering pipeline differs — so differences indicate rendering/OCR loss.",
+      "",
+      "Write a short plain-language report for a non-technical reader:",
+      "1. VERDICT line first — one of: 'B matches A', 'B slightly worse',",
+      "   'B much worse', or 'B better' — plus one sentence why.",
+      "2. Then per-day notes ONLY for days with meaningful differences:",
+      "   quote the exact words/phrases that differ (original language).",
+      "   Ignore trivial whitespace/punctuation/page-break differences.",
+      "3. If a day exists in only one version, say so.",
+      "Keep it under ~300 words. No preamble.",
+    ].join("\n"),
+    messages: [{ role: "user", content: body }],
+  });
+  recordUsage("remarkable_compare", model, resp.usage);
+  const block = resp.content.find((b) => b.type === "text");
+  return block && block.type === "text" ? block.text.trim() : "";
+}
+
+/**
  * Produce a very short topic title for a single insight entry. Used to label
  * collapsed entries in the Insights history so they read as topics rather
  * than a trimmed opening sentence.
