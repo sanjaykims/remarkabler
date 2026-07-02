@@ -22,6 +22,13 @@ and generate an accumulating record of "insights" about themselves.
   `korean-news-study-en/remarkable-app` via a "split" workflow; that bridge is
   retired. Do not recreate it, and ignore the old repo.
 - Deployed on **Railway**, which auto-deploys on every push to `main`.
+  **Build is now a `Dockerfile`** (`railway.json` builder `DOCKERFILE`), not
+  Nixpacks — the image bundles a Python `.rm` renderer (`rmc` + `cairosvg`
+  in a venv at `/opt/renderer`, wrapper `rm2pdf` on PATH) alongside Node for
+  the reMarkable-cloud feature. Multi-stage: `nikolaik/python-nodejs` base;
+  builder compiles better-sqlite3, runner is the slim variant. To revert to
+  Nixpacks, set the builder back — one line. Renderer helper files live in
+  `docker/` (`rm2pdf`, `patch_rm_palette.py`, empty `certs/` CA hook).
 - Railway config: env vars `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`
   (set to `claude-opus-4-7`), `DATA_DIR=/data`; a persistent volume is mounted
   at `/data` and holds the SQLite database and uploaded PDFs. Optional
@@ -64,6 +71,9 @@ and generate an accumulating record of "insights" about themselves.
   repo's text files into a notebook and folds them into the profile. Requires
   the Railway network policy to allow outbound calls to `api.github.com`.
 - `npm run start` honors the host-provided `PORT`. `npm run build` must pass.
+  The `Dockerfile` must also build (Railway uses it) — but note it needs a
+  running Docker daemon + outbound apt/pip, which the sandbox may lack;
+  Railway is the real build test.
 
 ## Stack
 
