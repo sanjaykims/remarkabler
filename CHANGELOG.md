@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-07-02 (reMarkable cloud — Phase 0: pair + read-only listing)
+
+First step toward zero-tap ingest (write on the tablet → close the cover →
+everything else happens automatically), without the "Export to Dropbox"
+tap. Phase 0 is read-only and safe: it proves we can reach the user's
+reMarkable cloud account before any ingestion/rendering is built.
+
+- `lib/remarkableCloud.ts` on `rmapi-js` (maintained, pure-JS, ESM;
+  externalized in next.config): `pairRemarkable(code)` exchanges a one-time
+  code from my.remarkable.com/device/browser/connect for a long-lived
+  device token (stored in `settings`, redacted from backups),
+  `listRemarkableNotebooks()` lists handwritten notebooks (filtered:
+  DocumentType + fileType notebook, not trash), `remarkableStatus()`,
+  `unpairRemarkable()`. Fail-soft; errors recorded, never thrown.
+- Routes: `POST /api/remarkable/connect` (pair + list), `/refresh`
+  (re-list), `/disconnect`, `GET /status`.
+- `/memory` gets a "reMarkable cloud (beta)" section: paste the code →
+  "Paired ✓ — found N notebooks", with Check again / Disconnect. Clear
+  copy that it's read-only for now and Dropbox keeps working.
+- Groundwork validated by research + sandbox proofs (not shipped yet):
+  `rmc`+`cairosvg` render real v6 `.rm` → PDF; page-level content hashes
+  from rmapi-js enable incremental sync. Phase 1 (renderer + Dockerfile,
+  behind a quality gate) and Phase 2 (polling) come next.
+- 4 pure tests for the notebook filter (`test/remarkableCloud.test.ts`);
+  suite 251. lint + build clean.
+
+This rides reMarkable's unofficial protocol, so it's a SECONDARY source —
+the Dropbox one-tap path remains the reliable fallback, untouched.
+
 ## 2026-07-02 (Date parser: tolerate spaced separators in the header)
 
 The per-day export filed a real entry into `undated.md` instead of

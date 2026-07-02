@@ -273,15 +273,23 @@ features need the deployed instance to fully verify.
 
 ## Known limits (intentional)
 
-- No direct reMarkable-cloud polling — there is still no reliable JavaScript
-  renderer for the `.rm` handwriting format, so we never try to render
-  notebooks ourselves. Instead, we sidestep the renderer entirely: with
-  reMarkable Connect ($8/mo), the user taps **Share → Export to integration
-  → Dropbox** on the device, reMarkable renders the PDF server-side, and
-  `lib/dropbox.ts` auto-ingests from there. One device-side tap per notebook
-  replaces the whole download-and-upload dance. Direct reMarkable-cloud
-  polling (zero taps) is deferred for the same renderer reason; revisit only
-  if the one-tap friction becomes a real chore in practice.
+- Direct reMarkable-cloud polling (zero-tap) — **in progress as a
+  SECONDARY source, phased.** The old blocker (no reliable renderer) eased
+  in 2025–2026: `rmapi-js` (maintained, pure-JS, ESM) reads the cloud, and
+  `rmc`+`cairosvg` (Python) render `.rm` v6 → SVG → PDF server-side
+  (validated on real firmware-3.x samples; caveats: never use `rmc -t pdf`
+  — it needs Inkscape — and patch rmc's RM_PALETTE for firmware ≥3.14
+  highlighter color IDs). **Phase 0 (shipped): `lib/remarkableCloud.ts`
+  pairs via a one-time code from my.remarkable.com and LISTS notebooks
+  read-only — no ingestion, no renderer, no deploy change.** Phase 1 adds
+  the renderer (needs a Dockerfile — repo is Nixpacks today) behind a
+  quality gate; Phase 2 adds page-hash-diffed polling in the maintenance
+  sweep. This rides reMarkable's *unofficial* protocol, so it's a
+  secondary source — **the Dropbox one-tap path stays the reliable
+  fallback and is never removed.**
+- Dropbox one-tap ingest (still the primary path): with reMarkable Connect,
+  the user taps **Share → Export to integration → Dropbox**, reMarkable
+  renders the PDF server-side, and `lib/dropbox.ts` auto-ingests from there.
 - The PWA share target and the voice features work on Android Chrome only;
   iOS Safari does not support them.
 

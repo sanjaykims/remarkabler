@@ -6,7 +6,9 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   experimental: {
-    serverComponentsExternalPackages: ["better-sqlite3"],
+    // better-sqlite3 is a native module; rmapi-js is ESM-only. Both must be
+    // externalized so Next doesn't try to bundle them into server chunks.
+    serverComponentsExternalPackages: ["better-sqlite3", "rmapi-js"],
   },
 };
 
