@@ -92,6 +92,7 @@ export default function MemoryPage() {
     hash: string;
     lastModified: string;
     parent?: string;
+    folder?: string;
   };
   type RemarkableStatus = {
     paired: boolean;
@@ -109,6 +110,8 @@ export default function MemoryPage() {
   // doesn't disable the whole section). Keyed by notebook id.
   const [rmImportingId, setRmImportingId] = useState<string | null>(null);
   const [rmImportMsg, setRmImportMsg] = useState<Record<string, string>>({});
+  // Folder filter for the notebook list ("" = all folders).
+  const [rmFolder, setRmFolder] = useState<string>("");
 
   type EmbedStatus = {
     enabled: boolean;
@@ -1209,39 +1212,96 @@ export default function MemoryPage() {
                   check the handwriting came through well. Dropbox still works
                   exactly as before.
                 </p>
-                <ul className="space-y-2">
-                  {remarkable.notebooks.map((nb) => (
-                    <li
-                      key={nb.id}
-                      className="rounded border border-stone-200 dark:border-stone-800 p-2.5 space-y-1.5"
-                    >
-                      <div className="flex items-start gap-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium break-words">
-                            {nb.name}
-                          </p>
-                          {nb.lastModified && (
-                            <p className="text-xs opacity-60">
-                              edited {formatLocalTime(nb.lastModified)}
-                            </p>
-                          )}
+                {(() => {
+                  const folders = Array.from(
+                    new Set(
+                      remarkable.notebooks.map((nb) => nb.folder || "")
+                    )
+                  ).sort((a, b) =>
+                    // Named folders first (alphabetical), the root ("") last.
+                    a === "" ? 1 : b === "" ? -1 : a.localeCompare(b)
+                  );
+                  const shown = remarkable.notebooks.filter(
+                    (nb) => rmFolder === "" || (nb.folder || "") === rmFolder
+                  );
+                  return (
+                    <>
+                      {folders.length > 1 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            onClick={() => setRmFolder("")}
+                            className={`rounded-full border px-2.5 py-1 text-xs ${
+                              rmFolder === ""
+                                ? "border-stone-900 bg-stone-900 text-stone-50 dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900"
+                                : "border-stone-300 dark:border-stone-700"
+                            }`}
+                          >
+                            All ({remarkable.notebooks.length})
+                          </button>
+                          {folders
+                            .filter((f) => f !== "")
+                            .map((f) => {
+                              const count = remarkable.notebooks!.filter(
+                                (nb) => (nb.folder || "") === f
+                              ).length;
+                              return (
+                                <button
+                                  key={f}
+                                  onClick={() => setRmFolder(f)}
+                                  className={`rounded-full border px-2.5 py-1 text-xs ${
+                                    rmFolder === f
+                                      ? "border-stone-900 bg-stone-900 text-stone-50 dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900"
+                                      : "border-stone-300 dark:border-stone-700"
+                                  }`}
+                                >
+                                  {f} ({count})
+                                </button>
+                              );
+                            })}
                         </div>
-                        <button
-                          onClick={() => importRemarkableNotebook(nb)}
-                          disabled={rmImportingId !== null}
-                          className="shrink-0 rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-xs disabled:opacity-50"
-                        >
-                          {rmImportingId === nb.id ? "Importing…" : "Import"}
-                        </button>
-                      </div>
-                      {rmImportMsg[nb.id] && (
-                        <p className="text-xs opacity-80 break-words">
-                          {rmImportMsg[nb.id]}
-                        </p>
                       )}
-                    </li>
-                  ))}
-                </ul>
+                      <ul className="space-y-2">
+                        {shown.map((nb) => (
+                          <li
+                            key={nb.id}
+                            className="rounded border border-stone-200 dark:border-stone-800 p-2.5 space-y-1.5"
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium break-words">
+                                  {nb.name}
+                                </p>
+                                <p className="text-xs opacity-60">
+                                  {nb.folder ? <>{nb.folder} · </> : null}
+                                  {nb.lastModified
+                                    ? `edited ${formatLocalTime(nb.lastModified)}`
+                                    : ""}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => importRemarkableNotebook(nb)}
+                                disabled={rmImportingId !== null}
+                                className="shrink-0 rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-xs disabled:opacity-50"
+                              >
+                                {rmImportingId === nb.id ? "Importing…" : "Import"}
+                              </button>
+                            </div>
+                            {rmImportMsg[nb.id] && (
+                              <p className="text-xs opacity-80 break-words">
+                                {rmImportMsg[nb.id]}
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                        {shown.length === 0 && (
+                          <li className="text-xs opacity-60">
+                            No notebooks in this folder.
+                          </li>
+                        )}
+                      </ul>
+                    </>
+                  );
+                })()}
               </div>
             ) : (
               <p className="text-xs opacity-60">

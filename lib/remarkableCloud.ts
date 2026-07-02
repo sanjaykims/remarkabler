@@ -41,6 +41,10 @@ export type RemarkableNotebook = {
   hash: string;
   lastModified: string;
   parent: string;
+  // Display name of the folder the notebook lives in ("" for the root).
+  // Resolved from the CollectionType entries in the same listing, so the UI
+  // can group/filter by folder (e.g. the user's "Diary" folder).
+  folder: string;
 };
 
 // rmapi-js Entry shape (only the fields we use). Kept local so the module
@@ -56,9 +60,32 @@ type RmEntry = {
   fileType?: string;
 };
 
+// reMarkable's lastModified is an epoch timestamp as a string on current
+// firmware (milliseconds; some older data used seconds or ISO). Normalize to
+// ISO so formatLocalTime can always render it; pass through anything already
+// parseable.
+function normalizeLastModified(raw: string | undefined): string {
+  if (!raw) return "";
+  if (/^\d{9,}$/.test(raw)) {
+    // 12+ digits → milliseconds; 9-11 digits → seconds.
+    const n = Number(raw);
+    const d = new Date(raw.length >= 12 ? n : n * 1000);
+    return isNaN(d.getTime()) ? raw : d.toISOString();
+  }
+  return raw;
+}
+
 // Pure: keep only handwritten notebooks that aren't in the trash, mapped to
-// our display shape. Exported for unit testing without the network.
+// our display shape — with the containing folder's display name resolved from
+// the CollectionType entries in the same listing — sorted newest-first.
+// Exported for unit testing without the network.
 export function filterNotebooks(entries: RmEntry[]): RemarkableNotebook[] {
+  const folderNames = new Map<string, string>();
+  for (const e of entries) {
+    if (e.type === "CollectionType") {
+      folderNames.set(e.id, e.visibleName || "(untitled folder)");
+    }
+  }
   return entries
     .filter(
       (e) =>
@@ -70,9 +97,11 @@ export function filterNotebooks(entries: RmEntry[]): RemarkableNotebook[] {
       id: e.id,
       name: e.visibleName || "(untitled)",
       hash: e.hash,
-      lastModified: e.lastModified || "",
+      lastModified: normalizeLastModified(e.lastModified),
       parent: e.parent || "",
-    }));
+      folder: (e.parent && folderNames.get(e.parent)) || "",
+    }))
+    .sort((a, b) => (b.lastModified || "").localeCompare(a.lastModified || ""));
 }
 
 // Pure: derive the ordered list of page ids from a notebook's `.content`
