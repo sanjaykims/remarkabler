@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-03 (reMarkable import — Codex review fixes on PR #78)
+
+- **Failed imports are recoverable.** The dedupe no longer treats a same-hash
+  notebook whose OCR ended in `status='error'` as "unchanged" — that made a
+  failed import permanently unretryable from the UI. Error rows now fall
+  through to the replace path, so tapping Import re-renders and re-OCRs them.
+- **The all-`.rm` fallback is limited to unreadable `.content`.** When the
+  page order parsed but yielded no importable pages (empty/all-deleted order,
+  or active ids matching no `.rm` — blank pages), we now report "no drawn
+  pages" instead of name-sort-importing every `.rm` blob in the ZIP, which
+  could resurrect deleted pages.
+
 ## 2026-07-03 (reMarkable cloud — folder chips + readable dates on the import list)
 
 With 134 notebooks in the account, the flat unsorted list buried the user's

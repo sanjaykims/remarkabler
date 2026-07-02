@@ -332,12 +332,12 @@ export async function downloadNotebook(
       if (f) pages.push({ pageId, rmBytes: await f.async("uint8array") });
     }
     // Fallback: take every `.rm` name-sorted — but ONLY when we couldn't read
-    // the page order at all (missing/garbled `.content`, or an order whose ids
-    // matched nothing). We do NOT fall back when `.content` parsed to an empty
-    // order (an emptied / all-deleted notebook), otherwise tombstoned pages
-    // whose `.rm` blobs still ship would be resurrected.
-    const orderUnreadable = !contentParsed || orderedIds.length > 0;
-    if (pages.length === 0 && orderUnreadable && allRm.length > 0) {
+    // the page order at all (missing/garbled `.content`). When `.content`
+    // parsed, its verdict stands even if it yielded zero pages: an empty or
+    // all-deleted order, or active ids matching no `.rm` (blank pages), must
+    // NOT dredge up stale/deleted `.rm` blobs still shipping in the ZIP
+    // (Codex, PR #78) — report "no drawn pages" instead.
+    if (pages.length === 0 && !contentParsed && allRm.length > 0) {
       const sorted = allRm.slice().sort((a, b) => a.name.localeCompare(b.name));
       for (const f of sorted) {
         const base = f.name.slice(f.name.lastIndexOf("/") + 1);

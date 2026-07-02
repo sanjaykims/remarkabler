@@ -79,7 +79,15 @@ export async function importRemarkableNotebook(
     )
     .get(id) as ExistingRow | undefined;
 
-  if (existing && existing.remarkable_doc_hash === currentHash) {
+  // "Unchanged" only counts when the prior import actually SUCCEEDED. A row
+  // whose OCR errored has the same cloud hash but no usable transcription —
+  // treating it as unchanged would make it permanently unrecoverable from the
+  // UI (Codex, PR #78). Let error rows fall through to the replace path.
+  if (
+    existing &&
+    existing.remarkable_doc_hash === currentHash &&
+    existing.status !== "error"
+  ) {
     return { ok: true, status: "unchanged", notebookId: existing.id };
   }
   // Don't replace a prior import whose OCR is still running — deleting it out
