@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-07-02 (reMarkable cloud — Phase 1b: render + on-demand import, quality-gated)
+
+On-demand import of ONE cloud notebook, behind a human quality gate: pull the
+raw `.rm` pages, render them to a PDF, and feed that into the SAME
+createNotebook/processNotebook OCR pipeline as a Dropbox export. The owner
+compares the result to their trusted Dropbox path before we build scheduled
+polling (Phase 2). Whole-notebook render + re-OCR; incremental page-diffing is
+deliberately Phase 2, not here. The Dropbox one-tap path is untouched.
+
+- **`lib/rmRender.ts`** — renders an ordered list of `.rm` pages to one merged
+  PDF via the image's `rm2pdf` wrapper (per page) + `pypdf` (merge). Per-page
+  failure isolation: a page that fails to render is skipped and reported, never
+  aborting the notebook. `renderersAvailable()` is false outside the Railway
+  image, so local dev / CI / `npm run build` never touch a real render and the
+  importer returns an actionable "renderer not deployed" message instead of
+  crashing. **Verified end-to-end** against the real toolchain (rmc + cairosvg
+  + pypdf) on real firmware-3.x `.rm` samples, including a highlighter
+  (color-id-9) page and the fail-isolation + all-fail paths.
+- **`lib/remarkableCloud.ts`** gains `downloadNotebook(id, hash)` (getDocument
+  → unzip with jszip → ordered `.rm` bytes; page order from the `.content`
+  `cPages.pages[]`, legacy `pages[]` fallback, name-sorted last resort) and the
+  pure, unit-tested `orderedPageIdsFromContent`. It now also persists the
+  listed notebooks (bounded) so the UI can show them + Import buttons on load;
+  `remarkableStatus()` returns `notebooks[]`.
+- **`lib/remarkableImport.ts`** — `importRemarkableNotebook(id, hash, name)`
+  orchestration + dedupe. Mirrors the Dropbox call sequence (createNotebook →
+  stamp origin → un-awaited processNotebook). Dedupe via new
+  `notebooks.remarkable_doc_id` / `remarkable_doc_hash` columns: same id+hash →
+  skip (unchanged); same id, new hash → replace (delete old, re-import) — the
+  destructive replace happens ONLY after a new PDF renders, so a failed
+  re-import never destroys the prior copy.
+- **`POST /api/remarkable/import`** `{ id, hash, name }`; `/memory` lists each
+  paired notebook with an Import button (per-notebook busy/status, separate
+  from the section-wide flag) and copy framing it as the compare-to-Dropbox
+  quality check.
+- `jszip` promoted to a direct dependency. New columns + partial index in
+  `lib/db.ts`. Tests: +6 for `orderedPageIdsFromContent`. Suite 257; build
+  clean.
+
 ## 2026-07-02 (reMarkable cloud — Phase 1a: Dockerfile + renderer toolchain)
 
 Deploy-system switch, shipped ALONE (staged) so it can be verified on

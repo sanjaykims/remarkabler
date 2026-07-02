@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { filterNotebooks } from "@/lib/remarkableCloud";
+import {
+  filterNotebooks,
+  orderedPageIdsFromContent,
+} from "@/lib/remarkableCloud";
 
 // Pure-logic test for the notebook filter that turns rmapi-js `listItems()`
 // output into our display shape. No network — the rest of remarkableCloud is
@@ -75,5 +78,63 @@ describe("filterNotebooks", () => {
 
   it("returns [] for an empty list", () => {
     expect(filterNotebooks([])).toEqual([]);
+  });
+});
+
+// Page-order extraction from a notebook's `.content`, used to render the raw
+// `.rm` pages in reading order. Drives the Phase 1b cloud import.
+describe("orderedPageIdsFromContent", () => {
+  it("reads modern cPages.pages[] in order", () => {
+    const content = {
+      cPages: {
+        pages: [
+          { id: "p-a", idx: { value: "ba" } },
+          { id: "p-b", idx: { value: "bb" } },
+          { id: "p-c", idx: { value: "bc" } },
+        ],
+      },
+    };
+    expect(orderedPageIdsFromContent(content)).toEqual(["p-a", "p-b", "p-c"]);
+  });
+
+  it("skips pages marked deleted", () => {
+    const content = {
+      cPages: {
+        pages: [
+          { id: "p-a" },
+          { id: "p-gone", deleted: { timestamp: "1:2", value: 1 } },
+          { id: "p-c" },
+        ],
+      },
+    };
+    expect(orderedPageIdsFromContent(content)).toEqual(["p-a", "p-c"]);
+  });
+
+  it("falls back to legacy pages: string[]", () => {
+    const content = { pages: ["p-1", "p-2", "p-3"] };
+    expect(orderedPageIdsFromContent(content)).toEqual(["p-1", "p-2", "p-3"]);
+  });
+
+  it("prefers cPages over legacy pages when both exist", () => {
+    const content = {
+      pages: ["legacy-1"],
+      cPages: { pages: [{ id: "modern-1" }, { id: "modern-2" }] },
+    };
+    expect(orderedPageIdsFromContent(content)).toEqual(["modern-1", "modern-2"]);
+  });
+
+  it("ignores entries without a string id", () => {
+    const content = {
+      cPages: { pages: [{ id: "ok" }, { idx: { value: "z" } }, { id: 42 }] },
+    };
+    expect(orderedPageIdsFromContent(content)).toEqual(["ok"]);
+  });
+
+  it("returns [] for empty / missing / garbage content", () => {
+    expect(orderedPageIdsFromContent({})).toEqual([]);
+    expect(orderedPageIdsFromContent(null)).toEqual([]);
+    expect(orderedPageIdsFromContent(undefined)).toEqual([]);
+    expect(orderedPageIdsFromContent({ cPages: { pages: [] } })).toEqual([]);
+    expect(orderedPageIdsFromContent({ pages: "nope" })).toEqual([]);
   });
 });
