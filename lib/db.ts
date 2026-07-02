@@ -31,6 +31,13 @@ export function db(): Database.Database {
     // doesn't ingest the same notebook twice. NULL for manually-uploaded
     // notebooks.
     "dropbox_file_id TEXT",
+    // reMarkable cloud origin markers (Phase 1b). remarkable_doc_id is the
+    // stable notebook id from the cloud account; remarkable_doc_hash is the
+    // content hash at import time. Together they let a re-import dedupe (same
+    // hash → skip) and detect change (different hash → re-import). NULL for
+    // Dropbox/manual notebooks.
+    "remarkable_doc_id TEXT",
+    "remarkable_doc_hash TEXT",
   ]) {
     try {
       _db.exec(`ALTER TABLE notebooks ADD COLUMN ${col}`);
@@ -42,6 +49,11 @@ export function db(): Database.Database {
   _db.exec(
     `CREATE INDEX IF NOT EXISTS idx_notebooks_dropbox_file_id
        ON notebooks(dropbox_file_id) WHERE dropbox_file_id IS NOT NULL`
+  );
+  // Lookup index for the reMarkable importer's "already imported?" dedupe.
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_notebooks_remarkable_doc_id
+       ON notebooks(remarkable_doc_id) WHERE remarkable_doc_id IS NOT NULL`
   );
   try {
     _db.exec(`ALTER TABLE insights ADD COLUMN title TEXT`);

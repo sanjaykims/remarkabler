@@ -164,6 +164,20 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   (DB-backed `renderDiaryMarkdown`, `renderDiaryDayFiles`,
   `affectedDayFileNames`). Excludes the `github-discipline` notebook,
   same as `/mind`.
+- `lib/remarkableCloud.ts` — reMarkable-cloud secondary source (rmapi-js,
+  unofficial protocol). Phase 0: `pairRemarkable`/`listRemarkableNotebooks`/
+  `remarkableStatus`/`unpairRemarkable` + pure `filterNotebooks`. Phase 1b:
+  `downloadNotebook(id,hash)` (getDocument → jszip unzip → ordered `.rm`
+  bytes) + pure `orderedPageIdsFromContent` (cPages/legacy page order);
+  persists the listed notebooks so the UI can render Import rows. Fail-soft
+  everywhere; device token redacted from backups.
+- `lib/rmRender.ts` — renders ordered `.rm` pages → one merged PDF via the
+  image's `rm2pdf` (per page) + `pypdf` (merge), with per-page failure
+  isolation. `renderersAvailable()` is false off-image, so local/CI/build
+  never render. `lib/remarkableImport.ts` — `importRemarkableNotebook` ties
+  download → render → the normal createNotebook/processNotebook pipeline, with
+  `remarkable_doc_id`/`remarkable_doc_hash` dedupe (skip unchanged; replace on
+  change, but only after a good render).
 - `lib/location.ts` + `lib/owntracks.ts` — OwnTracks ingestion, stay
   clustering, reverse-geocoding; `lib/github.ts` — discipline repo fetch;
   `lib/cleanup.ts`, `lib/upload.ts`, `lib/extractText.ts`, `lib/format.ts` —
@@ -172,7 +186,8 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
   `mind/axis-labels`, `mind/reparse-dates`), `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect,export}`,
-  `location`, `owntracks`, `export` (+ `export/diary` diary-only Markdown,
+  `location`, `owntracks`, `remarkable/{connect,refresh,disconnect,status,import}`,
+  `export` (+ `export/diary` diary-only Markdown,
   `export/book` Opus editor pass), `settings`,
   `chat/memories` (GET list+status / DELETE soft-delete /
   `retry/[batchId]` reset stuck / `backfill-all` chunked re-process
@@ -294,11 +309,15 @@ features need the deployed instance to fully verify.
   necessity-gated on the *live* dict so it inserts only when 9 is missing).
   **Phase 0 (shipped): `lib/remarkableCloud.ts`
   pairs via a one-time code from my.remarkable.com and LISTS notebooks
-  read-only — no ingestion, no renderer, no deploy change.** Phase 1 adds
-  the renderer (needs a Dockerfile — repo is Nixpacks today) behind a
-  quality gate; Phase 2 adds page-hash-diffed polling in the maintenance
-  sweep. This rides reMarkable's *unofficial* protocol, so it's a
-  secondary source — **the Dropbox one-tap path stays the reliable
+  read-only.** **Phase 1a (shipped): the Dockerfile builder + bundled
+  renderer toolchain (deploy switch, verified on Railway).** **Phase 1b
+  (shipped): on-demand import of ONE notebook behind a human quality gate —
+  `downloadNotebook` → `lib/rmRender.ts` → the normal OCR pipeline, exposed as
+  an Import button per notebook on `/memory`.** Whole-notebook render + re-OCR;
+  dedupe via `remarkable_doc_id`/`remarkable_doc_hash`. Phase 2 (not yet) adds
+  incremental page-hash-diffed polling in the maintenance sweep, cross-source
+  dedupe, and a quiesce window. This rides reMarkable's *unofficial* protocol,
+  so it's a secondary source — **the Dropbox one-tap path stays the reliable
   fallback and is never removed.**
 - Dropbox one-tap ingest (still the primary path): with reMarkable Connect,
   the user taps **Share → Export to integration → Dropbox**, reMarkable

@@ -96,10 +96,13 @@ Companion docs — read in order if any is unfamiliar:
 - **Backup:** `backup` (GET status, POST run-now).
 - **Dropbox:** `dropbox/connect`, `/callback`, `/status`, `/disconnect`,
   `/export` (toggle + run the opt-in diary auto-export back to Dropbox).
-- **reMarkable cloud (beta, Phase 0 — read-only):** `remarkable/connect`
+- **reMarkable cloud (beta, Phase 1b — on-demand import):** `remarkable/connect`
   (pair via one-time code + list), `/refresh` (re-list), `/disconnect`,
-  `/status`. Backed by `lib/remarkableCloud.ts` (rmapi-js). Zero-tap ingest
-  is the goal; ingestion/rendering not built yet.
+  `/status`, `/import` (download → render → OCR one notebook). Backed by
+  `lib/remarkableCloud.ts` (rmapi-js) + `lib/rmRender.ts` (`.rm`→PDF via the
+  image's rm2pdf/pypdf) + `lib/remarkableImport.ts` (dedupe on
+  `remarkable_doc_id`). Zero-tap polling (Phase 2) not built yet; the Import
+  button is the quality-gate step vs the Dropbox path.
 - **Discipline:** `discipline` (GET + POST sync), `discipline/settings` (enable toggle).
 - **Location:** `location` (GET + POST manual log), `location/settings`, `owntracks` (`?token=` push endpoint).
 - **Export:** `export` (raw bundle Markdown: profile+diary+chats+insights),
@@ -204,7 +207,10 @@ attribute cost to features and surfaces.
 
 ## Known intentional limits
 
-- No automatic reMarkable cloud sync (no reliable JS renderer for `.rm`). Manual PDF export or Dropbox export-from-device is the path.
+- reMarkable cloud sync is phased: pair + list (Phase 0) and on-demand
+  per-notebook import (Phase 1b, render `.rm`→PDF→OCR) ship; scheduled zero-tap
+  polling (Phase 2) does not yet. The renderer lives only in the Railway Docker
+  image. Dropbox export-from-device stays the primary, reliable path.
 - reMarkable PDFs are image-based ink with no text layer — only vision OCR (Claude) reads them.
 - PWA share target + voice input work on Android Chrome only.
 - ~5 second async-gap window after Clear before new chat memories surface. Acceptable for v1.

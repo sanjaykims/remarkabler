@@ -86,17 +86,29 @@ export default function MemoryPage() {
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [dropboxBusy, setDropboxBusy] = useState(false);
 
+  type RemarkableNotebook = {
+    id: string;
+    name: string;
+    hash: string;
+    lastModified: string;
+    parent?: string;
+  };
   type RemarkableStatus = {
     paired: boolean;
     pairedAt: string | null;
     lastListAt: string | null;
     lastError: string | null;
     notebookCount: number | null;
+    notebooks?: RemarkableNotebook[];
   };
   const [remarkable, setRemarkable] = useState<RemarkableStatus | null>(null);
   const [rmCode, setRmCode] = useState("");
   const [rmBusy, setRmBusy] = useState(false);
   const [rmMsg, setRmMsg] = useState<string | null>(null);
+  // Per-notebook import state (separate from rmBusy so importing one notebook
+  // doesn't disable the whole section). Keyed by notebook id.
+  const [rmImportingId, setRmImportingId] = useState<string | null>(null);
+  const [rmImportMsg, setRmImportMsg] = useState<Record<string, string>>({});
 
   type EmbedStatus = {
     enabled: boolean;
@@ -474,6 +486,37 @@ export default function MemoryPage() {
       if (d.status) setRemarkable(d.status);
     } finally {
       setRmBusy(false);
+    }
+  }
+
+  async function importRemarkableNotebook(nb: RemarkableNotebook) {
+    if (rmImportingId) return;
+    setRmImportingId(nb.id);
+    setRmImportMsg((m) => ({ ...m, [nb.id]: "Importing… downloading + rendering pages." }));
+    try {
+      const r = await fetch("/api/remarkable/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: nb.id, hash: nb.hash, name: nb.name }),
+      });
+      const d = await r.json().catch(() => ({}));
+      let msg: string;
+      if (d.ok && d.status === "unchanged") {
+        msg = "Already imported — no changes since last time.";
+      } else if (d.ok) {
+        const failed = d.failed ? ` (${d.failed} page${d.failed === 1 ? "" : "s"} skipped)` : "";
+        msg =
+          (d.status === "reimported" ? "Re-imported ✓ — " : "Imported ✓ — ") +
+          `${d.rendered ?? 0} page${d.rendered === 1 ? "" : "s"} sent for transcription${failed}. See it in Notebooks.`;
+      } else {
+        msg = d.error || "Import failed.";
+      }
+      setRmImportMsg((m) => ({ ...m, [nb.id]: msg }));
+      if (d.status_meta) setRemarkable(d.status_meta);
+    } catch (e) {
+      setRmImportMsg((m) => ({ ...m, [nb.id]: (e as Error).message }));
+    } finally {
+      setRmImportingId(null);
     }
   }
 
@@ -1158,6 +1201,54 @@ export default function MemoryPage() {
                 Disconnect
               </button>
             </div>
+            {remarkable.notebooks && remarkable.notebooks.length > 0 ? (
+              <div className="space-y-1.5">
+                <p className="text-xs opacity-60">
+                  Import a notebook to transcribe it here. This is the new
+                  cloud path — compare it to the same notebook via Dropbox to
+                  check the handwriting came through well. Dropbox still works
+                  exactly as before.
+                </p>
+                <ul className="space-y-2">
+                  {remarkable.notebooks.map((nb) => (
+                    <li
+                      key={nb.id}
+                      className="rounded border border-stone-200 dark:border-stone-800 p-2.5 space-y-1.5"
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium break-words">
+                            {nb.name}
+                          </p>
+                          {nb.lastModified && (
+                            <p className="text-xs opacity-60">
+                              edited {formatLocalTime(nb.lastModified)}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => importRemarkableNotebook(nb)}
+                          disabled={rmImportingId !== null}
+                          className="shrink-0 rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-xs disabled:opacity-50"
+                        >
+                          {rmImportingId === nb.id ? "Importing…" : "Import"}
+                        </button>
+                      </div>
+                      {rmImportMsg[nb.id] && (
+                        <p className="text-xs opacity-80 break-words">
+                          {rmImportMsg[nb.id]}
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-xs opacity-60">
+                Tap “Check again” to list your notebooks, then import one to try
+                the cloud path.
+              </p>
+            )}
           </>
         ) : (
           <>

@@ -25,6 +25,11 @@ const PAIRED_AT_KEY = "remarkable_paired_at";
 const LAST_LIST_AT_KEY = "remarkable_last_list_at";
 const LAST_ERROR_KEY = "remarkable_last_error";
 const DOC_COUNT_KEY = "remarkable_last_doc_count";
+// The last listed notebooks, persisted as JSON so the /memory UI can render a
+// row-per-notebook (with an Import button) on page load without forcing a
+// live network re-list. Bounded so a huge account can't bloat the settings row.
+const LIST_KEY = "remarkable_last_list";
+const MAX_PERSISTED_NOTEBOOKS = 300;
 
 export function remarkablePaired(): boolean {
   return !!getSetting(TOKEN_KEY);
@@ -68,6 +73,29 @@ export function filterNotebooks(entries: RmEntry[]): RemarkableNotebook[] {
       lastModified: e.lastModified || "",
       parent: e.parent || "",
     }));
+}
+
+// Pure: derive the ordered list of page ids from a notebook's `.content`
+// payload. Prefers the modern `cPages.pages[]` (each entry has a page `id`
+// and, when removed, a `deleted` marker we skip), falls back to the legacy
+// `pages: string[]`. Exported for unit testing without the network.
+export function orderedPageIdsFromContent(content: unknown): string[] {
+  const c = (content || {}) as {
+    cPages?: { pages?: Array<{ id?: string; deleted?: unknown }> };
+    pages?: unknown;
+  };
+  const cpages = c.cPages?.pages;
+  if (Array.isArray(cpages) && cpages.length > 0) {
+    return cpages
+      .filter((p) => p && typeof p.id === "string" && p.deleted == null)
+      .map((p) => p.id as string);
+  }
+  if (Array.isArray(c.pages)) {
+    return (c.pages as unknown[]).filter(
+      (id): id is string => typeof id === "string"
+    );
+  }
+  return [];
 }
 
 // Translate rmapi-js failures into a short, safe message (never echo tokens
@@ -136,6 +164,7 @@ export function unpairRemarkable(): void {
   clearSetting(LAST_LIST_AT_KEY);
   clearSetting(LAST_ERROR_KEY);
   clearSetting(DOC_COUNT_KEY);
+  clearSetting(LIST_KEY);
 }
 
 export type ListResult = {
@@ -159,6 +188,12 @@ export async function listRemarkableNotebooks(): Promise<ListResult> {
     const notebooks = filterNotebooks(entries);
     setSetting(LAST_LIST_AT_KEY, new Date().toISOString());
     setSetting(DOC_COUNT_KEY, String(notebooks.length));
+    // Persist a bounded copy so the UI can list notebooks (with Import
+    // buttons) without a fresh network call on every page load.
+    setSetting(
+      LIST_KEY,
+      JSON.stringify(notebooks.slice(0, MAX_PERSISTED_NOTEBOOKS))
+    );
     clearSetting(LAST_ERROR_KEY);
     return { ok: true, notebooks };
   } catch (e) {
@@ -174,7 +209,20 @@ export type RemarkableStatus = {
   lastListAt: string | null;
   lastError: string | null;
   notebookCount: number | null;
+  notebooks: RemarkableNotebook[];
 };
+
+// Parse the persisted notebook list, tolerating an absent/garbled row.
+function persistedNotebooks(): RemarkableNotebook[] {
+  const raw = getSetting(LIST_KEY);
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? (arr as RemarkableNotebook[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 export function remarkableStatus(): RemarkableStatus {
   const countRaw = getSetting(DOC_COUNT_KEY);
@@ -187,5 +235,95 @@ export function remarkableStatus(): RemarkableStatus {
     lastListAt: getSetting(LAST_LIST_AT_KEY),
     lastError: getSetting(LAST_ERROR_KEY),
     notebookCount: count,
+    notebooks: persistedNotebooks(),
   };
+}
+
+export type DownloadedPage = { pageId: string; rmBytes: Uint8Array };
+export type DownloadResult = {
+  ok: boolean;
+  pages?: DownloadedPage[];
+  error?: string;
+};
+
+/**
+ * Download ONE notebook's raw files from the cloud and return its `.rm` page
+ * bytes in reading order. Read-only; fail-soft (returns { ok:false } rather
+ * than throwing).
+ *
+ * `getDocument(id, hash)` yields a ZIP of the notebook's raw files
+ * (`<docId>/<pageId>.rm`, `<docId>.content`, `.metadata`, …). We read the
+ * `.content` for page order, then pull each `<pageId>.rm` in that order. Pages
+ * with no `.rm` (never drawn) are skipped. If the content can't be parsed we
+ * fall back to every `.rm` entry sorted by name so a valid notebook still
+ * imports.
+ */
+export async function downloadNotebook(
+  id: string,
+  hash: string
+): Promise<DownloadResult> {
+  const token = getSetting(TOKEN_KEY);
+  if (!token) return { ok: false, error: "Not paired with reMarkable." };
+  try {
+    const { remarkable } = await import("rmapi-js");
+    const { default: JSZip } = await import("jszip");
+    const api = await remarkable(token);
+    const zipBytes = (await api.getDocument(id, hash)) as Uint8Array;
+    const zip = await JSZip.loadAsync(zipBytes);
+
+    // Index every `.rm` file by the basename (its pageId) for O(1) lookup,
+    // tolerant of any `<docId>/` prefix in the path.
+    const rmByPageId = new Map<string, import("jszip").JSZipObject>();
+    const allRm: import("jszip").JSZipObject[] = [];
+    zip.forEach((relPath, file) => {
+      if (file.dir || !relPath.endsWith(".rm")) return;
+      const base = relPath.slice(relPath.lastIndexOf("/") + 1); // <pageId>.rm
+      rmByPageId.set(base.replace(/\.rm$/, ""), file);
+      allRm.push(file);
+    });
+
+    // Page order from the notebook's `.content`.
+    let orderedIds: string[] = [];
+    let contentParsed = false;
+    const contentFile = zip.file(/\.content$/)[0];
+    if (contentFile) {
+      try {
+        orderedIds = orderedPageIdsFromContent(
+          JSON.parse(await contentFile.async("string"))
+        );
+        contentParsed = true;
+      } catch {
+        contentParsed = false;
+      }
+    }
+
+    const pages: DownloadedPage[] = [];
+    for (const pageId of orderedIds) {
+      const f = rmByPageId.get(pageId);
+      if (f) pages.push({ pageId, rmBytes: await f.async("uint8array") });
+    }
+    // Fallback: take every `.rm` name-sorted — but ONLY when we couldn't read
+    // the page order at all (missing/garbled `.content`, or an order whose ids
+    // matched nothing). We do NOT fall back when `.content` parsed to an empty
+    // order (an emptied / all-deleted notebook), otherwise tombstoned pages
+    // whose `.rm` blobs still ship would be resurrected.
+    const orderUnreadable = !contentParsed || orderedIds.length > 0;
+    if (pages.length === 0 && orderUnreadable && allRm.length > 0) {
+      const sorted = allRm.slice().sort((a, b) => a.name.localeCompare(b.name));
+      for (const f of sorted) {
+        const base = f.name.slice(f.name.lastIndexOf("/") + 1);
+        pages.push({
+          pageId: base.replace(/\.rm$/, ""),
+          rmBytes: await f.async("uint8array"),
+        });
+      }
+    }
+
+    return { ok: true, pages };
+  } catch (e) {
+    return {
+      ok: false,
+      error: safeRemarkableError(e, "Couldn't download the reMarkable notebook."),
+    };
+  }
 }
