@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-06-25 (Diary Markdown export — portable, tool-agnostic backup)
+
+New **`GET /api/export/diary`** + a "Download diary (Markdown)" button in the
+Memory page's Export section. Produces a single Markdown file of *just* the
+transcribed diary — one YAML frontmatter block, then per-day `##` sections
+ordered by `pages.entry_date` (oldest first), each page tagged with an
+italic metadata line (notebook · themes · sentiment · people/places/
+projects, all optional). Pages with no parseable diary timestamp land in a
+dedicated "Undated entries" section grouped by notebook.
+
+**Why:** the diary previously lived only inside SQLite on Railway. This is
+a plain-text copy the user owns — drop it into Obsidian, upload it to Google
+NotebookLM for an audio "podcast" overview of a month, or keep it as offline
+backup insurance. No LLM calls (zero cost), no external writes.
+
+**Why not auto-write to Dropbox** (the original idea): the Dropbox app is
+deliberately scoped read-only (`files.metadata.read` + `files.content.read`)
+as a hard-won least-privilege rule — writing back would require adding write
+scope + re-authorising + weakening that guarantee. A download sidesteps all
+of that. Auto-commit to the GitHub backup repo (which already has write
+creds) remains a possible future upgrade, as does per-day file splitting via
+a zip (deferred — would add a dependency).
+
+Assembly is a pure function in **`lib/diaryExport.ts`** (`buildDiaryMarkdown`,
+`isDatedEntry`, `parseThemes`) so the grouping/ordering/rendering is
+unit-tested without Next — 12 tests in `test/diaryExport.test.ts`. The route
+only authenticates, queries, and shapes rows. `npm run lint` + `npm test`
+(224) + `npm run build` clean.
+
 ## 2026-06-21 (Fix: pending chat-memory batches stuck without recourse)
 
 The /memory page kept showing "1 pending" for a full day. Three pieces:
