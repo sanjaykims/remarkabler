@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-03 (reMarkable import — one-tap quality-gate Compare report)
+
+The Phase 1b gate needs the user to judge whether the cloud render OCRs as
+well as the Dropbox path — but the corpus lives on the server, so the
+comparison should too. New `lib/remarkableCompare.ts` pairs an imported
+notebook's pages with existing non-cloud pages on the SAME entry dates
+(discipline notebook excluded), truncates per day, and has the chat model
+judge the two transcriptions (`compareTranscriptions` in `lib/claude.ts`,
+usage recorded as `remarkable_compare`). Exposed as
+`POST /api/remarkable/compare` + a per-row "Compare" button on `/memory`
+that prints the verdict inline (days compared, per-day differences, days
+present only in the import). Fail-soft messages for every miss case (not
+imported, still transcribing, errored, no dated entries, no overlapping
+dates).
+
 ## 2026-07-03 (reMarkable import — Codex review fixes on PR #78)
 
 - **Failed imports are recoverable.** The dedupe no longer treats a same-hash
