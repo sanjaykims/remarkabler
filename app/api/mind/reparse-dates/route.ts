@@ -16,6 +16,21 @@ export async function POST() {
   }
   try {
     const result = reparseAllEntryDates();
+    // Re-parsing can move entries out of "undated" into real dates (e.g.
+    // after the parser learns a new header spacing), which changes the
+    // per-day Dropbox export. Refresh it in the background (best-effort,
+    // no-op unless the export is enabled + connected) so the user doesn't
+    // have to also hop to /memory and tap "Export now".
+    if (result.updated > 0) {
+      try {
+        const { maybeExportDiaryToDropbox } = (await import(
+          "@/lib/dropbox"
+        )) as { maybeExportDiaryToDropbox: () => Promise<unknown> };
+        void maybeExportDiaryToDropbox();
+      } catch {
+        // best-effort — never fail the reparse because of the export
+      }
+    }
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json(

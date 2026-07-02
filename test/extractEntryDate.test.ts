@@ -28,6 +28,23 @@ describe("extractEntryDate", () => {
     expect(extractEntryDate("2026-01-02-09-05-KsT")).toBe("2026-01-02");
   });
 
+  it("parses SPACED separators: yyyy-mm-dd - hh - mm - KST", () => {
+    // The real handwritten form on the tablet — spaces around the dashes.
+    expect(extractEntryDate("2026-07-02 - 17 - 19 - KST\n일기…")).toBe(
+      "2026-07-02"
+    );
+  });
+
+  it("parses fully-spaced separators incl. the date", () => {
+    expect(extractEntryDate("2026 - 07 - 02 - 17 - 19 - KST")).toBe(
+      "2026-07-02"
+    );
+  });
+
+  it("parses spaced form with lowercase kst and no trailing content", () => {
+    expect(extractEntryDate("2026-12-31 - 08 - 00 - kst")).toBe("2026-12-31");
+  });
+
   it("finds the header even with leading whitespace/content lines", () => {
     expect(extractEntryDate("   \n2026-12-31-08-00-kst rest")).toBe(
       "2026-12-31"

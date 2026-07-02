@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-07-02 (Date parser: tolerate spaced separators in the header)
+
+The per-day export filed a real entry into `undated.md` instead of
+`2026-07-02.md`. Cause: the user's handwritten header is
+`2026-07-02 - 17 - 19 - KST` (spaces around the dashes), but
+`extractEntryDate`'s pattern required tight separators, so it didn't
+match → `entry_date = 'none'`.
+
+- `extractEntryDate` now allows `\s*` around every separator, so spaced
+  (`2026-07-02 - 17 - 19 - KST`), fully-spaced
+  (`2026 - 07 - 02 - 17 - 19 - KST`), and the existing tight/colon/T forms
+  all parse. +3 tests (12 total).
+- `/api/mind/reparse-dates` now fires a background diary export when it
+  actually changes any dates — so re-parsing (which moves entries out of
+  `undated.md` into real day files) refreshes Dropbox in one tap instead
+  of also hopping to /memory → "Export now".
+
+To pick up an already-ingested entry that landed in `undated.md`: after
+this deploys, `/mind` → "Re-parse dates" reclassifies it and pushes the
+new per-day file to Dropbox automatically.
+
 ## 2026-07-02 (Diary export: resilient full sync)
 
 The first full sync could leave the Dropbox folder incomplete: the upload
