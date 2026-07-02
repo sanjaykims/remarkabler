@@ -52,7 +52,8 @@ Companion docs — read in order if any is unfamiliar:
 | `extractText.ts` | Convert PDF/Word attachments to text on the server before sending to Claude. Saves ~3-5× tokens. Handwritten PDFs fall back to raw. |
 | `auth.ts` / `webauthn.ts` | Passcode + passkey (WebAuthn). HMAC session cookie. 24h server-side inactivity timeout. |
 | `backup.ts` | Weekly tar.gz of `/data` to a private GitHub repo, keep-last-12. `dropbox_refresh_token` redacted. |
-| `dropbox.ts` | OAuth refresh-token flow, folder polling, dedupe by `dropbox_file_id`. Fired from `runMaintenanceSweep`. |
+| `dropbox.ts` | OAuth refresh-token flow, folder polling, dedupe by `dropbox_file_id`. Fired from `runMaintenanceSweep`. Also opt-in diary auto-export back to Dropbox (`maybeExportDiaryToDropbox`, needs `files.content.write` scope). |
+| `diaryExport.ts` / `diaryExportDb.ts` | Diary→Markdown: pure assembly + date carry-forward (`diaryExport`, unit-tested) and the DB renderer (`renderDiaryMarkdown`) shared by the download route + Dropbox auto-export. Excludes the discipline notebook. |
 | `owntracks.ts` / `location.ts` | OwnTracks ingestion, stay clustering, reverse-geocoding (Nominatim cache). |
 | `github.ts` | Discipline-repo Contents API fetcher. |
 | `format.ts` / `cleanup.ts` / `upload.ts` | KST helpers, orphan-attachment sweep, upload validation. |
@@ -93,7 +94,8 @@ Companion docs — read in order if any is unfamiliar:
 - **Mind:** `mind`, `mind/analyze`, `mind/reanalyze`, `mind/axis-labels`, `mind/reparse-dates`.
 - **Embeddings:** `embeddings/status` (GET status + POST run-backfill).
 - **Backup:** `backup` (GET status, POST run-now).
-- **Dropbox:** `dropbox/connect`, `/callback`, `/status`, `/disconnect`.
+- **Dropbox:** `dropbox/connect`, `/callback`, `/status`, `/disconnect`,
+  `/export` (toggle + run the opt-in diary auto-export back to Dropbox).
 - **Discipline:** `discipline` (GET + POST sync), `discipline/settings` (enable toggle).
 - **Location:** `location` (GET + POST manual log), `location/settings`, `owntracks` (`?token=` push endpoint).
 - **Export:** `export` (raw bundle Markdown: profile+diary+chats+insights),

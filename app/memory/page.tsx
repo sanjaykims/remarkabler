@@ -76,8 +76,14 @@ export default function MemoryPage() {
     lastSeenFileCount: number | null;
     lastSkipped: string | null;
     lastRevokeWarning: string | null;
+    exportEnabled: boolean;
+    exportPath: string;
+    exportLastAt: string | null;
+    exportLastError: string | null;
   };
   const [dropbox, setDropbox] = useState<DropboxStatus | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [dropboxBusy, setDropboxBusy] = useState(false);
 
   type EmbedStatus = {
@@ -256,6 +262,55 @@ export default function MemoryPage() {
       await loadDropbox();
     } finally {
       setDropboxBusy(false);
+    }
+  }
+
+  // Toggle auto-export and (when turning it on) immediately run one export so
+  // the user sees right away whether write access works.
+  async function toggleDropboxExport(enable: boolean) {
+    if (exportBusy) return;
+    setExportBusy(true);
+    setExportMsg(null);
+    try {
+      const r = await fetch("/api/dropbox/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: enable, runNow: enable }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Couldn't update export setting.");
+      if (enable) {
+        if (d.ran?.ok) setExportMsg("Saved to Dropbox ✓");
+        else if (d.ran?.error) setExportMsg(d.ran.error);
+      }
+      await loadDropbox();
+    } catch (e) {
+      setExportMsg((e as Error).message);
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  async function runDropboxExportNow() {
+    if (exportBusy) return;
+    setExportBusy(true);
+    setExportMsg(null);
+    try {
+      const r = await fetch("/api/dropbox/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runNow: true }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Export failed.");
+      if (d.ran?.ok) setExportMsg("Saved to Dropbox ✓");
+      else if (d.ran?.error) setExportMsg(d.ran.error);
+      else if (d.ran?.skipped) setExportMsg(`Skipped: ${d.ran.skipped}`);
+      await loadDropbox();
+    } catch (e) {
+      setExportMsg((e as Error).message);
+    } finally {
+      setExportBusy(false);
     }
   }
 
@@ -884,6 +939,67 @@ export default function MemoryPage() {
             )}
             {/* lastRevokeWarning is rendered above the conditional
                 branches so it remains visible after disconnect. */}
+
+            {/* Auto-save the diary Markdown back to Dropbox after each
+                ingest. Opt-in: needs the files.content.write scope added to
+                the Dropbox app + a reconnect. */}
+            <div className="rounded border border-stone-200 dark:border-stone-800 p-3 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Auto-save diary Markdown</p>
+                  <p className="text-xs opacity-70">
+                    After each diary is transcribed, write a fresh
+                    <code className="mx-1">{dropbox.exportPath}</code>
+                    into your Dropbox — a portable text copy for Obsidian,
+                    NotebookLM, or offline backup. Needs write access:
+                    in the Dropbox app console enable
+                    <code className="mx-1">files.content.write</code>, then
+                    Disconnect + Connect again.
+                  </p>
+                </div>
+                <button
+                  onClick={() => toggleDropboxExport(!dropbox.exportEnabled)}
+                  disabled={exportBusy}
+                  className={
+                    "shrink-0 rounded px-3 py-1.5 text-xs disabled:opacity-50 " +
+                    (dropbox.exportEnabled
+                      ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900"
+                      : "border border-stone-300 dark:border-stone-700")
+                  }
+                >
+                  {exportBusy
+                    ? "Working…"
+                    : dropbox.exportEnabled
+                      ? "On"
+                      : "Turn on"}
+                </button>
+              </div>
+              {dropbox.exportEnabled && (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={runDropboxExportNow}
+                    disabled={exportBusy}
+                    className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1 text-xs disabled:opacity-50"
+                  >
+                    Export now
+                  </button>
+                  {dropbox.exportLastAt && (
+                    <span className="text-[11px] opacity-60">
+                      Last saved {formatLocalTime(dropbox.exportLastAt)}
+                    </span>
+                  )}
+                </div>
+              )}
+              {exportMsg && (
+                <p className="text-xs opacity-80 break-words">{exportMsg}</p>
+              )}
+              {dropbox.exportLastError && !exportMsg && (
+                <p className="text-xs text-red-600 break-words">
+                  {dropbox.exportLastError}
+                </p>
+              )}
+            </div>
+
             <button
               onClick={disconnectDropbox}
               disabled={dropboxBusy}

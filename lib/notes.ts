@@ -135,6 +135,18 @@ export async function processNotebook(id: string): Promise<void> {
     } catch (e) {
       console.warn("[notes] mind analysis failed:", (e as Error).message);
     }
+
+    // Auto-export the diary Markdown back to Dropbox, if the user turned it
+    // on (opt-in; needs the write scope). Lazy import breaks the notes↔dropbox
+    // cycle. Best-effort and internally guarded — never affects this notebook.
+    try {
+      const { maybeExportDiaryToDropbox } = (await import("./dropbox")) as {
+        maybeExportDiaryToDropbox: () => Promise<unknown>;
+      };
+      await maybeExportDiaryToDropbox();
+    } catch (e) {
+      console.warn("[notes] diary auto-export failed:", (e as Error).message);
+    }
   } catch (err) {
     console.error("[notes] processNotebook failed:", (err as Error).message);
     try {

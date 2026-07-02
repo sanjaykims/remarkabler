@@ -6,6 +6,13 @@ import {
 } from "@/lib/db";
 import { createNotebook, processNotebook } from "@/lib/notes";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload";
+import { renderDiaryMarkdown } from "@/lib/diaryExportDb";
+
+// Where the auto-exported diary Markdown is written inside the user's
+// Dropbox. Overridable via the `dropbox_export_path` setting. Kept in a
+// dedicated folder (not the ingest folder) so it can never be mistaken for
+// a notebook to re-ingest — and the ingest guard only accepts PDFs anyway.
+const DEFAULT_EXPORT_PATH = "/Remarkabler/diary.md";
 
 // Dropbox auto-ingest. reMarkable Connect's "Export to integration" pushes a
 // flattened PDF of a notebook to a user-chosen Dropbox folder. This module
@@ -265,7 +272,26 @@ export type DropboxStatus = {
   lastSeenFileCount: number | null;
   lastSkipped: string | null;
   lastRevokeWarning: string | null;
+  // Auto-export of the diary Markdown back into Dropbox (opt-in; needs the
+  // files.content.write scope added to the Dropbox app + a reconnect).
+  exportEnabled: boolean;
+  exportPath: string;
+  exportLastAt: string | null;
+  exportLastError: string | null;
 };
+
+export function dropboxExportEnabled(): boolean {
+  return getSetting("dropbox_export_enabled") === "1";
+}
+
+export function dropboxExportPath(): string {
+  const p = (getSetting("dropbox_export_path") || "").trim();
+  return p || DEFAULT_EXPORT_PATH;
+}
+
+export function setDropboxExportEnabled(enabled: boolean): void {
+  setSetting("dropbox_export_enabled", enabled ? "1" : "0");
+}
 
 export function dropboxStatus(): DropboxStatus {
   const countRow = db()
@@ -294,6 +320,10 @@ export function dropboxStatus(): DropboxStatus {
     lastSeenFileCount: parsedSeen,
     lastSkipped: getSetting("dropbox_last_skipped"),
     lastRevokeWarning: getSetting("dropbox_last_revoke_warning"),
+    exportEnabled: dropboxExportEnabled(),
+    exportPath: dropboxExportPath(),
+    exportLastAt: getSetting("dropbox_export_last_at"),
+    exportLastError: getSetting("dropbox_export_last_error"),
   };
 }
 
@@ -573,6 +603,88 @@ async function downloadFile(path: string): Promise<Uint8Array> {
   }
   const buf = await resp.arrayBuffer();
   return new Uint8Array(buf);
+}
+
+// Upload (overwrite) a UTF-8 text file to Dropbox. Requires the
+// files.content.write scope — a scope the app does NOT request by default
+// (least privilege). If the user hasn't enabled it in the Dropbox app
+// console + reconnected, Dropbox returns 401 with a missing-scope summary,
+// which maybeExportDiaryToDropbox turns into an actionable message.
+async function uploadTextFile(dropboxPath: string, contents: string): Promise<void> {
+  const token = await getAccessToken();
+  const resp = await fetch("https://content.dropboxapi.com/2/files/upload", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Dropbox-API-Arg": JSON.stringify({
+        path: dropboxPath,
+        mode: "overwrite",
+        mute: true,
+        autorename: false,
+      }),
+      "Content-Type": "application/octet-stream",
+    },
+    // A JS string body is sent as UTF-8 — correct for Korean/English text.
+    body: contents,
+  });
+  if (!resp.ok) {
+    const summary = await parseErrorSummary(resp);
+    throw new DropboxApiError(resp.status, summary);
+  }
+}
+
+let exportInFlight = false;
+
+export type DiaryExportResult = {
+  ok: boolean;
+  skipped?: "disabled" | "not-connected" | "in-flight";
+  error?: string;
+};
+
+/**
+ * Regenerate the diary Markdown and write it back into Dropbox (overwrite).
+ * Opt-in (dropbox_export_enabled) and best-effort — never throws, so it
+ * can't break the ingest/OCR pipeline it's fired from. On a missing-scope
+ * failure it records an actionable message pointing at the fix.
+ */
+export async function maybeExportDiaryToDropbox(): Promise<DiaryExportResult> {
+  if (!dropboxExportEnabled()) return { ok: false, skipped: "disabled" };
+  if (!dropboxConnected()) return { ok: false, skipped: "not-connected" };
+  if (exportInFlight) return { ok: false, skipped: "in-flight" };
+  exportInFlight = true;
+  try {
+    const md = renderDiaryMarkdown();
+    await uploadTextFile(dropboxExportPath(), md);
+    setSetting("dropbox_export_last_at", new Date().toISOString());
+    clearSetting("dropbox_export_last_error");
+    return { ok: true };
+  } catch (e) {
+    const msg = friendlyExportError(e);
+    setSetting("dropbox_export_last_error", msg);
+    console.warn("[dropbox] diary export failed:", msg);
+    return { ok: false, error: msg };
+  } finally {
+    exportInFlight = false;
+  }
+}
+
+// Turn an upload failure into a message the user can act on. The common one
+// is a missing write scope (401 with a scope summary) — spell out the fix.
+function friendlyExportError(e: unknown): string {
+  if (e instanceof DropboxApiError) {
+    // kind === "auth" covers 401/403 (the missing-scope case); also match a
+    // "scope" summary embedded in the message defensively.
+    if (e.kind === "auth" || /scope/i.test(e.message)) {
+      return (
+        "Dropbox refused the write (needs the files.content.write scope). " +
+        "In the Dropbox app console → Permissions, enable files.content.write, " +
+        "then Disconnect + Connect Dropbox again."
+      );
+    }
+    // e.message is already the sanitised safeDropboxError string.
+    return e.message;
+  }
+  return `Diary export failed: ${(e as Error).message.slice(0, 120)}`;
 }
 
 let ingestInFlight = false;
