@@ -618,23 +618,32 @@ async function downloadFile(path: string): Promise<Uint8Array> {
 // console + reconnected, Dropbox returns 401 with a missing-scope summary,
 // which maybeExportDiaryToDropbox turns into an actionable message.
 async function uploadTextFile(dropboxPath: string, contents: string): Promise<void> {
-  const token = await getAccessToken();
-  const resp = await fetch("https://content.dropboxapi.com/2/files/upload", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Dropbox-API-Arg": JSON.stringify({
-        path: dropboxPath,
-        mode: "overwrite",
-        mute: true,
-        autorename: false,
-      }),
-      "Content-Type": "application/octet-stream",
-    },
-    // A JS string body is sent as UTF-8 — correct for Korean/English text.
-    body: contents,
-  });
-  if (!resp.ok) {
+  // Up to 3 attempts, backing off on 429 / 5xx (bulk syncs can trip
+  // Dropbox's write-rate limit, which returns 429 with a Retry-After).
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const token = await getAccessToken();
+    const resp = await fetch("https://content.dropboxapi.com/2/files/upload", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Dropbox-API-Arg": JSON.stringify({
+          path: dropboxPath,
+          mode: "overwrite",
+          mute: true,
+          autorename: false,
+        }),
+        "Content-Type": "application/octet-stream",
+      },
+      // A JS string body is sent as UTF-8 — correct for Korean/English text.
+      body: contents,
+    });
+    if (resp.ok) return;
+    const retryable = resp.status === 429 || (resp.status >= 500 && resp.status < 600);
+    if (retryable && attempt < 2) {
+      const retryAfter = Number(resp.headers.get("retry-after") || "") || 2;
+      await new Promise((r) => setTimeout(r, Math.min(retryAfter, 10) * 1000));
+      continue;
+    }
     const summary = await parseErrorSummary(resp);
     throw new DropboxApiError(resp.status, summary);
   }
@@ -645,6 +654,7 @@ let exportInFlight = false;
 export type DiaryExportResult = {
   ok: boolean;
   written?: number;
+  failed?: number;
   skipped?: "disabled" | "not-connected" | "in-flight" | "nothing";
   error?: string;
 };
@@ -690,15 +700,48 @@ export async function maybeExportDiaryToDropbox(
 
     const folder = dropboxExportFolder();
     let written = 0;
-    for (const name of names) {
-      // Sequential + best-effort. On the first failure, stop and surface
-      // it (a scope error would fail every file identically anyway).
-      await uploadTextFile(`${folder}/${name}`, files.get(name) as string);
-      written++;
+    let failed = 0;
+    let lastError: unknown = null;
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      try {
+        await uploadTextFile(`${folder}/${name}`, files.get(name) as string);
+        written++;
+        // Advance the "last saved" marker as we go, so a long full sync
+        // shows progress on the /memory page instead of looking stalled.
+        setSetting("dropbox_export_last_at", new Date().toISOString());
+      } catch (e) {
+        // A scope/auth failure will hit EVERY file the same way, so there's
+        // no point grinding through hundreds — abort and surface the fix.
+        if (e instanceof DropboxApiError && e.kind === "auth") {
+          const msg = friendlyExportError(e);
+          setSetting("dropbox_export_last_error", msg);
+          console.warn("[dropbox] diary export aborted (auth):", msg);
+          return { ok: false, written, failed, error: msg };
+        }
+        // Any other per-file blip (transient, one bad path): skip it and
+        // keep going so one hiccup can't strand the rest of the vault.
+        failed++;
+        lastError = e;
+        console.warn(
+          `[dropbox] diary export: ${name} failed, continuing:`,
+          (e as Error).message
+        );
+      }
+      // Gentle spacing to stay under Dropbox's write-rate limit on big syncs.
+      if (i < names.length - 1) await new Promise((r) => setTimeout(r, 150));
+    }
+
+    if (failed > 0) {
+      const msg = `${written} saved, ${failed} failed (${friendlyExportError(
+        lastError
+      )}). Tap "Export now" to retry the rest.`;
+      setSetting("dropbox_export_last_error", msg);
+      return { ok: false, written, failed, error: msg };
     }
     setSetting("dropbox_export_last_at", new Date().toISOString());
     clearSetting("dropbox_export_last_error");
-    return { ok: true, written };
+    return { ok: true, written, failed: 0 };
   } catch (e) {
     const msg = friendlyExportError(e);
     setSetting("dropbox_export_last_error", msg);

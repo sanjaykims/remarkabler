@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-02 (Diary export: resilient full sync)
+
+The first full sync could leave the Dropbox folder incomplete: the upload
+loop **aborted on the first per-file error**, so one transient Dropbox
+blip (or a write-rate 429 during a bulk sync) stranded every remaining
+day. Hardened:
+
+- `uploadTextFile` now retries up to 3× on 429 / 5xx, honouring
+  `Retry-After` — bulk syncs trip Dropbox's write-rate limit.
+- The export loop **continues past a per-file blip** (skips + counts it)
+  instead of aborting; only a scope/auth failure (which would hit every
+  file identically) stops it early with the actionable message.
+- 150 ms spacing between uploads to stay under the write-rate limit; the
+  "last saved" marker advances per file so a long sync shows progress.
+- Result reports `written` + `failed`; a partial run says
+  `"N saved, M failed … tap Export now to retry the rest"`, and re-tapping
+  is idempotent (overwrite), so repeated taps converge to complete.
+
 ## 2026-07-02 (Diary auto-export is now one Markdown file per day)
 
 Changed the Dropbox auto-export from a single `diary.md` to **one file per
