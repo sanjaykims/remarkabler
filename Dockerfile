@@ -30,7 +30,15 @@ RUN npm ci
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # The app is force-dynamic and reads secrets lazily at request time, so the
-# build needs no real API keys.
+# build needs no real API keys — EXCEPT the PostHog NEXT_PUBLIC_* vars, which
+# Next inlines at BUILD time. Under Nixpacks these came from Railway's env;
+# under Docker they must arrive as build args (Railway passes service vars as
+# build args for Dockerfile builds). Default empty → analytics simply stays
+# off if unset, same as before. Re-exposed as ENV so `next build` inlines them.
+ARG NEXT_PUBLIC_POSTHOG_KEY=""
+ARG NEXT_PUBLIC_POSTHOG_HOST=""
+ENV NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY \
+    NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST
 RUN npm run build \
     && npm prune --omit=dev
 

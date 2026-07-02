@@ -20,9 +20,12 @@ trap 'rm -f "$tmp"' EXIT
 
 /opt/renderer/bin/rmc -t svg "$in" -o "$tmp"
 
-if /opt/renderer/bin/cairosvg "$tmp" -o "$out" 2>/dev/null; then
+# cairosvg is the high-fidelity path. Let its stderr through (don't swallow
+# it) so a failure that forces the lower-fidelity fallback is diagnosable.
+if /opt/renderer/bin/cairosvg "$tmp" -o "$out"; then
   exit 0
 fi
+echo "rm2pdf: cairosvg failed for '$in'; using svglib/reportlab fallback (may be lower fidelity)" >&2
 
 # Fallback: svglib + reportlab (pure Python).
 /opt/renderer/bin/python - "$tmp" "$out" <<'PY'

@@ -17,6 +17,13 @@ data
 .env
 .env.*
 
+# Build-context bloat — not needed to `next build`
+docs
+test
+*.md
+*.pdf
+*.tsbuildinfo
+
 # Noise
 *.log
 .DS_Store
