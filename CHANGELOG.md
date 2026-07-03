@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-03 (reMarkable sync — don't fast-retry rate limits; Codex #94)
+
+`withNetRetry` no longer treats HTTP 429 as a transient socket hiccup:
+replaying a hundreds-of-requests fan-out one second into a rate limit
+prolongs the limit. A 429 now falls through to the sweep's 10-minute
+backoff (5xx and socket/DNS errors still retry in-call).
+
+
 ## 2026-07-03 (reMarkable sync — retry transient network failures; diagnosable errors)
 
 The sync banner showed a bare "Sync: fetch failed" and the pending import
