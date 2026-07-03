@@ -172,10 +172,13 @@ function causeCodes(e: unknown): string {
 }
 
 // Is this a socket/DNS/TLS-level hiccup (worth an immediate retry) rather
-// than an HTTP-status or logic error?
+// than an HTTP-status or logic error? Deliberately NOT 429: replaying a
+// hundreds-of-requests fan-out one second after a rate limit prolongs the
+// limit (Codex, PR #94) — a 429 falls through to the sweep's 10-minute
+// backoff instead.
 function isTransientNetworkError(e: unknown): boolean {
   const err = e as { status?: number; message?: string };
-  if (typeof err?.status === "number") return err.status === 429 || err.status >= 500;
+  if (typeof err?.status === "number") return err.status >= 500;
   const msg = err?.message || "";
   return (
     /fetch failed|network|socket|ECONNRESET|EPIPE|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED|UND_ERR/i.test(
