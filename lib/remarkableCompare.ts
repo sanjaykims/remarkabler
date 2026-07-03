@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { compareTranscriptions } from "./claude";
 import { DISCIPLINE_ID } from "./notes";
+import { carryForwardDates, type DiaryPageRow } from "./diaryExport";
 
 // ── Phase 1b quality gate: compare a cloud import against existing entries ──
 //
@@ -10,11 +11,17 @@ import { DISCIPLINE_ID } from "./notes";
 // the SQLite corpus lives: pair the imported notebook's pages with existing
 // (non-cloud) pages for the SAME entry dates and have Claude judge the two
 // transcriptions.
+//
+// Dates use the SAME carry-forward rule as the diary export: the user writes
+// one "YYYY-MM-DD…KST" header per session and continuation pages inherit it.
+// A page-level grouping without carry-forward silently DROPS continuation
+// pages (stored entry_date='none') from both sides — that bug made a
+// correctly-transcribed section look "missing from the import" in the first
+// quality-gate reports, because the split of a tall page put the section on
+// its own header-less page.
 
-const MAX_CHARS_PER_SIDE_PER_DAY = 4_000;
-const MAX_TOTAL_CHARS = 60_000;
-
-type PageRow = { entry_date: string | null; ocr_text: string };
+const MAX_CHARS_PER_SIDE_PER_DAY = 8_000;
+const MAX_TOTAL_CHARS = 100_000;
 
 export type CompareResult = {
   ok: boolean;
@@ -24,15 +31,24 @@ export type CompareResult = {
   error?: string;
 };
 
-function textByDate(rows: PageRow[]): Map<string, string> {
+// Group page text by EFFECTIVE date (header date carried forward within each
+// notebook, in page order). Rows must arrive ordered by notebook, page_index.
+// Exported for unit testing.
+export function textByEffectiveDate(rows: DiaryPageRow[]): Map<string, string> {
   const m = new Map<string, string>();
-  for (const r of rows) {
-    const d = r.entry_date && r.entry_date !== "none" ? r.entry_date : null;
-    if (!d || !r.ocr_text) continue;
-    m.set(d, (m.get(d) ? m.get(d) + "\n\n" : "") + r.ocr_text);
+  for (const { row, effectiveDate } of carryForwardDates(rows)) {
+    if (!effectiveDate || !row.ocr_text) continue;
+    m.set(
+      effectiveDate,
+      (m.get(effectiveDate) ? m.get(effectiveDate) + "\n\n" : "") + row.ocr_text
+    );
   }
   return m;
 }
+
+// Minimal SELECT shaped like DiaryPageRow (themes/sentiment unused here).
+const PAGE_COLS = `p.id, p.notebook_id, n.name AS notebook_name, p.page_index,
+       p.entry_date, p.ocr_text, NULL AS themes, NULL AS sentiment`;
 
 export async function compareImportedNotebook(
   remarkableDocId: string
@@ -59,11 +75,13 @@ export async function compareImportedNotebook(
 
   const imported = db()
     .prepare(
-      `SELECT entry_date, ocr_text FROM pages
-       WHERE notebook_id = ? AND ocr_text IS NOT NULL AND ocr_text != ''`
+      `SELECT ${PAGE_COLS} FROM pages p
+       JOIN notebooks n ON n.id = p.notebook_id
+       WHERE p.notebook_id = ? AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
+       ORDER BY p.page_index`
     )
-    .all(nb.id) as PageRow[];
-  const importedByDate = textByDate(imported);
+    .all(nb.id) as DiaryPageRow[];
+  const importedByDate = textByEffectiveDate(imported);
   if (importedByDate.size === 0) {
     return {
       ok: false,
@@ -72,20 +90,21 @@ export async function compareImportedNotebook(
     };
   }
 
-  // Existing = pages from non-cloud notebooks (manual/Dropbox), excluding the
-  // GitHub discipline notebook, on the same dates.
+  // Existing = ALL pages from non-cloud notebooks (manual/Dropbox), excluding
+  // the GitHub discipline notebook. Fetched whole (not date-filtered in SQL)
+  // because the effective date of a continuation page only exists after
+  // carry-forward; filtering happens below on effective dates.
   const dates = Array.from(importedByDate.keys());
-  const placeholders = dates.map(() => "?").join(",");
   const existing = db()
     .prepare(
-      `SELECT p.entry_date, p.ocr_text FROM pages p
+      `SELECT ${PAGE_COLS} FROM pages p
        JOIN notebooks n ON n.id = p.notebook_id
        WHERE n.remarkable_doc_id IS NULL AND n.id != ?
-         AND p.entry_date IN (${placeholders})
-         AND p.ocr_text IS NOT NULL AND p.ocr_text != ''`
+         AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
+       ORDER BY n.synced_at, p.notebook_id, p.page_index`
     )
-    .all(DISCIPLINE_ID, ...dates) as PageRow[];
-  const existingByDate = textByDate(existing);
+    .all(DISCIPLINE_ID) as DiaryPageRow[];
+  const existingByDate = textByEffectiveDate(existing);
 
   const days: Array<{ date: string; existing: string; imported: string }> = [];
   const daysOnlyImported: string[] = [];

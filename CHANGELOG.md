@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-07-03 (reMarkable compare — carry dates forward; the "missing" section wasn't missing)
+
+Fourth quality-gate run still reported the 2026-06-03 second half missing —
+but the View PDF diagnostic had already shown it rendered. Root cause was in
+the COMPARE, not the pipeline: since the tall-page split, that section lands
+on its own header-less PDF page, stored with entry_date='none'; the compare
+grouped by stored entry_date only, silently dropping continuation pages from
+both sides. `compareImportedNotebook` now groups by EFFECTIVE date via the
+same `carryForwardDates` rule as the diary export (existing side fetched
+whole and filtered after carry-forward, since a continuation page's date only
+exists post-carry). Per-day/total caps raised to 8K/100K chars so long days
+can't tail-truncate. +3 regression tests (suite 263).
+
+
 ## 2026-07-03 (reMarkable renderer — darken pale ink colors for OCR)
 
 Breakthrough via the new View PDF diagnostic: the "missing" 2026-06-03
