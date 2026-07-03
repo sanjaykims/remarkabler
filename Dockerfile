@@ -60,9 +60,18 @@ RUN apt-get update \
 
 # reMarkable .rm -> SVG/PDF renderer, isolated in its own venv so it can't
 # perturb anything else. Pinned to the versions proven on real v6 samples.
+#
+# rmscene is deliberately OVERRIDDEN to 0.8.0 past rmc 0.3.0's <0.7 cap:
+# 0.6.1 warned "data has not been read (newer format)" on 2026-firmware pages
+# and silently DROPPED those strokes — a whole diary section went missing in
+# the first cloud import. Verified on real samples that rmc 0.3.0 + rmscene
+# 0.8.0 renders identical strokes (only z-order shifts) with no unread-data
+# warnings. The trailing import asserts the override actually took.
 RUN python3 -m venv /opt/renderer \
     && /opt/renderer/bin/pip install --no-cache-dir \
-       "rmc==0.3.0" "rmscene==0.6.1" "cairosvg==2.9.0" "svglib" "reportlab" "pypdf"
+       "rmc==0.3.0" "cairosvg==2.9.0" "svglib" "reportlab" "pypdf" \
+    && /opt/renderer/bin/pip install --no-cache-dir "rmscene==0.8.0" \
+    && /opt/renderer/bin/python -c "import rmc, rmscene; import importlib.metadata as im; v = im.version('rmscene'); assert v == '0.8.0', v"
 COPY docker/patch_rm_palette.py /tmp/patch_rm_palette.py
 RUN /opt/renderer/bin/python /tmp/patch_rm_palette.py
 COPY docker/rm2pdf /usr/local/bin/rm2pdf

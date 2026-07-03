@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-07-03 (reMarkable renderer — rmscene 0.8.0 + force re-import)
+
+The first real quality-gate run (user's June diary, 6 overlapping days) came
+back "B slightly worse": word-level OCR noise both ways, but one entry
+(2026-06-03) lost its entire second half. Root cause suspect: `rmscene 0.6.1`
+warns `data has not been read... newer format` on 2026-firmware pages and
+silently drops those strokes. Fixes:
+
+- **Dockerfile: rmscene overridden to 0.8.0** past rmc 0.3.0's `<0.7` cap —
+  verified on real samples that the combo renders identical strokes (only
+  z-order shifts), the unread-data warnings disappear, the rm2pdf chain works,
+  and the palette patch still applies. A build-time import asserts the
+  override took.
+- **Force re-import**: `importRemarkableNotebook(..., { force })` +
+  `force: true` on `POST /api/remarkable/import` skip the same-hash
+  "unchanged" shortcut; the UI offers "Re-import anyway (re-render +
+  re-transcribe)" after an unchanged result — needed because a renderer
+  upgrade improves the PDF without the cloud hash changing.
+
 ## 2026-07-03 (reMarkable import — one-tap quality-gate Compare report)
 
 The Phase 1b gate needs the user to judge whether the cloud render OCRs as
