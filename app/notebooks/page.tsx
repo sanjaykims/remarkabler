@@ -280,13 +280,23 @@ export default function NotebooksPage() {
                         ))}
                     </div>
                   )}
-                  <button
-                    onClick={() => remove(n.id, n.name)}
-                    disabled={deletingId !== null}
-                    className="text-xs opacity-60 hover:opacity-100 hover:text-red-600 disabled:opacity-30"
-                  >
-                    {deletingId === n.id ? "Deleting…" : "Delete"}
-                  </button>
+                  <div className="flex items-center gap-4">
+                    <a
+                      href={`/api/notebooks/${n.id}/pdf`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs opacity-60 hover:opacity-100 underline"
+                    >
+                      View PDF
+                    </a>
+                    <button
+                      onClick={() => remove(n.id, n.name)}
+                      disabled={deletingId !== null}
+                      className="text-xs opacity-60 hover:opacity-100 hover:text-red-600 disabled:opacity-30"
+                    >
+                      {deletingId === n.id ? "Deleting…" : "Delete"}
+                    </button>
+                  </div>
                 </div>
               </details>
             );
