@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-03 (insights — weekly auto-generation is now an opt-in toggle, default OFF)
+
+Owner-requested: the weekly automatic insight (an Opus call over the full
+corpus — one of the most expensive recurring calls) no longer fires on its
+own. `maybeGenerateWeeklyInsight` is gated on the new
+`weekly_insight_enabled` setting (unset = OFF, effective immediately), a
+"Weekly auto-insight: ON/off" toggle on `/insights` flips it
+(`PATCH /api/insights { weeklyEnabled }`), and the manual "Generate
+insights" button is unaffected.
+
+
 ## 2026-07-03 (reMarkable sync — versioned cursor + Sync now button; Codex #96)
 
 The same-day notebook STILL didn't import after the 24h-grace fix: the last

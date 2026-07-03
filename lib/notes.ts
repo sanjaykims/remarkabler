@@ -743,6 +743,11 @@ export function maybeAutoSyncDiscipline(): void {
  * cadence anchor — no separate flag needed).
  */
 export function maybeGenerateWeeklyInsight(): void {
+  // OPT-IN: the weekly auto-insight is an Opus call over the full corpus
+  // (one of the most expensive recurring calls in the app). The owner turned
+  // it off from the Insights page — it fires only while the toggle is ON;
+  // the manual "Generate insights" button is unaffected.
+  if (getSetting("weekly_insight_enabled") !== "1") return;
   if (generatingWeeklyInsight) return;
   try {
     const last = db()

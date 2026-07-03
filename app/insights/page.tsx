@@ -29,11 +29,32 @@ export default function InsightsPage() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [weeklyEnabled, setWeeklyEnabled] = useState<boolean | null>(null);
+  const [togglingWeekly, setTogglingWeekly] = useState(false);
 
   async function load() {
     const r = await fetch("/api/insights");
     const d = await r.json();
     setInsights(d.insights || []);
+    if (typeof d.weeklyEnabled === "boolean") setWeeklyEnabled(d.weeklyEnabled);
+  }
+
+  async function toggleWeekly() {
+    if (togglingWeekly || weeklyEnabled === null) return;
+    setTogglingWeekly(true);
+    try {
+      const r = await fetch("/api/insights", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weeklyEnabled: !weeklyEnabled }),
+      });
+      const d = await r.json();
+      if (r.ok && typeof d.weeklyEnabled === "boolean") {
+        setWeeklyEnabled(d.weeklyEnabled);
+      }
+    } finally {
+      setTogglingWeekly(false);
+    }
   }
 
   useEffect(() => {
@@ -127,6 +148,27 @@ export default function InsightsPage() {
         your full current record. Use <strong>Export</strong> to save it
         whenever you like.
       </p>
+
+      {weeklyEnabled !== null && (
+        <div className="flex items-start gap-2">
+          <button
+            onClick={toggleWeekly}
+            disabled={togglingWeekly}
+            className={`shrink-0 rounded border px-2.5 py-1.5 text-xs disabled:opacity-50 ${
+              weeklyEnabled
+                ? "border-stone-900 bg-stone-900 text-stone-50 dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900"
+                : "border-stone-300 dark:border-stone-700"
+            }`}
+          >
+            {weeklyEnabled ? "Weekly auto-insight: ON" : "Weekly auto-insight: OFF"}
+          </button>
+          <span className="text-xs opacity-60">
+            {weeklyEnabled
+              ? "A fresh reflection is generated automatically about once a week (this is one of the pricier calls)."
+              : "No automatic reflections — tap Generate insights above whenever you want one."}
+          </span>
+        </div>
+      )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
       {generating && (
