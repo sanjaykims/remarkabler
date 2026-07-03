@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-07-03 (reMarkable renderer — split vertically-extended pages for OCR)
+
+Second quality-gate run: the SAME section of 2026-06-03 was still missing
+after the rmscene upgrade, and a 2026-05 notebook graded "much worse" with
+entries cut off partway ("below the fold") while page counts stayed intact
+(20/20). Root cause: a reMarkable page the user extends by scrolling renders
+as ONE PDF page 2-3+ screens tall; vision OCR downscales each page to a fixed
+resolution, so the lower half's handwriting shrinks below legibility and is
+misread or skipped. reMarkable's own export splits extended pages, which is
+why the Dropbox path kept that content.
+
+- `docker/rm2pdf` now slices pages taller than 1.35 screen-heights into
+  screen-height PDF pages (4% overlap so a boundary-cut line stays readable;
+  a final sliver adding <15% of a screen folds into the previous slice).
+  Normal pages pass through untouched. Verified: normal sample stays 1 page;
+  a synthetic 3-screen page splits into 3 slices with full coverage, no gaps,
+  no sliver; the renderNotebookToPdf chain handles multi-page outputs (pypdf
+  append concatenates all pages).
+- No app-code change needed — page_index/entry-date carry-forward already
+  handle a notebook yielding more PDF pages than tablet pages.
+
+
 ## 2026-07-03 (reMarkable renderer — rmscene 0.8.0 + force re-import)
 
 The first real quality-gate run (user's June diary, 6 overlapping days) came
