@@ -68,30 +68,58 @@ let inFlight = false;
 let lastAttemptAt = 0;
 let lastFailureAt = 0;
 
-export function syncFolders(): string[] {
+// Enabled folders are stored as { parentId: enabledAtISO }. The timestamp is
+// load-bearing: a folder can hold YEARS of historical notebooks (the owner's
+// Diary folder has 38), and enabling auto-sync must mean "pick up my writing
+// FROM NOW ON" — not "re-transcribe the whole archive" (a surprise OCR bill
+// plus mass duplication of notebooks already ingested via Dropbox). Only
+// not-yet-imported notebooks edited AFTER the enable time are auto-imported;
+// older ones stay out unless the user taps Import on them deliberately.
+// (Already-imported notebooks are followed regardless — their row is the
+// subscription.)
+function syncFolderMap(): Record<string, string> {
   const raw = getSetting(SYNC_FOLDERS_KEY);
-  if (!raw) return [];
+  if (!raw) return {};
   try {
     const v = JSON.parse(raw);
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+    if (Array.isArray(v)) {
+      // Legacy array shape (pre-timestamp) — treat as enabled "now" so no
+      // archive backfill fires.
+      const now = new Date().toISOString();
+      return Object.fromEntries(
+        v.filter((x): x is string => typeof x === "string").map((p) => [p, now])
+      );
+    }
+    if (v && typeof v === "object") {
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>).filter(
+          (e): e is [string, string] => typeof e[1] === "string"
+        )
+      );
+    }
+    return {};
   } catch {
-    return [];
+    return {};
   }
 }
 
+export function syncFolders(): string[] {
+  return Object.keys(syncFolderMap());
+}
+
 export function setSyncFolder(parent: string, enabled: boolean): string[] {
-  const current = new Set(syncFolders());
-  if (enabled) current.add(parent);
-  else current.delete(parent);
-  const next = Array.from(current);
-  if (next.length === 0) clearSetting(SYNC_FOLDERS_KEY);
-  else setSetting(SYNC_FOLDERS_KEY, JSON.stringify(next));
+  const map = syncFolderMap();
+  if (enabled && !map[parent]) map[parent] = new Date().toISOString();
+  if (!enabled) delete map[parent];
+  const keys = Object.keys(map);
+  if (keys.length === 0) clearSetting(SYNC_FOLDERS_KEY);
+  else setSetting(SYNC_FOLDERS_KEY, JSON.stringify(map));
   // Invalidate the account cursor: the fast-path compares against the CLOUD's
   // change counter, which knows nothing about LOCAL subscription changes — a
   // freshly enabled folder must get a full list/diff pass even though nothing
   // changed on the reMarkable side (Codex, PR #87).
   clearSetting(ROOT_HASH_KEY);
-  return next;
+  return keys;
 }
 
 export type SyncStatus = {
@@ -187,7 +215,8 @@ export async function maybeSyncRemarkable(): Promise<void> {
   if (now - lastFailureAt < FAILURE_BACKOFF_MS) return;
   if (!remarkablePaired()) return;
   if (!renderersAvailable()) return; // never in local dev / CI
-  const folders = syncFolders();
+  const folderMap = syncFolderMap();
+  const folders = Object.keys(folderMap);
   const subscribed = db()
     .prepare(
       `SELECT id, remarkable_doc_id, remarkable_doc_hash, status
@@ -233,12 +262,18 @@ export async function maybeSyncRemarkable(): Promise<void> {
       let row = byDocId.get(nb.id);
       try {
         if (!row) {
-          // New notebook in an auto-synced folder. Create its row and ingest
-          // through the SAME per-page incremental engine — NOT the whole-PDF
-          // import path, whose rows lack per-page hashes and would force a
-          // full re-OCR restructure on the first later edit (Codex, PR #87).
-          // The import lock keeps a concurrent user Import tap from creating
-          // a duplicate row for the same doc.
+          // Not-yet-imported notebook in an auto-synced folder: only pick it
+          // up if it was edited AFTER the folder was enabled — "from now on",
+          // never a silent archive backfill (see syncFolderMap).
+          const enabledAt = folderMap[nb.parent];
+          if (!enabledAt || !nb.lastModified || nb.lastModified <= enabledAt) {
+            continue;
+          }
+          // Create its row and ingest through the SAME per-page incremental
+          // engine — NOT the whole-PDF import path, whose rows lack per-page
+          // hashes and would force a full re-OCR restructure on the first
+          // later edit (Codex, PR #87). The import lock keeps a concurrent
+          // user Import tap from creating a duplicate row for the same doc.
           if (!lockRemarkableImport(nb.id)) {
             allSettled = false;
             continue;

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-03 (reMarkable sync — folder enablement means "from now on")
+
+Enabling auto-sync on a folder no longer backfills its archive. The owner's
+Diary folder holds 38 notebooks; the previous behavior would have silently
+re-transcribed years of diaries (a surprise OCR bill + mass duplication of
+notebooks already ingested via Dropbox). Enabled folders now store their
+enable timestamp ({ parentId: enabledAtISO }; legacy array parses as
+enabled-now), and a not-yet-imported notebook is auto-imported only when
+edited AFTER that moment. Already-imported notebooks are followed regardless
+(their row is the subscription); historical ones remain a deliberate Import
+tap away.
+
+
 ## 2026-07-03 (reMarkable sync — always-visible Automatic sync toggles)
 
 The Auto-sync switch was hidden behind selecting a folder chip and the
