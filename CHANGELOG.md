@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-07-03 (reMarkable sync — defer profile folds until the notebook settles; Codex #92)
+
+Codex on PR #92: with the 5-minute quiesce, a premature pass can OCR a
+half-written page. The PAGE text self-corrects (the settled re-OCR replaces
+it wholesale) but `updateSelfModel` is append-only — a garbled half-sentence
+folded into the long-lived profile can't be unfolded. Now ingest stays fast
+(text reaches chat search in ~5-10 min) but the PROFILE fold waits until the
+notebook has been quiet for 30 minutes: pages ingested earlier are marked
+`pages.profile_fold_pending` and a later sweep folds their (by then final)
+text — including leftovers whose ink never changed again, swept up on the
+next settled pass. Fold failures keep the sync cursor open for retry without
+blocking the doc-hash advance.
+
+
 ## 2026-07-03 (reMarkable sync — quiesce window 15 → 5 minutes)
 
 Owner-requested: write → close the cover → chat-ready in ~5-10 minutes.
