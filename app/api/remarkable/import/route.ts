@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     id?: string;
     hash?: string;
     name?: string;
+    force?: boolean;
   };
   const id = (body.id || "").trim();
   const hash = (body.hash || "").trim();
@@ -29,6 +30,8 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  const result = await importRemarkableNotebook(id, hash, body.name || "");
+  const result = await importRemarkableNotebook(id, hash, body.name || "", {
+    force: body.force === true,
+  });
   return NextResponse.json({ ...result, status_meta: remarkableStatus() });
 }

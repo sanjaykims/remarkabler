@@ -114,6 +114,9 @@ export default function MemoryPage() {
   const [rmFolder, setRmFolder] = useState<string>("");
   // Per-notebook compare state (the Phase 1b quality-gate report).
   const [rmComparingId, setRmComparingId] = useState<string | null>(null);
+  // Offer a force re-import after an "unchanged" result (e.g. the renderer
+  // was upgraded but the notebook's cloud hash didn't change).
+  const [rmReimportOffer, setRmReimportOffer] = useState<Record<string, boolean>>({});
 
   type EmbedStatus = {
     enabled: boolean;
@@ -494,20 +497,22 @@ export default function MemoryPage() {
     }
   }
 
-  async function importRemarkableNotebook(nb: RemarkableNotebook) {
+  async function importRemarkableNotebook(nb: RemarkableNotebook, force = false) {
     if (rmImportingId) return;
     setRmImportingId(nb.id);
+    setRmReimportOffer((m) => ({ ...m, [nb.id]: false }));
     setRmImportMsg((m) => ({ ...m, [nb.id]: "Importing… downloading + rendering pages." }));
     try {
       const r = await fetch("/api/remarkable/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: nb.id, hash: nb.hash, name: nb.name }),
+        body: JSON.stringify({ id: nb.id, hash: nb.hash, name: nb.name, force }),
       });
       const d = await r.json().catch(() => ({}));
       let msg: string;
       if (d.ok && d.status === "unchanged") {
         msg = "Already imported — no changes since last time.";
+        setRmReimportOffer((m) => ({ ...m, [nb.id]: true }));
       } else if (d.ok) {
         const failed = d.failed ? ` (${d.failed} page${d.failed === 1 ? "" : "s"} skipped)` : "";
         msg =
@@ -1335,6 +1340,15 @@ export default function MemoryPage() {
                               <p className="text-xs opacity-80 break-words whitespace-pre-wrap">
                                 {rmImportMsg[nb.id]}
                               </p>
+                            )}
+                            {rmReimportOffer[nb.id] && (
+                              <button
+                                onClick={() => importRemarkableNotebook(nb, true)}
+                                disabled={rmImportingId !== null || rmComparingId !== null}
+                                className="rounded border border-stone-300 dark:border-stone-700 px-2.5 py-1.5 text-xs disabled:opacity-50"
+                              >
+                                Re-import anyway (re-render + re-transcribe)
+                              </button>
                             )}
                           </li>
                         ))}

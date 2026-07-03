@@ -43,7 +43,8 @@ type ExistingRow = {
 export async function importRemarkableNotebook(
   id: string,
   hash: string,
-  name: string
+  name: string,
+  opts: { force?: boolean } = {}
 ): Promise<ImportResult> {
   if (!id || !hash) {
     return { ok: false, error: "Missing notebook id or hash." };
@@ -83,7 +84,10 @@ export async function importRemarkableNotebook(
   // whose OCR errored has the same cloud hash but no usable transcription —
   // treating it as unchanged would make it permanently unrecoverable from the
   // UI (Codex, PR #78). Let error rows fall through to the replace path.
+  // `force` skips the shortcut entirely: after a renderer upgrade the cloud
+  // hash is unchanged but a re-render produces a better PDF.
   if (
+    !opts.force &&
     existing &&
     existing.remarkable_doc_hash === currentHash &&
     existing.status !== "error"
