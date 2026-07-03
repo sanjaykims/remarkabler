@@ -62,6 +62,27 @@ const FAILURE_BACKOFF_MS = 10 * 60 * 1000;
 // a few cents), and the tablet itself takes a minute or two to upload after
 // the cover closes, which acts as a natural extra buffer.
 const QUIESCE_MS = 5 * 60 * 1000;
+// Enabling a folder includes notebooks edited up to this long BEFORE the
+// toggle: "sync my Diary from now on" naturally means today's active
+// notebook too (written this morning, toggle flipped at lunch), not only
+// future edits. One day is generous enough for "today" and never reaches
+// the archive.
+const ENABLE_GRACE_MS = 24 * 60 * 60 * 1000;
+
+// Pure: should a not-yet-imported notebook in an enabled folder be
+// auto-imported? Exported for unit testing.
+export function shouldAutoImport(
+  lastModified: string | undefined,
+  enabledAt: string | undefined,
+  graceMs: number = ENABLE_GRACE_MS
+): boolean {
+  if (!lastModified || !enabledAt) return false;
+  const enabled = Date.parse(enabledAt);
+  const modified = Date.parse(lastModified);
+  if (!Number.isFinite(enabled) || !Number.isFinite(modified)) return false;
+  return modified > enabled - graceMs;
+}
+
 // The PROFILE fold, however, waits longer. Page text is self-correcting
 // (a later re-OCR replaces it wholesale) but updateSelfModel is append-only —
 // a half-written sentence folded into the long-lived profile can't be
@@ -328,10 +349,10 @@ export async function maybeSyncRemarkable(): Promise<void> {
       try {
         if (!row) {
           // Not-yet-imported notebook in an auto-synced folder: only pick it
-          // up if it was edited AFTER the folder was enabled — "from now on",
-          // never a silent archive backfill (see syncFolderMap).
-          const enabledAt = folderMap[nb.parent];
-          if (!enabledAt || !nb.lastModified || nb.lastModified <= enabledAt) {
+          // up if it was edited after (or within a day before) the folder
+          // was enabled — "from now on" plus today's active notebook, never
+          // a silent archive backfill (see syncFolderMap / shouldAutoImport).
+          if (!shouldAutoImport(nb.lastModified, folderMap[nb.parent])) {
             continue;
           }
           // Create its row and ingest through the SAME per-page incremental
