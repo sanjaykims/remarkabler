@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-03 (reMarkable sync — always-visible Automatic sync toggles)
+
+The Auto-sync switch was hidden behind selecting a folder chip and the
+section intro still claimed "automatic import is the next step" — the owner
+couldn't find the zero-tap feature that had already shipped. Now: honest
+intro copy, and an always-visible "Automatic sync" block listing every
+folder as a tappable ON/off pill (replaces the chip-gated toggle). Quiesce
+window shortened 30 → 15 minutes so a finished entry reaches chat sooner —
+page diffing makes a premature pass cost pennies.
+
+
 ## 2026-07-03 (reMarkable sync — Codex review fixes on PR #87)
 
 - **Enabling a folder invalidates the root cursor.** The rootHash fast-path

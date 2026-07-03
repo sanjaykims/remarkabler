@@ -50,8 +50,10 @@ import { extractEntryDate, reparseAllEntryDates } from "./notes";
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const FAILURE_BACKOFF_MS = 30 * 60 * 1000;
 // Don't ingest a notebook edited in the last N minutes — the user may still
-// be writing. The next sweep picks it up once it settles.
-const QUIESCE_MS = 30 * 60 * 1000;
+// be writing. The next sweep picks it up once it settles. Kept short: page
+// diffing makes a premature pass cheap (the still-growing page just re-OCRs
+// once more when it settles), and the owner wants entries in chat promptly.
+const QUIESCE_MS = 15 * 60 * 1000;
 // Upper bound on OCR calls per sweep across all notebooks — a runaway guard,
 // not a normal-operation limit (a normal day is 1-3 changed pages).
 const MAX_PAGES_PER_SWEEP = 30;
