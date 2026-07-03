@@ -1228,11 +1228,11 @@ export default function MemoryPage() {
           </span>
         </h2>
         <p className="text-xs opacity-70">
-          Connect straight to your reMarkable account so notebooks are picked
-          up automatically — no &ldquo;Export to Dropbox&rdquo; tap. Right now
-          this only <strong>reads your notebook list</strong> to prove the
-          connection works; automatic import is the next step. Your Dropbox
-          setup keeps working either way.
+          Connected straight to your reMarkable account. Turn on{" "}
+          <strong>Automatic sync</strong> for a folder below and new writing
+          there is transcribed and fed into chat by itself — write, close the
+          cover, done. No taps, no &ldquo;Export to Dropbox&rdquo;. Your
+          Dropbox setup keeps working as a backup either way.
         </p>
 
         {remarkable === null ? (
@@ -1304,8 +1304,45 @@ export default function MemoryPage() {
                   const shown = remarkable.notebooks.filter(
                     (nb) => rmFolder === "" || (nb.folder || "") === rmFolder
                   );
+                  const folderPairs = Array.from(
+                    new Map(
+                      remarkable.notebooks!
+                        .filter((n) => n.folder && n.parent)
+                        .map((n) => [n.parent as string, n.folder as string])
+                    ).entries()
+                  ).sort((a, b) => a[1].localeCompare(b[1]));
                   return (
                     <>
+                      {folderPairs.length > 0 && (
+                        <div className="rounded border border-stone-200 dark:border-stone-800 p-2.5 space-y-1.5">
+                          <p className="text-xs font-medium">Automatic sync</p>
+                          <p className="text-xs opacity-60">
+                            New writing in an ON folder is picked up and
+                            transcribed by itself (checked every few minutes;
+                            only new or changed pages). Tap a folder to turn it
+                            on or off.
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {folderPairs.map(([parentId, name]) => {
+                              const on = !!remarkable.sync?.folders?.includes(parentId);
+                              return (
+                                <button
+                                  key={parentId}
+                                  onClick={() => toggleRemarkableAutosync(parentId, !on)}
+                                  disabled={rmAutosyncBusy}
+                                  className={`rounded-full border px-2.5 py-1 text-xs disabled:opacity-50 ${
+                                    on
+                                      ? "border-stone-900 bg-stone-900 text-stone-50 dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900"
+                                      : "border-stone-300 dark:border-stone-700"
+                                  }`}
+                                >
+                                  {name} {on ? "✓ ON" : "· off"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                       {folders.length > 1 && (
                         <div className="flex flex-wrap gap-1.5">
                           <button
@@ -1340,34 +1377,6 @@ export default function MemoryPage() {
                             })}
                         </div>
                       )}
-                      {rmFolder !== "" &&
-                        (() => {
-                          const selParent = remarkable.notebooks!.find(
-                            (n) => (n.folder || "") === rmFolder
-                          )?.parent;
-                          if (!selParent) return null;
-                          const on = !!remarkable.sync?.folders?.includes(selParent);
-                          return (
-                            <div className="flex items-start gap-2">
-                              <button
-                                onClick={() => toggleRemarkableAutosync(selParent, !on)}
-                                disabled={rmAutosyncBusy}
-                                className={`shrink-0 rounded border px-2.5 py-1.5 text-xs disabled:opacity-50 ${
-                                  on
-                                    ? "border-stone-900 bg-stone-900 text-stone-50 dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900"
-                                    : "border-stone-300 dark:border-stone-700"
-                                }`}
-                              >
-                                {on ? "Auto-sync: ON" : "Auto-sync: OFF"}
-                              </button>
-                              <span className="text-xs opacity-60">
-                                {on
-                                  ? `New writing in “${rmFolder}” is picked up and transcribed automatically — no taps needed.`
-                                  : `Turn on to automatically pick up new writing in “${rmFolder}” (checks every few minutes; only new or changed pages are transcribed).`}
-                              </span>
-                            </div>
-                          );
-                        })()}
                       <ul className="space-y-2">
                         {shown.map((nb) => (
                           <li
