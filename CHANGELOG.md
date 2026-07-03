@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-07-03 (reMarkable sync — edits fully propagate; Codex #90 fix)
+
+Editing an already-synced page on the tablet now propagates EVERYWHERE, not
+just to the page text. A stale-cache sweep of every derived store found two
+gaps (all others — FTS, embeddings, /mind analysis + entities, profile fold,
+per-day markdown, notebook.pdf — were already invalidated):
+
+- **Cached daily summaries are invalidated for touched days.** The generator
+  only fills days with no cached row, so chat's `get_day_summary` /
+  week/month tools would have served the OLD text forever after an in-place
+  re-OCR. The sync now deletes summaries for the delta (before/after date
+  sets + old/new dates of re-OCR'd pages); the next sweep regenerates them.
+- **A date-move rewrites the old day's Dropbox file.** If a re-OCR changes a
+  page's parsed date from day A to day B, A.md was no longer in the
+  notebook's affected set and kept the old text. `maybeExportDiaryToDropbox`
+  accepts `extraDayFiles`; the sync passes the notebook's pre-update day
+  files.
+- **Codex (PR #90, P1): legacy folder-setting conversion is persisted.** The
+  array→map upgrade computed a fresh enabledAt on every read without saving
+  it — a perpetually moving cutoff that would have skipped every new
+  notebook forever. It now writes the converted map back on first read.
+
+
 ## 2026-07-03 (reMarkable sync — folder enablement means "from now on")
 
 Enabling auto-sync on a folder no longer backfills its archive. The owner's

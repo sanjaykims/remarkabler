@@ -18,6 +18,7 @@ import { ocrNotebookPdf, updateSelfModel } from "./claude";
 import { getCurrentProfile, saveProfile } from "./profile";
 import { embedBatch, embeddingsEnabled, encodeEmbedding } from "./embeddings";
 import { extractEntryDate, reparseAllEntryDates } from "./notes";
+import { affectedDayFileNames } from "./diaryExportDb";
 
 // ── reMarkable cloud zero-tap sync (Phase 2) ────────────────────────────────
 //
@@ -84,11 +85,15 @@ function syncFolderMap(): Record<string, string> {
     const v = JSON.parse(raw);
     if (Array.isArray(v)) {
       // Legacy array shape (pre-timestamp) — treat as enabled "now" so no
-      // archive backfill fires.
+      // archive backfill fires, and PERSIST the conversion immediately: a
+      // freshly computed timestamp on every read would be a perpetually
+      // moving cutoff that skips every new notebook forever (Codex, PR #90).
       const now = new Date().toISOString();
-      return Object.fromEntries(
+      const map = Object.fromEntries(
         v.filter((x): x is string => typeof x === "string").map((p) => [p, now])
       );
+      setSetting(SYNC_FOLDERS_KEY, JSON.stringify(map));
+      return map;
     }
     if (v && typeof v === "object") {
       return Object.fromEntries(
@@ -505,6 +510,33 @@ async function incrementalSyncNotebook(
       );
     }
 
+    // Snapshot the notebook's date footprint BEFORE the swap. Two staleness
+    // fixes hang off it: cached daily summaries for any day whose content
+    // changes must be invalidated (chat's get_day_summary would otherwise
+    // serve the OLD text forever — the generator only fills days with no
+    // cached row), and if a page's parsed date MOVES from day A to day B,
+    // A's Dropbox markdown must be rewritten even though A is no longer in
+    // the notebook's affected set.
+    const oldDayFiles = affectedDayFileNames(row.id);
+    const datedRows = (sql: string, ...args: unknown[]) =>
+      new Set(
+        (db().prepare(sql).all(...args) as Array<{ entry_date: string | null }>)
+          .map((r) => r.entry_date)
+          .filter((d): d is string => !!d && d !== "none")
+      );
+    const upsertIds = results.map((r) => r.pageRowId);
+    const idPlaceholders = upsertIds.map(() => "?").join(",");
+    const datesBefore = datedRows(
+      `SELECT DISTINCT entry_date FROM pages WHERE notebook_id = ?`,
+      row.id
+    );
+    const upsertedDatesBefore = upsertIds.length
+      ? datedRows(
+          `SELECT entry_date FROM pages WHERE id IN (${idPlaceholders})`,
+          ...upsertIds
+        )
+      : new Set<string>();
+
     // ── Phase 2: one atomic DB swap ──
     const upsert = db().prepare(
       `INSERT INTO pages(id, notebook_id, page_index, ocr_text, entry_date,
@@ -562,6 +594,41 @@ async function incrementalSyncNotebook(
       reparseAllEntryDates();
     } catch {
       /* best-effort */
+    }
+
+    // Invalidate cached daily summaries for every day this pass touched:
+    // days whose page set changed (before/after symmetric difference) plus
+    // the old+new dates of every re-OCR'd page. The maintenance sweep
+    // regenerates them (it only fills days with no cached row). Bounded to
+    // the delta so an edit doesn't re-bill summarizeDay for the whole month.
+    try {
+      const datesAfter = datedRows(
+        `SELECT DISTINCT entry_date FROM pages WHERE notebook_id = ?`,
+        row.id
+      );
+      const upsertedDatesAfter = upsertIds.length
+        ? datedRows(
+            `SELECT entry_date FROM pages WHERE id IN (${idPlaceholders})`,
+            ...upsertIds
+          )
+        : new Set<string>();
+      const affected = new Set<string>([
+        ...upsertedDatesBefore,
+        ...upsertedDatesAfter,
+      ]);
+      for (const d of datesBefore) if (!datesAfter.has(d)) affected.add(d);
+      for (const d of datesAfter) if (!datesBefore.has(d)) affected.add(d);
+      if (affected.size > 0) {
+        const del = db().prepare(`DELETE FROM daily_summaries WHERE date = ?`);
+        db().transaction(() => {
+          for (const d of affected) del.run(d);
+        })();
+      }
+    } catch (e) {
+      console.warn(
+        "[remarkableSync] day-summary invalidation failed:",
+        (e as Error).message
+      );
     }
 
     // Embeddings for the new/changed pages (best-effort, like processNotebook).
@@ -640,12 +707,20 @@ async function incrementalSyncNotebook(
       console.warn("[remarkableSync] notebook.pdf refresh failed:", (e as Error).message);
     }
 
-    // Refresh the per-day Dropbox markdown for the days this touched.
+    // Refresh the per-day Dropbox markdown for the days this touched —
+    // including the PRE-update day files, so a page whose date moved leaves
+    // its old day rewritten (not stale) in Dropbox.
     try {
       const { maybeExportDiaryToDropbox } = (await import("./dropbox")) as {
-        maybeExportDiaryToDropbox: (opts?: { notebookId?: string }) => Promise<unknown>;
+        maybeExportDiaryToDropbox: (opts?: {
+          notebookId?: string;
+          extraDayFiles?: string[];
+        }) => Promise<unknown>;
       };
-      await maybeExportDiaryToDropbox({ notebookId: row.id });
+      await maybeExportDiaryToDropbox({
+        notebookId: row.id,
+        extraDayFiles: oldDayFiles,
+      });
     } catch (e) {
       console.warn("[remarkableSync] diary export failed:", (e as Error).message);
     }
