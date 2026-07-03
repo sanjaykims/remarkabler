@@ -60,7 +60,15 @@ export function db(): Database.Database {
   // remarkable_page_hash is a sha256 of the page's raw .rm bytes at last
   // ingest. Together they let the sweep re-OCR ONLY new/changed pages.
   // NULL for pages from manual/Dropbox notebooks and legacy cloud imports.
-  for (const col of ["remarkable_page_id TEXT", "remarkable_page_hash TEXT"]) {
+  // profile_fold_pending=1 marks a page ingested from a not-yet-settled
+  // notebook: its text is live everywhere immediately, but the fold into the
+  // long-lived profile waits until the notebook stops changing (the fold is
+  // append-only and can't be undone by a later corrected re-OCR).
+  for (const col of [
+    "remarkable_page_id TEXT",
+    "remarkable_page_hash TEXT",
+    "profile_fold_pending INTEGER",
+  ]) {
     try {
       _db.exec(`ALTER TABLE pages ADD COLUMN ${col}`);
     } catch {

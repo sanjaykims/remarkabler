@@ -57,6 +57,13 @@ const FAILURE_BACKOFF_MS = 30 * 60 * 1000;
 // a few cents), and the tablet itself takes a minute or two to upload after
 // the cover closes, which acts as a natural extra buffer.
 const QUIESCE_MS = 5 * 60 * 1000;
+// The PROFILE fold, however, waits longer. Page text is self-correcting
+// (a later re-OCR replaces it wholesale) but updateSelfModel is append-only —
+// a half-written sentence folded into the long-lived profile can't be
+// unfolded by the corrected pass (Codex, PR #92). Pages ingested before this
+// settling period are marked profile_fold_pending and folded by a later
+// sweep once the notebook has been quiet this long.
+const PROFILE_SETTLE_MS = 30 * 60 * 1000;
 // Upper bound on OCR calls per sweep across all notebooks — a runaway guard,
 // not a normal-operation limit (a normal day is 1-3 changed pages).
 const MAX_PAGES_PER_SWEEP = 30;
@@ -210,6 +217,52 @@ function quiesced(nb: RemarkableNotebook, now: number): boolean {
   return Number.isFinite(t) && now - t < QUIESCE_MS;
 }
 
+// Long-settled: safe to fold into the append-only profile.
+function profileSettled(nb: RemarkableNotebook, now: number): boolean {
+  if (!nb.lastModified) return true; // no signal — don't block forever
+  const t = Date.parse(nb.lastModified);
+  return !Number.isFinite(t) || now - t >= PROFILE_SETTLE_MS;
+}
+
+/**
+ * Fold any profile_fold_pending pages of a notebook into the profile (their
+ * CURRENT text — by fold time a premature OCR has been replaced by the
+ * settled re-OCR). Returns false when a fold was attempted and failed, so
+ * the sweep keeps its cursor open and retries.
+ */
+async function foldPendingProfile(notebookId: string): Promise<boolean> {
+  const pending = db()
+    .prepare(
+      `SELECT id, ocr_text FROM pages
+       WHERE notebook_id = ? AND profile_fold_pending = 1
+       ORDER BY page_index`
+    )
+    .all(notebookId) as Array<{ id: string; ocr_text: string | null }>;
+  if (pending.length === 0) return true;
+  const entryText = pending
+    .map((p) => p.ocr_text || "")
+    .filter(Boolean)
+    .join("\n\n");
+  try {
+    const current = getCurrentProfile();
+    if (entryText.trim() && current) {
+      saveProfile(
+        await updateSelfModel({ currentProfile: current, newContent: entryText })
+      );
+    }
+    const clear = db().prepare(
+      `UPDATE pages SET profile_fold_pending = 0 WHERE id = ?`
+    );
+    db().transaction(() => {
+      for (const p of pending) clear.run(p.id);
+    })();
+    return true;
+  } catch (e) {
+    console.warn("[remarkableSync] pending profile fold failed:", (e as Error).message);
+    return false;
+  }
+}
+
 /**
  * The sweep entry point. Fire-and-forget from runMaintenanceSweep; never
  * throws. All state (cursor, errors, notes) lands in settings so /memory can
@@ -317,8 +370,20 @@ export async function maybeSyncRemarkable(): Promise<void> {
         // "Unchanged" requires a hash match AND a healthy row: an errored
         // notebook carries the same stamped hash but no usable transcription
         // — skipping it would strand it forever (Codex, PR #87). Let it fall
-        // through to a fresh incremental pass.
+        // through to a fresh incremental pass. Before skipping, settle any
+        // deferred profile folds (pages ingested while the notebook was
+        // still being written; the fold waited for it to go quiet).
         if (row.remarkable_doc_hash === nb.hash && row.status !== "error") {
+          if (profileSettled(nb, Date.now())) {
+            if (!(await foldPendingProfile(row.id))) allSettled = false;
+          } else {
+            const hasPending = db()
+              .prepare(
+                `SELECT 1 FROM pages WHERE notebook_id = ? AND profile_fold_pending = 1 LIMIT 1`
+              )
+              .get(row.id);
+            if (hasPending) allSettled = false; // keep the cursor open
+          }
           continue;
         }
         if (row.status === "processing") {
@@ -540,14 +605,20 @@ async function incrementalSyncNotebook(
       : new Set<string>();
 
     // ── Phase 2: one atomic DB swap ──
+    // Fold into the profile now only if the notebook has been quiet long
+    // enough that this text is final; otherwise mark the pages pending and a
+    // later sweep folds their (by then settled) text.
+    const settledNow = profileSettled(nb, Date.now());
     const upsert = db().prepare(
       `INSERT INTO pages(id, notebook_id, page_index, ocr_text, entry_date,
-                         remarkable_page_id, remarkable_page_hash)
-       VALUES(?,?,?,?,?,?,?)
+                         remarkable_page_id, remarkable_page_hash,
+                         profile_fold_pending)
+       VALUES(?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          ocr_text = excluded.ocr_text,
          entry_date = excluded.entry_date,
          remarkable_page_hash = excluded.remarkable_page_hash,
+         profile_fold_pending = excluded.profile_fold_pending,
          embedding = NULL`
     );
     const delFts = db().prepare(`DELETE FROM pages_fts WHERE page_id = ?`);
@@ -576,7 +647,8 @@ async function incrementalSyncNotebook(
           r.text,
           extractEntryDate(r.text) || "none",
           r.pageId,
-          hashById.get(r.pageId) || ""
+          hashById.get(r.pageId) || "",
+          settledNow ? 0 : 1
         );
         delFts.run(r.pageRowId);
         delAnalysis.run(r.pageRowId);
@@ -650,18 +722,27 @@ async function incrementalSyncNotebook(
 
     // Fold ONLY the new text into the evolving profile (mirrors
     // processNotebook; skipped when no profile exists yet — the seed sweep
-    // owns first creation).
-    try {
-      const entryText = newTexts.map((t) => t.text).join("\n\n");
-      const current = getCurrentProfile();
-      if (entryText.trim() && current) {
-        saveProfile(
-          await updateSelfModel({ currentProfile: current, newContent: entryText })
-        );
+    // owns first creation). Deferred when the notebook isn't settled: the
+    // upsert marked those pages profile_fold_pending and a later sweep folds
+    // their final text instead (Codex, PR #92 — the fold is append-only, so
+    // half-written OCR must never reach it).
+    if (settledNow) {
+      try {
+        const entryText = newTexts.map((t) => t.text).join("\n\n");
+        const current = getCurrentProfile();
+        if (entryText.trim() && current) {
+          saveProfile(
+            await updateSelfModel({ currentProfile: current, newContent: entryText })
+          );
+        }
+      } catch (e) {
+        console.warn("[remarkableSync] profile fold failed:", (e as Error).message);
       }
-    } catch (e) {
-      console.warn("[remarkableSync] profile fold failed:", (e as Error).message);
     }
+    // Settle any pending folds from EARLIER premature passes whose pages
+    // didn't change again (their rows still carry profile_fold_pending=1).
+    let leftoverFoldsOk = true;
+    if (settledNow) leftoverFoldsOk = await foldPendingProfile(row.id);
 
     // /mind per-entry analysis for the fresh pages (bounded, best-effort).
     try {
@@ -727,7 +808,13 @@ async function incrementalSyncNotebook(
       console.warn("[remarkableSync] diary export failed:", (e as Error).message);
     }
 
-    return { attempted: batch.length, ocred: newTexts.length, partial: !clean };
+    // A failed leftover fold keeps the cursor open (retry next sweep) but
+    // doesn't block the doc-hash advance — the content itself is ingested.
+    return {
+      attempted: batch.length,
+      ocred: newTexts.length,
+      partial: !clean || !leftoverFoldsOk,
+    };
   } catch (e) {
     db()
       .prepare(`UPDATE notebooks SET status='error', error=? WHERE id = ?`)
