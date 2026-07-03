@@ -128,9 +128,17 @@ export function orderedPageIdsFromContent(content: unknown): string[] {
 }
 
 // Translate rmapi-js failures into a short, safe message (never echo tokens
-// or raw bodies). rmapi-js throws ResponseError { status, statusText }.
+// or raw bodies). rmapi-js throws ResponseError { status, statusText };
+// network-level failures surface as undici's bare `TypeError: fetch failed`,
+// whose USEFUL part (ECONNRESET/ENOTFOUND/ETIMEDOUT…) hides in err.cause —
+// dig it out, or the UI shows an undiagnosable "fetch failed".
 function safeRemarkableError(e: unknown, fallback: string): string {
-  const err = e as { status?: number; statusText?: string; message?: string };
+  const err = e as {
+    status?: number;
+    statusText?: string;
+    message?: string;
+    cause?: { code?: string; message?: string };
+  };
   if (typeof err?.status === "number") {
     if (err.status === 401 || err.status === 403) {
       return "reMarkable rejected the credentials — re-pair with a fresh code.";
@@ -142,8 +150,53 @@ function safeRemarkableError(e: unknown, fallback: string): string {
       err.statusText ? ` (${err.statusText})` : ""
     }.`;
   }
-  const msg = (err?.message || "").slice(0, 160);
+  let msg = (err?.message || "").slice(0, 160);
+  const codes = causeCodes(e);
+  if (codes) msg += ` (${codes})`;
   return msg || fallback;
+}
+
+// The underlying errno of a `TypeError: fetch failed` lives on err.cause —
+// either a single error with .code, or an AggregateError whose codes live on
+// .errors[i].code (multi-address connect failures).
+function causeCodes(e: unknown): string {
+  const cause = (e as { cause?: unknown })?.cause as
+    | { code?: string; message?: string; errors?: Array<{ code?: string }> }
+    | undefined;
+  if (!cause) return "";
+  if (Array.isArray(cause.errors)) {
+    const codes = cause.errors.map((x) => x?.code).filter(Boolean);
+    if (codes.length) return codes.join(",");
+  }
+  return cause.code || (cause.message || "").slice(0, 80);
+}
+
+// Is this a socket/DNS/TLS-level hiccup (worth an immediate retry) rather
+// than an HTTP-status or logic error?
+function isTransientNetworkError(e: unknown): boolean {
+  const err = e as { status?: number; message?: string };
+  if (typeof err?.status === "number") return err.status === 429 || err.status >= 500;
+  const msg = err?.message || "";
+  return (
+    /fetch failed|network|socket|ECONNRESET|EPIPE|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED|UND_ERR/i.test(
+      msg + " " + causeCodes(e)
+    )
+  );
+}
+
+// Retry a cloud call a couple of times on transient network failures. The
+// sweep runs unattended — a single dropped keep-alive socket should cost a
+// 1-second retry, not a visible error + a multi-minute backoff.
+async function withNetRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const delays = [1000, 3000];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (attempt >= delays.length || !isTransientNetworkError(e)) throw e;
+      await new Promise((r) => setTimeout(r, delays[attempt]));
+    }
+  }
 }
 
 export type PairResult = { ok: boolean; count?: number; error?: string };
@@ -213,7 +266,7 @@ export async function listRemarkableNotebooks(): Promise<ListResult> {
   try {
     const { remarkable } = await import("rmapi-js");
     const api = await remarkable(token);
-    const entries = (await api.listItems()) as unknown as RmEntry[];
+    const entries = (await withNetRetry(() => api.listItems())) as unknown as RmEntry[];
     const notebooks = filterNotebooks(entries);
     setSetting(LAST_LIST_AT_KEY, new Date().toISOString());
     setSetting(DOC_COUNT_KEY, String(notebooks.length));
@@ -279,7 +332,7 @@ export async function remarkableRootHash(): Promise<string | null> {
   try {
     const { remarkable } = await import("rmapi-js");
     const api = await remarkable(token);
-    const [hash] = await api.raw.getRootHash();
+    const [hash] = await withNetRetry(() => api.raw.getRootHash());
     return typeof hash === "string" && hash ? hash : null;
   } catch {
     return null;
@@ -315,7 +368,7 @@ export async function downloadNotebook(
     const { remarkable } = await import("rmapi-js");
     const { default: JSZip } = await import("jszip");
     const api = await remarkable(token);
-    const zipBytes = (await api.getDocument(id, hash)) as Uint8Array;
+    const zipBytes = (await withNetRetry(() => api.getDocument(id, hash))) as Uint8Array;
     const zip = await JSZip.loadAsync(zipBytes);
 
     // Index every `.rm` file by the basename (its pageId) for O(1) lookup,

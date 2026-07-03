@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-07-03 (reMarkable sync — retry transient network failures; diagnosable errors)
+
+The sync banner showed a bare "Sync: fetch failed" and the pending import
+stalled behind a 30-minute backoff. Root cause (two-agent investigation):
+rmapi-js has NO retry/timeout anywhere and fans out heavily in parallel
+(listItems ≈ 2+3N requests for N items — ~400 for this account; getDocument
+= one GET per file), so a single dropped connection among hundreds — most
+plausibly undici's stale keep-alive socket reuse (known Node 20 behavior),
+with host egress blips as co-factor — rejects the whole call as an
+undiagnosable `TypeError: fetch failed`. reMarkable's hosts are IPv4-only,
+ruling out happy-eyeballs.
+
+- `withNetRetry` wraps listItems / getRootHash / getDocument: up to 2
+  retries (1s/3s) on transient socket/DNS/5xx failures only.
+- `safeRemarkableError` now surfaces the real errno from `err.cause` —
+  including the AggregateError shape (`cause.errors[].code`) — so the next
+  banner says WHY (e.g. `fetch failed (ECONNRESET)`).
+- Sweep failure backoff 30 → 10 minutes (in-call retries absorb the
+  sub-second races; the outer backoff is for real outages), the sync error
+  gets a step prefix ("listing notebooks failed: …"), and "last check" now
+  updates on failed attempts too instead of freezing at the last success.
+
+
 ## 2026-07-03 (reMarkable sync — defer profile folds until the notebook settles; Codex #92)
 
 Codex on PR #92: with the 5-minute quiesce, a premature pass can OCR a

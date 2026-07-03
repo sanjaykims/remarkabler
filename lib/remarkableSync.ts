@@ -49,7 +49,12 @@ import { affectedDayFileNames } from "./diaryExportDb";
 // unchanged root → nothing anywhere → skip listing entirely.
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
-const FAILURE_BACKOFF_MS = 30 * 60 * 1000;
+// After a failed sweep, wait this long before trying again. Kept moderate:
+// transient network blips already get in-call retries (withNetRetry in
+// remarkableCloud), so by the time a failure surfaces here it's either real
+// or rare — and a 30-min stall on a diary the user is waiting to chat about
+// is worse than one extra attempt.
+const FAILURE_BACKOFF_MS = 10 * 60 * 1000;
 // Don't ingest a notebook edited in the last N minutes — the user may still
 // be writing. The next sweep picks it up once it settles. Kept short at the
 // owner's request (write → chat in ~5-10 min): page diffing makes a premature
@@ -298,7 +303,7 @@ export async function maybeSyncRemarkable(): Promise<void> {
 
     const list = await listRemarkableNotebooks();
     if (!list.ok || !list.notebooks) {
-      throw new Error(list.error || "Couldn't list notebooks.");
+      throw new Error(`listing notebooks failed: ${list.error || "unknown"}`);
     }
 
     const byDocId = new Map(subscribed.map((r) => [r.remarkable_doc_id, r]));
@@ -422,6 +427,9 @@ export async function maybeSyncRemarkable(): Promise<void> {
     }
   } catch (e) {
     lastFailureAt = Date.now();
+    // Record the attempt time too — otherwise the UI's "last check" freezes
+    // at the last SUCCESS and reads as if the sync stopped running.
+    setSetting(LAST_SYNC_AT_KEY, new Date().toISOString());
     setSetting(
       SYNC_ERROR_KEY,
       ((e as Error).message || "sync failed").slice(0, 200)
