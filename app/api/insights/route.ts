@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server";
+import { db, getSetting, setSetting, clearSetting } from "@/lib/db";
 import { buildNotesContext, buildChatContext } from "@/lib/notes";
 import { generateInsights, generateInsightTitle } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
@@ -64,7 +64,25 @@ export async function GET() {
   const insights = db()
     .prepare(`SELECT id, title, content, created_at FROM insights ORDER BY id DESC`)
     .all();
-  return NextResponse.json({ insights });
+  return NextResponse.json({
+    insights,
+    weeklyEnabled: getSetting("weekly_insight_enabled") === "1",
+  });
+}
+
+// PATCH { weeklyEnabled } — toggle the weekly automatic insight (an Opus
+// full-corpus call). OFF by default; the manual Generate button always works.
+export async function PATCH(req: NextRequest) {
+  if (!isAuthenticated()) return LOCKED();
+  const body = (await req.json().catch(() => ({}))) as {
+    weeklyEnabled?: boolean;
+  };
+  if (typeof body.weeklyEnabled !== "boolean") {
+    return NextResponse.json({ error: "Missing weeklyEnabled" }, { status: 400 });
+  }
+  if (body.weeklyEnabled) setSetting("weekly_insight_enabled", "1");
+  else clearSetting("weekly_insight_enabled");
+  return NextResponse.json({ ok: true, weeklyEnabled: body.weeklyEnabled });
 }
 
 export async function POST() {
