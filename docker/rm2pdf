@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 # rm2pdf INPUT.rm OUTPUT.pdf
 #
-# Render one reMarkable v6 `.rm` page to a single-page PDF:
-#   .rm --(rmc)--> SVG --(cairosvg, else svglib/reportlab)--> PDF
+# Render one reMarkable v6 `.rm` page to a PDF:
+#   .rm --(rmc)--> SVG --(cairosvg, else svglib/reportlab)--> PDF --(split)-->
 #
 # cairosvg is the higher-fidelity path (needs libcairo2); svglib+reportlab is
 # a pure-Python fallback so a missing system Cairo can't break rendering.
 # Runs entirely from the isolated renderer venv at /opt/renderer.
+#
+# The final split step matters for OCR quality: a reMarkable page the user
+# extended by scrolling down renders as ONE PDF page 2-3+ screens tall. Vision
+# OCR downscales each page to a fixed resolution, so the handwriting on a tall
+# page shrinks below legibility and the lower half is misread or silently
+# skipped (exactly what the first quality-gate comparisons showed: entries cut
+# off "below the fold" while page counts stayed intact). We slice tall pages
+# into standard-screen-height PDF pages, with a small overlap so a line of
+# writing cut at a boundary is fully visible on at least one slice. Normal
+# pages pass through untouched, so OUTPUT.pdf may have >1 page.
 set -euo pipefail
 
 if [ "$#" -ne 2 ]; then
@@ -16,19 +26,17 @@ fi
 in="$1"
 out="$2"
 tmp="$(mktemp --suffix=.svg)"
-trap 'rm -f "$tmp"' EXIT
+tall="$(mktemp --suffix=.pdf)"
+trap 'rm -f "$tmp" "$tall"' EXIT
 
 /opt/renderer/bin/rmc -t svg "$in" -o "$tmp"
 
 # cairosvg is the high-fidelity path. Let its stderr through (don't swallow
 # it) so a failure that forces the lower-fidelity fallback is diagnosable.
-if /opt/renderer/bin/cairosvg "$tmp" -o "$out"; then
-  exit 0
-fi
-echo "rm2pdf: cairosvg failed for '$in'; using svglib/reportlab fallback (may be lower fidelity)" >&2
-
-# Fallback: svglib + reportlab (pure Python).
-/opt/renderer/bin/python - "$tmp" "$out" <<'PY'
+if ! /opt/renderer/bin/cairosvg "$tmp" -o "$tall"; then
+  echo "rm2pdf: cairosvg failed for '$in'; using svglib/reportlab fallback (may be lower fidelity)" >&2
+  # Fallback: svglib + reportlab (pure Python).
+  /opt/renderer/bin/python - "$tmp" "$tall" <<'PY'
 import sys
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPDF
@@ -36,4 +44,58 @@ drawing = svg2rlg(sys.argv[1])
 if drawing is None:
     raise SystemExit("svglib could not parse the SVG")
 renderPDF.drawToFile(drawing, sys.argv[2])
+PY
+fi
+
+# Split pages taller than ~1.35 screen-heights into screen-height slices.
+/opt/renderer/bin/python - "$tall" "$out" <<'PY'
+import math
+import sys
+
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import RectangleObject
+
+src, dst = sys.argv[1], sys.argv[2]
+
+# reMarkable screen aspect: height = width * (1872 / 1404). Compute the slice
+# height from the page's own width so the math holds at any DPI/scale.
+ASPECT = 1872 / 1404
+SPLIT_THRESHOLD = 1.35  # don't split pages only slightly taller than a screen
+OVERLAP_FRAC = 0.04     # slice overlap so boundary-cut writing stays readable
+
+reader = PdfReader(src)
+writer = PdfWriter()
+for idx in range(len(reader.pages)):
+    box = reader.pages[idx].mediabox
+    x0, y0, x1, y1 = map(float, (box.left, box.bottom, box.right, box.top))
+    width, height = x1 - x0, y1 - y0
+    slice_h = width * ASPECT
+    if height <= slice_h * SPLIT_THRESHOLD or width <= 0:
+        writer.append(src, pages=(idx, idx + 1))
+        continue
+    step = slice_h * (1 - OVERLAP_FRAC)
+    n = max(1, math.ceil((height - slice_h) / step) + 1)
+    # Slices run top-down; PDF y-axis runs bottom-up.
+    slices = []
+    for i in range(n):
+        top = y1 - i * step
+        bottom = max(y0, top - slice_h)
+        slices.append([bottom, top])
+    # A final sliver adding <15% of a screen of new ink becomes a nearly-blank
+    # page (and risks duplicated fragments) — fold it into the previous slice.
+    if len(slices) > 1 and (slices[-2][0] - slices[-1][0]) < slice_h * 0.15:
+        slices[-2][0] = slices[-1][0]
+        slices.pop()
+    print(f"rm2pdf: splitting tall page ({height:.0f}pt ~ {height / slice_h:.1f} screens) into {len(slices)} slices", file=sys.stderr)
+    for bottom, top in slices:
+        # Re-read per slice: pypdf pages share underlying objects, so mutating
+        # one page's box would leak into the other slices otherwise.
+        r = PdfReader(src)
+        page = r.pages[idx]
+        rect = RectangleObject((x0, bottom, x1, top))
+        page.mediabox = rect
+        page.cropbox = rect
+        writer.add_page(page)
+with open(dst, "wb") as f:
+    writer.write(f)
 PY
