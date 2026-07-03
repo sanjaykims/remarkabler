@@ -52,10 +52,16 @@ ENV NODE_ENV=production \
     DATA_DIR=/data \
     NEXT_TELEMETRY_DISABLED=1
 
-# libcairo2 is the only system lib cairosvg needs (SVG -> PDF). Everything
-# else in the renderer is pip-installed into an isolated venv.
+# libcairo2 is the system lib cairosvg needs (SVG -> PDF). fontconfig +
+# Noto CJK matter for TYPED text on reMarkable pages (Type Folio / convert-
+# to-text): handwritten strokes are font-independent vector polylines, but a
+# typed Korean passage in the SVG renders as empty tofu boxes without a CJK
+# font — OCR then reads nothing and the passage silently vanishes from the
+# transcription. Everything else in the renderer is pip-installed into an
+# isolated venv.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libcairo2 \
+    && apt-get install -y --no-install-recommends \
+       libcairo2 fontconfig fonts-noto-cjk fonts-noto-core \
     && rm -rf /var/lib/apt/lists/*
 
 # reMarkable .rm -> SVG/PDF renderer, isolated in its own venv so it can't

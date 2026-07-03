@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-03 (reMarkable renderer — CJK fonts + View PDF diagnostic)
+
+Third quality-gate run still lost the same 2026-06-03 section (so it wasn't
+tall pages either, for that notebook). Next suspect, now backed by a local
+repro: TYPED text (Type Folio / convert-to-text) on a reMarkable page renders
+via SVG `<text>` + system fonts — and the slim runner image ships no fonts,
+so a typed Korean passage becomes unreadable tofu boxes in the PDF and
+silently vanishes from the transcription. Handwritten strokes are vector
+polylines and never touch fonts, which is why everything else survived.
+
+- **Dockerfile**: runner now installs `fontconfig` + `fonts-noto-cjk` +
+  `fonts-noto-core` so typed Korean/English renders properly.
+- **`GET /api/notebooks/[id]/pdf`** serves any notebook's stored source PDF
+  inline (auth-gated, id must exist in `notebooks`), plus a "View PDF" link
+  per notebook on `/notebooks` — the ground-truth diagnostic that separates
+  "renderer dropped it" from "OCR misread it".
+
+
 ## 2026-07-03 (reMarkable renderer — split vertically-extended pages for OCR)
 
 Second quality-gate run: the SAME section of 2026-06-03 was still missing
