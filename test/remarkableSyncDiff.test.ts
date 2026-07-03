@@ -67,3 +67,33 @@ describe("orderPagesKeepStale", () => {
     expect(orderPagesKeepStale([], ["a", "b"])).toEqual(["a", "b"]);
   });
 });
+
+// The auto-import gate: "from now on" plus a 24h grace so today's active
+// notebook is included when the folder toggle flips at midday. This exact
+// case shipped broken once — the user's same-day diary sat unimported with
+// no error because its last edit predated the enable timestamp.
+import { shouldAutoImport } from "@/lib/remarkableSync";
+
+describe("shouldAutoImport", () => {
+  const enabledAt = "2026-07-03T04:00:00.000Z"; // toggle at 1pm KST
+
+  it("imports a notebook edited after enabling", () => {
+    expect(shouldAutoImport("2026-07-03T05:00:00.000Z", enabledAt)).toBe(true);
+  });
+
+  it("imports today's notebook edited shortly BEFORE enabling (grace)", () => {
+    // edited 12:35pm KST = 03:35Z, enabled 1pm KST = 04:00Z
+    expect(shouldAutoImport("2026-07-03T03:35:32.000Z", enabledAt)).toBe(true);
+  });
+
+  it("does NOT import archive notebooks older than the grace window", () => {
+    expect(shouldAutoImport("2026-06-01T10:00:00.000Z", enabledAt)).toBe(false);
+    expect(shouldAutoImport("2026-07-02T03:00:00.000Z", enabledAt)).toBe(false); // 25h before
+  });
+
+  it("fails closed on missing or garbage timestamps", () => {
+    expect(shouldAutoImport(undefined, enabledAt)).toBe(false);
+    expect(shouldAutoImport("2026-07-03T05:00:00.000Z", undefined)).toBe(false);
+    expect(shouldAutoImport("not-a-date", enabledAt)).toBe(false);
+  });
+});

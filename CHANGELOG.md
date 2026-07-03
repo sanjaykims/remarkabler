@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-03 (reMarkable sync — enabling a folder includes today's notebook)
+
+The user's same-day diary (edited 12:35) sat unimported with no error: the
+folder's enabledAt got stamped later than the edit (re-stamped by the
+legacy-format fix deploy), and the strict "from now on" gate silently
+skipped it. New pure `shouldAutoImport(lastModified, enabledAt)` adds a 24h
+grace before the enable time — "sync my Diary from now on" includes today's
+active notebook, and one day never reaches the archive. Fails closed on
+missing/garbage timestamps. +4 tests (suite 274).
+
+
 ## 2026-07-03 (reMarkable sync — don't fast-retry rate limits; Codex #94)
 
 `withNetRetry` no longer treats HTTP 429 as a transient socket hiccup:
