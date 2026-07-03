@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-07-03 (reMarkable sync — versioned cursor + Sync now button; Codex #96)
+
+The same-day notebook STILL didn't import after the 24h-grace fix: the last
+clean sweep (under the old gate) had advanced the rootHash cursor, and with
+no new tablet edits the fast-path short-circuited before the new gate ever
+ran — exactly what Codex flagged on #96.
+
+- **The cursor is now versioned**: stored as gate-version + folder
+  subscriptions + cloud root, so it self-invalidates when ANY of the three
+  changes. Deploys that alter gating semantics bump `GATE_VERSION`; the old
+  bare-hash cursor never matches the new format, forcing one full pass.
+- **"Sync now" button** on `/memory` (and the folder-enable kick is now
+  forced too): `maybeSyncRemarkable({ force: true })` bypasses the interval,
+  failure backoff, and fast-path — a user-initiated check actually checks.
+  No more waiting on an invisible background timer to see what happens.
+
+
 ## 2026-07-03 (reMarkable sync — enabling a folder includes today's notebook)
 
 The user's same-day diary (edited 12:35) sat unimported with no error: the
