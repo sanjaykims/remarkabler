@@ -33,7 +33,7 @@ and generate an accumulating record of "insights" about themselves.
   (set to `claude-opus-4-7`), `DATA_DIR=/data`; a persistent volume is mounted
   at `/data` and holds the SQLite database and uploaded PDFs. Optional
   `CHAT_MODEL` overrides the model used for chat only (defaults to
-  `claude-sonnet-4-6`); OCR and insights stay on `CLAUDE_MODEL`. Optional
+  `claude-sonnet-5`); OCR and insights stay on `CLAUDE_MODEL`. Optional
   `CHAT_MEMORY_MODEL` overrides the model used to extract durable items
   from cleared chats (defaults to `CHAT_MODEL`); set this to a cheaper
   tier once extraction quality is known to hold.
