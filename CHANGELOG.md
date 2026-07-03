@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-03 (reMarkable sync — quiesce window 15 → 5 minutes)
+
+Owner-requested: write → close the cover → chat-ready in ~5-10 minutes.
+Safe because page-level diffing makes a premature pass cost cents (a
+still-growing page simply re-OCRs once it settles), and the tablet's own
+upload delay after the cover closes adds a natural buffer.
+
+
 ## 2026-07-03 (reMarkable sync — edits fully propagate; Codex #90 fix)
 
 Editing an already-synced page on the tablet now propagates EVERYWHERE, not
