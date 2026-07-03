@@ -95,6 +95,14 @@ const PROFILE_SETTLE_MS = 30 * 60 * 1000;
 const MAX_PAGES_PER_SWEEP = 30;
 
 const ROOT_HASH_KEY = "remarkable_root_hash";
+// Salt for the stored cursor. The fast-path ("account root unchanged →
+// nothing to do") is only valid while OUR selection rules are unchanged too:
+// a deploy that alters the auto-import gate (or a folderMap change by any
+// path) must force one full pass, or notebooks newly eligible under the new
+// rules stay invisible until an unrelated tablet edit moves the cloud root.
+// That exact trap shipped once: the 24h-grace fix (#96) deployed but the
+// pre-fix cursor kept short-circuiting the sweep. Bump on gating changes.
+const GATE_VERSION = "2";
 const SYNC_FOLDERS_KEY = "remarkable_sync_folders";
 const LAST_SYNC_AT_KEY = "remarkable_last_sync_at";
 const SYNC_ERROR_KEY = "remarkable_sync_error";
@@ -289,16 +297,35 @@ async function foldPendingProfile(notebookId: string): Promise<boolean> {
   }
 }
 
+// The stored cursor = gate version + folder subscriptions + cloud root, so
+// it self-invalidates when ANY of the three changes (Codex, PR #96).
+function cursorValue(
+  root: string,
+  folderMap: Record<string, string>
+): string {
+  const folders = Object.keys(folderMap)
+    .sort()
+    .map((k) => `${k}=${folderMap[k]}`)
+    .join(",");
+  return `${GATE_VERSION}|${folders}|${root}`;
+}
+
 /**
  * The sweep entry point. Fire-and-forget from runMaintenanceSweep; never
  * throws. All state (cursor, errors, notes) lands in settings so /memory can
- * show it.
+ * show it. `force` (the "Sync now" button / folder-enable kick) bypasses the
+ * interval, backoff, and fast-path — a user-initiated check must actually
+ * check.
  */
-export async function maybeSyncRemarkable(): Promise<void> {
+export async function maybeSyncRemarkable(
+  opts: { force?: boolean } = {}
+): Promise<void> {
   const now = Date.now();
   if (inFlight) return;
-  if (now - lastAttemptAt < SYNC_INTERVAL_MS) return;
-  if (now - lastFailureAt < FAILURE_BACKOFF_MS) return;
+  if (!opts.force) {
+    if (now - lastAttemptAt < SYNC_INTERVAL_MS) return;
+    if (now - lastFailureAt < FAILURE_BACKOFF_MS) return;
+  }
   if (!remarkablePaired()) return;
   if (!renderersAvailable()) return; // never in local dev / CI
   const folderMap = syncFolderMap();
@@ -314,9 +341,14 @@ export async function maybeSyncRemarkable(): Promise<void> {
   inFlight = true;
   lastAttemptAt = now;
   try {
-    // Fast-path: account-wide cursor unchanged → nothing changed anywhere.
+    // Fast-path: cursor unchanged → nothing changed anywhere (neither in the
+    // cloud account nor in our own gating rules/subscriptions).
     const root = await remarkableRootHash();
-    if (root && root === getSetting(ROOT_HASH_KEY)) {
+    if (
+      !opts.force &&
+      root &&
+      cursorValue(root, folderMap) === getSetting(ROOT_HASH_KEY)
+    ) {
       setSetting(LAST_SYNC_AT_KEY, new Date().toISOString());
       clearSetting(SYNC_ERROR_KEY);
       return;
@@ -440,7 +472,7 @@ export async function maybeSyncRemarkable(): Promise<void> {
     // Advance the cursor only when every candidate settled — a quiesced or
     // failed notebook must be retried on a later sweep, which requires the
     // fast-path NOT to short-circuit it away.
-    if (root && allSettled) setSetting(ROOT_HASH_KEY, root);
+    if (root && allSettled) setSetting(ROOT_HASH_KEY, cursorValue(root, folderMap));
     setSetting(LAST_SYNC_AT_KEY, new Date().toISOString());
     if (allSettled) clearSetting(SYNC_ERROR_KEY);
     if (notes.length > 0) {

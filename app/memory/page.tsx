@@ -538,6 +538,28 @@ export default function MemoryPage() {
     }
   }
 
+  async function syncRemarkableNow() {
+    if (rmAutosyncBusy) return;
+    setRmAutosyncBusy(true);
+    setRmMsg("Sync started — importing anything new. Refreshing in a moment…");
+    try {
+      await fetch("/api/remarkable/autosync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ syncNow: true }),
+      });
+      // The sync runs in the background; give it a moment, then refresh the
+      // status so its result (imported X / error) shows without a reload.
+      await new Promise((r) => setTimeout(r, 6000));
+      await loadRemarkable();
+      setRmMsg(null);
+    } catch (e) {
+      setRmMsg((e as Error).message);
+    } finally {
+      setRmAutosyncBusy(false);
+    }
+  }
+
   async function toggleRemarkableAutosync(parent: string, enabled: boolean) {
     if (rmAutosyncBusy) return;
     setRmAutosyncBusy(true);
@@ -1269,6 +1291,13 @@ export default function MemoryPage() {
             )}
             {rmMsg && <p className="text-xs opacity-80 break-words">{rmMsg}</p>}
             <div className="flex items-center gap-2">
+              <button
+                onClick={syncRemarkableNow}
+                disabled={rmAutosyncBusy || rmBusy}
+                className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-xs disabled:opacity-50"
+              >
+                {rmAutosyncBusy ? "Syncing…" : "Sync now"}
+              </button>
               <button
                 onClick={refreshRemarkableCloud}
                 disabled={rmBusy}
