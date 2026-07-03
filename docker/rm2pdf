@@ -31,6 +31,54 @@ trap 'rm -f "$tmp" "$tall"' EXIT
 
 /opt/renderer/bin/rmc -t svg "$in" -o "$tmp"
 
+# Darken pale ink colors for OCR legibility. rmc maps several reMarkable pen
+# colors to very light RGB (CYAN 139,208,229; GRAY 144,144,144; PINK, YELLOW,
+# GREEN_2...). Rendered thin and pale, then downscaled by vision OCR, those
+# strokes turn illegible and whole passages written in colored ink silently
+# vanish from the transcription (proven by the 2026-06-03 diary section that
+# survived in the PDF as faint blue/gray but never reached the OCR text).
+# This copy of the page exists ONLY to be OCR'd — legibility beats color
+# fidelity. Two exceptions: semi-transparent strokes (real highlighters drawn
+# OVER text — darkening would blot out what's beneath) and white ink (used to
+# cover mistakes — darkening would resurrect deleted content).
+/opt/renderer/bin/python - "$tmp" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+src = open(path, encoding="utf-8").read()
+
+TARGET_LUM = 0.32   # dark enough to OCR after downscale
+THRESHOLD = 0.45    # leave already-dark ink (black, blue, red) untouched
+
+def luminance(r, g, b):
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+
+def fix_style(m):
+    style = m.group(1)
+    om = re.search(r"opacity\s*:\s*([0-9.]+)", style)
+    if om and float(om.group(1)) < 0.85:
+        return m.group(0)  # highlighter-style stroke: keep pale
+    sm = re.search(r"stroke\s*:\s*rgb\((\d+),\s*(\d+),\s*(\d+)\)", style)
+    if not sm:
+        return m.group(0)
+    r, g, b = (int(x) for x in sm.groups())
+    if r > 250 and g > 250 and b > 250:
+        return m.group(0)  # white ink: covering strokes, never darken
+    lum = luminance(r, g, b)
+    if lum <= THRESHOLD:
+        return m.group(0)
+    scale = TARGET_LUM / lum
+    r, g, b = (max(0, min(255, int(c * scale))) for c in (r, g, b))
+    dark = f"stroke:rgb({r}, {g}, {b})"
+    return m.group(0).replace(sm.group(0), dark)
+
+out = re.sub(r'style="([^"]*)"', fix_style, src)
+if out != src:
+    open(path, "w", encoding="utf-8").write(out)
+    print("rm2pdf: darkened pale ink colors for OCR", file=sys.stderr)
+PY
+
 # cairosvg is the high-fidelity path. Let its stderr through (don't swallow
 # it) so a failure that forces the lower-fidelity fallback is diagnosable.
 if ! /opt/renderer/bin/cairosvg "$tmp" -o "$tall"; then

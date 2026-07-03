@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-03 (reMarkable renderer — darken pale ink colors for OCR)
+
+Breakthrough via the new View PDF diagnostic: the "missing" 2026-06-03
+section IS in the rendered PDF — written in pale CYAN/GRAY ink (rmc maps
+CYAN to (139,208,229), GRAY to (144,144,144)), rendered thin and light,
+then downscaled by vision OCR into illegibility. The transcription silently
+skipped it on all three runs; reMarkable's native export renders colored
+ink bolder, which is why the Dropbox path kept it. (The earlier typed-text
+/fonts theory was wrong for this content — it's handwritten; the fonts stay
+as insurance for genuinely typed text.)
+
+`docker/rm2pdf` now darkens pale opaque stroke colors (luminance > 0.45 →
+scaled to 0.32, hue preserved) in the SVG before PDF conversion — this copy
+of the page exists only to be OCR'd, so legibility beats color fidelity.
+Exceptions: semi-transparent strokes (real highlighters drawn OVER text)
+and white ink (covers mistakes) are never darkened. Verified: pale
+cyan/gray darken; black/blue unchanged; highlighter + white untouched;
+real highlighter sample renders end-to-end unchanged.
+
+
 ## 2026-07-03 (reMarkable renderer — CJK fonts + View PDF diagnostic)
 
 Third quality-gate run still lost the same 2026-06-03 section (so it wasn't
