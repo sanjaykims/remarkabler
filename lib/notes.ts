@@ -994,6 +994,24 @@ export function runMaintenanceSweep(): void {
   } catch {
     // best-effort
   }
+  // reMarkable cloud zero-tap sync (Phase 2). Lazy-required like the Dropbox
+  // watcher; internally guarded (paired? renderer? interval, backoff,
+  // quiesce, rootHash fast-path) so this is a no-op almost always.
+  try {
+    void getMaybeSyncRemarkable()();
+  } catch {
+    // best-effort
+  }
+}
+
+let _maybeSyncRemarkable: (() => Promise<unknown>) | null = null;
+function getMaybeSyncRemarkable(): () => Promise<unknown> {
+  if (_maybeSyncRemarkable) return _maybeSyncRemarkable;
+  const mod = require("./remarkableSync") as {
+    maybeSyncRemarkable: () => Promise<unknown>;
+  };
+  _maybeSyncRemarkable = mod.maybeSyncRemarkable;
+  return _maybeSyncRemarkable;
 }
 
 let _maybeIngestDropbox: (() => Promise<unknown>) | null = null;

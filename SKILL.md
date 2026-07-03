@@ -96,13 +96,14 @@ Companion docs — read in order if any is unfamiliar:
 - **Backup:** `backup` (GET status, POST run-now).
 - **Dropbox:** `dropbox/connect`, `/callback`, `/status`, `/disconnect`,
   `/export` (toggle + run the opt-in diary auto-export back to Dropbox).
-- **reMarkable cloud (beta, Phase 1b — on-demand import):** `remarkable/connect`
+- **reMarkable cloud (Phase 2 — zero-tap sync):** `remarkable/connect`
   (pair via one-time code + list), `/refresh` (re-list), `/disconnect`,
-  `/status`, `/import` (download → render → OCR one notebook). Backed by
-  `lib/remarkableCloud.ts` (rmapi-js) + `lib/rmRender.ts` (`.rm`→PDF via the
-  image's rm2pdf/pypdf) + `lib/remarkableImport.ts` (dedupe on
-  `remarkable_doc_id`). Zero-tap polling (Phase 2) not built yet; the Import
-  button is the quality-gate step vs the Dropbox path.
+  `/status` (+ sync status), `/import` (on-demand one notebook), `/compare`
+  (quality report vs existing entries), `/autosync` (folder toggle). Backed
+  by `lib/remarkableCloud.ts` (rmapi-js) + `lib/rmRender.ts` (`.rm`→PDF via
+  the image's rm2pdf/pypdf) + `lib/remarkableImport.ts` (dedupe on
+  `remarkable_doc_id`) + `lib/remarkableSync.ts` (sweep-driven page-hash
+  incremental polling of imported notebooks + enabled folders).
 - **Discipline:** `discipline` (GET + POST sync), `discipline/settings` (enable toggle).
 - **Location:** `location` (GET + POST manual log), `location/settings`, `owntracks` (`?token=` push endpoint).
 - **Export:** `export` (raw bundle Markdown: profile+diary+chats+insights),
@@ -207,10 +208,10 @@ attribute cost to features and surfaces.
 
 ## Known intentional limits
 
-- reMarkable cloud sync is phased: pair + list (Phase 0) and on-demand
-  per-notebook import (Phase 1b, render `.rm`→PDF→OCR) ship; scheduled zero-tap
-  polling (Phase 2) does not yet. The renderer lives only in the Railway Docker
-  image. Dropbox export-from-device stays the primary, reliable path.
+- reMarkable cloud zero-tap sync (Phase 2) is scoped to imported notebooks +
+  auto-sync-enabled folders — never the whole account. The renderer lives only
+  in the Railway Docker image. It rides the unofficial protocol, so Dropbox
+  export-from-device stays the reliable fallback and is never removed.
 - reMarkable PDFs are image-based ink with no text layer — only vision OCR (Claude) reads them.
 - PWA share target + voice input work on Android Chrome only.
 - ~5 second async-gap window after Clear before new chat memories surface. Acceptable for v1.

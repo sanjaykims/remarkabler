@@ -60,7 +60,7 @@ and an accumulating record of "insights" about them. It's a long-horizon
 | `auth.ts` / `webauthn.ts` | Passcode + passkey (WebAuthn) lock; HMAC session cookie; 24h server-side inactivity timeout. |
 | `backup.ts` | Weekly auto-backup of `/data` to a private GitHub repo, keep-last-12. |
 | `dropbox.ts` | reMarkable Connect → Dropbox auto-ingest. OAuth refresh-token flow, polling, dedupe by `dropbox_file_id`. Fired from `runMaintenanceSweep`. |
-| `remarkableCloud.ts` / `rmRender.ts` / `remarkableImport.ts` | reMarkable-cloud secondary source (rmapi-js, unofficial). Pair + list (Phase 0); `downloadNotebook` + `.rm`→PDF render (rm2pdf/pypdf, image-only) + on-demand import into the OCR pipeline, dedupe by `remarkable_doc_id` (Phase 1b). Scheduled polling is Phase 2 (not built). |
+| `remarkableCloud.ts` / `rmRender.ts` / `remarkableImport.ts` / `remarkableSync.ts` | reMarkable-cloud secondary source (rmapi-js, unofficial). Pair + list (Phase 0); `downloadNotebook` + `.rm`→PDF render (rm2pdf/pypdf, image-only) + on-demand import, dedupe by `remarkable_doc_id` (Phase 1b); sweep-driven zero-tap sync with per-page sha256 diffing over imported notebooks + auto-sync folders (Phase 2). |
 | `owntracks.ts` / `location.ts` / `format.ts` | Location ingestion (OwnTracks endpoint), stay clustering, reverse-geocoding via Nominatim, KST timezone helpers. |
 | `github.ts` | Discipline-repo fetching (GitHub Contents API). |
 | `cleanup.ts` / `upload.ts` | Orphan-attachment sweep; upload validation/duck-typing. |
@@ -180,10 +180,10 @@ full picture; the essentials:
 
 ## 6. Known intentional limits
 
-- reMarkable cloud sync is phased: pair/list (Phase 0) + on-demand per-notebook
-  import (Phase 1b) ship; scheduled zero-tap polling (Phase 2) is not built yet.
-  The `.rm` renderer lives only in the Railway Docker image; Dropbox
-  export-from-device stays the primary path.
+- reMarkable cloud zero-tap sync (Phase 2) is scoped to imported notebooks +
+  auto-sync-enabled folders, never the whole account. The `.rm` renderer lives
+  only in the Railway Docker image; it rides the unofficial protocol, so
+  Dropbox export-from-device stays the reliable fallback.
 - PWA share target + voice input work on Android Chrome only, not iOS Safari.
 - reMarkable PDFs are image-based ink with **no text layer** — text
   extraction tools (MarkItDown, pdf-parse) return nothing for them; only

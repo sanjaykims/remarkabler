@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-07-03 (reMarkable cloud — Phase 2: zero-tap sync)
+
+The quality gate passed (the cloud render now transcribes at parity with the
+Dropbox path — remaining diffs are bidirectional OCR noise, and the cloud
+copy is MORE complete than stale Dropbox exports). This ships the loop the
+whole feature was for: write on the tablet → close the cover → the diary
+appears in Remarkabler (and the per-day Dropbox markdown) automatically.
+
+- **`lib/remarkableSync.ts`** — `maybeSyncRemarkable()` fired from
+  `runMaintenanceSweep` (lazy-required, like the Dropbox watcher). Scope:
+  previously-imported notebooks + folders the user enables via the new
+  Auto-sync toggle (never all notebooks). Cost control is page-level
+  diffing — `pages.remarkable_page_id` + sha256 of the raw `.rm` bytes
+  (`pages.remarkable_page_hash`); only new/changed pages are rendered and
+  OCR'd (a daily session = 1-2 pages), with per-page failure isolation.
+  Ordering re-syncs from cloud page order every sync; tablet-deleted pages
+  are kept (append-only), ordered last. Guards: in-flight flag, 5-min
+  interval, 30-min failure backoff, 30-min quiesce window (don't OCR a
+  mid-writing session), account rootHash fast-path whose cursor advances
+  only when every candidate settled, and a per-sweep OCR budget.
+- Post-ingest parity with `processNotebook`: FTS upsert, entry-date parse +
+  global carry-forward, Voyage embeddings, profile fold (update-only),
+  /mind analyzePending, per-day Dropbox markdown refresh — all best-effort.
+- Legacy Phase-1b imports (whole-PDF page rows) restructure to
+  per-tablet-page rows on their first incremental sync (one-time re-OCR).
+- **`POST /api/remarkable/autosync`** `{ parent, enabled }` + Auto-sync
+  toggle on `/memory` when a folder chip is selected; `/api/remarkable/status`
+  now includes sync status (folders, last run, last note/error).
+- Pure `diffRmPages` / `orderPagesKeepStale` with 7 tests (suite 270).
+- Adversarially reviewed before merge; 6 findings fixed: atomic
+  insert-then-delete swap (a crash mid-OCR can never destroy previously
+  transcribed pages — all network work happens before one DB transaction),
+  doc-hash advances only on a fully-clean pass (failed pages retry instead
+  of silently dropping), budget slicing instead of a permanent
+  over-budget throw (legacy restructures bypass the sweep budget once,
+  capped at 150 pages), stale `/mind` analysis/entities cleared + embedding
+  nulled on re-OCR, a per-doc-id in-flight set so the sweep and a user tap
+  can't double-import, and `status='processing'` set before the download so
+  a concurrent force re-import backs off.
+
+
 ## 2026-07-03 (reMarkable compare — carry dates forward; the "missing" section wasn't missing)
 
 Fourth quality-gate run still reported the 2026-06-03 second half missing —

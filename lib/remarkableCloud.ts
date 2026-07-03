@@ -268,6 +268,24 @@ export function remarkableStatus(): RemarkableStatus {
   };
 }
 
+/**
+ * Account-wide change cursor: reMarkable's root hash moves whenever ANYTHING
+ * in the account changes. The sync sweep uses it as a cheap "anything new?"
+ * fast-path before listing/diffing. Fail-soft.
+ */
+export async function remarkableRootHash(): Promise<string | null> {
+  const token = getSetting(TOKEN_KEY);
+  if (!token) return null;
+  try {
+    const { remarkable } = await import("rmapi-js");
+    const api = await remarkable(token);
+    const [hash] = await api.raw.getRootHash();
+    return typeof hash === "string" && hash ? hash : null;
+  } catch {
+    return null;
+  }
+}
+
 export type DownloadedPage = { pageId: string; rmBytes: Uint8Array };
 export type DownloadResult = {
   ok: boolean;

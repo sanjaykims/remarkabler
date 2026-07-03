@@ -40,6 +40,13 @@ type ExistingRow = {
   status: string | null;
 };
 
+// One import per cloud doc at a time, across ALL callers (user tap + the
+// Phase 2 sweep). The existing-row check alone can't prevent a duplicate:
+// the gap between it and createNotebook spans a fresh list + download +
+// render — many seconds — so two concurrent imports would both pass it and
+// create two notebook rows for the same doc (double-counted everywhere).
+const importsInFlight = new Set<string>();
+
 export async function importRemarkableNotebook(
   id: string,
   hash: string,
@@ -49,6 +56,26 @@ export async function importRemarkableNotebook(
   if (!id || !hash) {
     return { ok: false, error: "Missing notebook id or hash." };
   }
+  if (importsInFlight.has(id)) {
+    return {
+      ok: false,
+      error: "This notebook is already being imported — give it a moment.",
+    };
+  }
+  importsInFlight.add(id);
+  try {
+    return await importRemarkableNotebookInner(id, hash, name, opts);
+  } finally {
+    importsInFlight.delete(id);
+  }
+}
+
+async function importRemarkableNotebookInner(
+  id: string,
+  hash: string,
+  name: string,
+  opts: { force?: boolean } = {}
+): Promise<ImportResult> {
   // Fail fast where the renderer isn't deployed (local dev / CI) — before any
   // network download.
   if (!renderersAvailable()) {

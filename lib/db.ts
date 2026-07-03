@@ -55,6 +55,18 @@ export function db(): Database.Database {
     `CREATE INDEX IF NOT EXISTS idx_notebooks_remarkable_doc_id
        ON notebooks(remarkable_doc_id) WHERE remarkable_doc_id IS NOT NULL`
   );
+  // Per-page reMarkable identity for incremental cloud sync (Phase 2):
+  // remarkable_page_id is the stable page uuid from the tablet;
+  // remarkable_page_hash is a sha256 of the page's raw .rm bytes at last
+  // ingest. Together they let the sweep re-OCR ONLY new/changed pages.
+  // NULL for pages from manual/Dropbox notebooks and legacy cloud imports.
+  for (const col of ["remarkable_page_id TEXT", "remarkable_page_hash TEXT"]) {
+    try {
+      _db.exec(`ALTER TABLE pages ADD COLUMN ${col}`);
+    } catch {
+      // column already exists
+    }
+  }
   try {
     _db.exec(`ALTER TABLE insights ADD COLUMN title TEXT`);
   } catch {

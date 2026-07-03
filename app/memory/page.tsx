@@ -94,6 +94,12 @@ export default function MemoryPage() {
     parent?: string;
     folder?: string;
   };
+  type RemarkableSyncStatus = {
+    folders: string[];
+    lastSyncAt: string | null;
+    lastError: string | null;
+    lastNote: string | null;
+  };
   type RemarkableStatus = {
     paired: boolean;
     pairedAt: string | null;
@@ -101,6 +107,7 @@ export default function MemoryPage() {
     lastError: string | null;
     notebookCount: number | null;
     notebooks?: RemarkableNotebook[];
+    sync?: RemarkableSyncStatus;
   };
   const [remarkable, setRemarkable] = useState<RemarkableStatus | null>(null);
   const [rmCode, setRmCode] = useState("");
@@ -117,6 +124,7 @@ export default function MemoryPage() {
   // Offer a force re-import after an "unchanged" result (e.g. the renderer
   // was upgraded but the notebook's cloud hash didn't change).
   const [rmReimportOffer, setRmReimportOffer] = useState<Record<string, boolean>>({});
+  const [rmAutosyncBusy, setRmAutosyncBusy] = useState(false);
 
   type EmbedStatus = {
     enabled: boolean;
@@ -527,6 +535,24 @@ export default function MemoryPage() {
       setRmImportMsg((m) => ({ ...m, [nb.id]: (e as Error).message }));
     } finally {
       setRmImportingId(null);
+    }
+  }
+
+  async function toggleRemarkableAutosync(parent: string, enabled: boolean) {
+    if (rmAutosyncBusy) return;
+    setRmAutosyncBusy(true);
+    try {
+      const r = await fetch("/api/remarkable/autosync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parent, enabled }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d.ok && d.sync) {
+        setRemarkable((prev) => (prev ? { ...prev, sync: d.sync } : prev));
+      }
+    } finally {
+      setRmAutosyncBusy(false);
     }
   }
 
@@ -1227,6 +1253,20 @@ export default function MemoryPage() {
                 Last error: {remarkable.lastError}
               </p>
             )}
+            {remarkable.sync && (remarkable.sync.folders.length > 0 || remarkable.sync.lastNote) && (
+              <p className="text-xs opacity-60 break-words">
+                Auto-sync is on
+                {remarkable.sync.lastSyncAt && (
+                  <> · last check {formatLocalTime(remarkable.sync.lastSyncAt)}</>
+                )}
+                {remarkable.sync.lastNote && <> · {remarkable.sync.lastNote}</>}
+              </p>
+            )}
+            {remarkable.sync?.lastError && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 break-words">
+                Sync: {remarkable.sync.lastError}
+              </p>
+            )}
             {rmMsg && <p className="text-xs opacity-80 break-words">{rmMsg}</p>}
             <div className="flex items-center gap-2">
               <button
@@ -1300,6 +1340,34 @@ export default function MemoryPage() {
                             })}
                         </div>
                       )}
+                      {rmFolder !== "" &&
+                        (() => {
+                          const selParent = remarkable.notebooks!.find(
+                            (n) => (n.folder || "") === rmFolder
+                          )?.parent;
+                          if (!selParent) return null;
+                          const on = !!remarkable.sync?.folders?.includes(selParent);
+                          return (
+                            <div className="flex items-start gap-2">
+                              <button
+                                onClick={() => toggleRemarkableAutosync(selParent, !on)}
+                                disabled={rmAutosyncBusy}
+                                className={`shrink-0 rounded border px-2.5 py-1.5 text-xs disabled:opacity-50 ${
+                                  on
+                                    ? "border-stone-900 bg-stone-900 text-stone-50 dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900"
+                                    : "border-stone-300 dark:border-stone-700"
+                                }`}
+                              >
+                                {on ? "Auto-sync: ON" : "Auto-sync: OFF"}
+                              </button>
+                              <span className="text-xs opacity-60">
+                                {on
+                                  ? `New writing in “${rmFolder}” is picked up and transcribed automatically — no taps needed.`
+                                  : `Turn on to automatically pick up new writing in “${rmFolder}” (checks every few minutes; only new or changed pages are transcribed).`}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       <ul className="space-y-2">
                         {shown.map((nb) => (
                           <li

@@ -177,7 +177,11 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   never render. `lib/remarkableImport.ts` — `importRemarkableNotebook` ties
   download → render → the normal createNotebook/processNotebook pipeline, with
   `remarkable_doc_id`/`remarkable_doc_hash` dedupe (skip unchanged; replace on
-  change, but only after a good render).
+  change, but only after a good render). `lib/remarkableSync.ts` — Phase 2
+  zero-tap sweep sync (see Known limits for the full invariant list): pure
+  `diffRmPages`/`orderPagesKeepStale` + `maybeSyncRemarkable` +
+  `incrementalSyncNotebook`; per-page sha256 diffing so a daily diary session
+  OCRs 1-2 pages, never the notebook.
 - `lib/location.ts` + `lib/owntracks.ts` — OwnTracks ingestion, stay
   clustering, reverse-geocoding; `lib/github.ts` — discipline repo fetch;
   `lib/cleanup.ts`, `lib/upload.ts`, `lib/extractText.ts`, `lib/format.ts` —
@@ -187,7 +191,7 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `mind/axis-labels`, `mind/reparse-dates`), `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect,export}`,
   `location`, `owntracks`,
-  `remarkable/{connect,refresh,disconnect,status,import,compare}`,
+  `remarkable/{connect,refresh,disconnect,status,import,compare,autosync}`,
   `export` (+ `export/diary` diary-only Markdown,
   `export/book` Opus editor pass), `settings`,
   `chat/memories` (GET list+status / DELETE soft-delete /
@@ -315,11 +319,20 @@ features need the deployed instance to fully verify.
   (shipped): on-demand import of ONE notebook behind a human quality gate —
   `downloadNotebook` → `lib/rmRender.ts` → the normal OCR pipeline, exposed as
   an Import button per notebook on `/memory`.** Whole-notebook render + re-OCR;
-  dedupe via `remarkable_doc_id`/`remarkable_doc_hash`. Phase 2 (not yet) adds
-  incremental page-hash-diffed polling in the maintenance sweep, cross-source
-  dedupe, and a quiesce window. This rides reMarkable's *unofficial* protocol,
-  so it's a secondary source — **the Dropbox one-tap path stays the reliable
-  fallback and is never removed.**
+  dedupe via `remarkable_doc_id`/`remarkable_doc_hash`. **Phase 2 (shipped):
+  `lib/remarkableSync.ts` — zero-tap polling from `runMaintenanceSweep`.**
+  Scope = previously-imported notebooks + folders enabled via the Auto-sync
+  toggle on `/memory` (`remarkable_sync_folders`; never all notebooks).
+  Page-level diffing: each page row stores `remarkable_page_id` + a sha256 of
+  its raw `.rm` bytes; only new/changed pages get rendered + OCR'd. Ordering
+  (`page_index`) re-syncs from cloud page order every sync; tablet-deleted
+  pages are KEPT (append-only diary), ordered last. Guards: in-flight flag,
+  5-min interval, 30-min failure backoff, 30-min quiesce window, rootHash
+  fast-path (cursor advances only when every candidate settled), per-sweep
+  OCR budget. Legacy Phase-1b imports restructure to per-tablet-page rows on
+  their first incremental sync (one-time re-OCR). This rides reMarkable's
+  *unofficial* protocol, so it's a secondary source — **the Dropbox one-tap
+  path stays the reliable fallback and is never removed.**
 - Dropbox one-tap ingest (still the primary path): with reMarkable Connect,
   the user taps **Share → Export to integration → Dropbox**, reMarkable
   renders the PDF server-side, and `lib/dropbox.ts` auto-ingests from there.
