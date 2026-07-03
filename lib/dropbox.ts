@@ -672,7 +672,16 @@ export type DiaryExportResult = {
  * failure it records an actionable message and stops early.
  */
 export async function maybeExportDiaryToDropbox(
-  opts?: { notebookId?: string; onlyNewest?: boolean }
+  opts?: {
+    notebookId?: string;
+    onlyNewest?: boolean;
+    // Extra day files to rewrite alongside the notebook's current days. The
+    // incremental sync passes the notebook's PRE-update day files: if a
+    // re-OCR moved a page from day A to day B, A.md is no longer in the
+    // notebook's affected set but still holds the old text and must be
+    // rewritten from the fresh DB state.
+    extraDayFiles?: string[];
+  }
 ): Promise<DiaryExportResult> {
   if (!dropboxExportEnabled()) return { ok: false, skipped: "disabled" };
   if (!dropboxConnected()) return { ok: false, skipped: "not-connected" };
@@ -688,7 +697,9 @@ export async function maybeExportDiaryToDropbox(
     if (opts?.onlyNewest) {
       names = newestFileName(files);
     } else if (opts?.notebookId) {
-      names = affectedDayFileNames(opts.notebookId).filter((n) => files.has(n));
+      const wanted = new Set(affectedDayFileNames(opts.notebookId));
+      for (const n of opts.extraDayFiles || []) wanted.add(n);
+      names = [...wanted].filter((n) => files.has(n));
     } else {
       names = [...files.keys()];
     }
