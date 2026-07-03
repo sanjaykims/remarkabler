@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-07-03 (reMarkable sync — Codex review fixes on PR #87)
+
+- **Enabling a folder invalidates the root cursor.** The rootHash fast-path
+  compares against the CLOUD's change counter, which knows nothing about
+  local subscription changes — enabling auto-sync on a folder now clears the
+  stored cursor so its notebooks import on the next pass instead of waiting
+  for an unrelated account edit.
+- **Errored notebooks are retried by the sweep.** "Unchanged" now requires a
+  hash match AND a healthy row; an import whose OCR failed (same stamped
+  hash, no transcription) falls through to a fresh incremental pass instead
+  of being stranded forever.
+- **Sweep-discovered notebooks are per-page from birth.** New notebooks in an
+  auto-synced folder now ingest through the incremental engine (per-page rows
+  + sha256 hashes up front, budget-sliced) instead of the whole-PDF import
+  path — whose rows would have forced a full re-OCR restructure on the first
+  later edit, defeating the Phase 2 cost-control guarantee. A shared per-doc
+  import lock prevents a concurrent user Import tap from duplicating the row,
+  and a whole-notebook PDF is refreshed on disk after content changes so
+  "View PDF" works for sweep-created notebooks too.
+
+
 ## 2026-07-03 (reMarkable cloud — Phase 2: zero-tap sync)
 
 The quality gate passed (the cloud render now transcribes at parity with the

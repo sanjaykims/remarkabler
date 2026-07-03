@@ -47,6 +47,17 @@ type ExistingRow = {
 // create two notebook rows for the same doc (double-counted everywhere).
 const importsInFlight = new Set<string>();
 
+// The Phase 2 sweep shares this lock when it creates a notebook row for a
+// newly discovered doc, so a simultaneous user Import tap can't duplicate it.
+export function lockRemarkableImport(docId: string): boolean {
+  if (importsInFlight.has(docId)) return false;
+  importsInFlight.add(docId);
+  return true;
+}
+export function unlockRemarkableImport(docId: string): void {
+  importsInFlight.delete(docId);
+}
+
 export async function importRemarkableNotebook(
   id: string,
   hash: string,

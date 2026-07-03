@@ -1,5 +1,7 @@
-import { createHash } from "crypto";
-import { db, getSetting, setSetting, clearSetting } from "./db";
+import fs from "fs";
+import path from "path";
+import { createHash, randomUUID } from "crypto";
+import { db, DATA_DIR, getSetting, setSetting, clearSetting } from "./db";
 import {
   listRemarkableNotebooks,
   downloadNotebook,
@@ -8,7 +10,10 @@ import {
   type RemarkableNotebook,
 } from "./remarkableCloud";
 import { renderNotebookToPdf, renderersAvailable } from "./rmRender";
-import { importRemarkableNotebook } from "./remarkableImport";
+import {
+  lockRemarkableImport,
+  unlockRemarkableImport,
+} from "./remarkableImport";
 import { ocrNotebookPdf, updateSelfModel } from "./claude";
 import { getCurrentProfile, saveProfile } from "./profile";
 import { embedBatch, embeddingsEnabled, encodeEmbedding } from "./embeddings";
@@ -79,6 +84,11 @@ export function setSyncFolder(parent: string, enabled: boolean): string[] {
   const next = Array.from(current);
   if (next.length === 0) clearSetting(SYNC_FOLDERS_KEY);
   else setSetting(SYNC_FOLDERS_KEY, JSON.stringify(next));
+  // Invalidate the account cursor: the fast-path compares against the CLOUD's
+  // change counter, which knows nothing about LOCAL subscription changes — a
+  // freshly enabled folder must get a full list/diff pass even though nothing
+  // changed on the reMarkable side (Codex, PR #87).
+  clearSetting(ROOT_HASH_KEY);
   return next;
 }
 
@@ -218,19 +228,55 @@ export async function maybeSyncRemarkable(): Promise<void> {
         allSettled = false;
         continue;
       }
-      const row = byDocId.get(nb.id);
+      let row = byDocId.get(nb.id);
       try {
         if (!row) {
-          // New notebook in an auto-synced folder → first full import.
-          const res = await importRemarkableNotebook(nb.id, nb.hash, nb.name);
-          if (!res.ok) throw new Error(res.error || "import failed");
-          if (res.status !== "unchanged") {
-            notes.push(`imported "${nb.name}" (${res.rendered ?? 0} pages)`);
-            ocrBudget -= res.rendered ?? 1;
+          // New notebook in an auto-synced folder. Create its row and ingest
+          // through the SAME per-page incremental engine — NOT the whole-PDF
+          // import path, whose rows lack per-page hashes and would force a
+          // full re-OCR restructure on the first later edit (Codex, PR #87).
+          // The import lock keeps a concurrent user Import tap from creating
+          // a duplicate row for the same doc.
+          if (!lockRemarkableImport(nb.id)) {
+            allSettled = false;
+            continue;
+          }
+          try {
+            const stillMissing = !(db()
+              .prepare(`SELECT id FROM notebooks WHERE remarkable_doc_id = ?`)
+              .get(nb.id) as { id: string } | undefined);
+            if (!stillMissing) continue; // a user import won the race
+            const newId = randomUUID();
+            db()
+              .prepare(
+                `INSERT INTO notebooks(id, name, synced_at, status, remarkable_doc_id)
+                 VALUES(?,?,datetime('now'),'processing',?)`
+              )
+              .run(newId, nb.name || "reMarkable notebook", nb.id);
+            row = {
+              id: newId,
+              remarkable_doc_id: nb.id,
+              remarkable_doc_hash: null,
+              status: "processing",
+            };
+          } finally {
+            unlockRemarkableImport(nb.id);
+          }
+          const r = await incrementalSyncNotebook(row, nb, ocrBudget);
+          ocrBudget -= r.attempted;
+          if (r.partial) allSettled = false;
+          if (r.ocred > 0) {
+            notes.push(`imported "${nb.name}" (${r.ocred} pages)`);
           }
           continue;
         }
-        if (row.remarkable_doc_hash === nb.hash) continue; // unchanged
+        // "Unchanged" requires a hash match AND a healthy row: an errored
+        // notebook carries the same stamped hash but no usable transcription
+        // — skipping it would strand it forever (Codex, PR #87). Let it fall
+        // through to a fresh incremental pass.
+        if (row.remarkable_doc_hash === nb.hash && row.status !== "error") {
+          continue;
+        }
         if (row.status === "processing") {
           allSettled = false;
           continue;
@@ -542,6 +588,19 @@ async function incrementalSyncNotebook(
            WHERE id = ?`
         )
         .run(row.id);
+    }
+
+    // Keep a viewable whole-notebook PDF on disk (the /notebooks "View PDF"
+    // diagnostic + any future re-import read it). Sweep-created notebooks
+    // never went through createNotebook, so the file may not exist; refresh
+    // it after any content change. Local render only — no OCR cost.
+    try {
+      const pdfDir = path.join(DATA_DIR, "files", row.id);
+      const merged = await renderNotebookToPdf(dl.pages);
+      fs.mkdirSync(pdfDir, { recursive: true });
+      fs.writeFileSync(path.join(pdfDir, "notebook.pdf"), merged.pdf);
+    } catch (e) {
+      console.warn("[remarkableSync] notebook.pdf refresh failed:", (e as Error).message);
     }
 
     // Refresh the per-day Dropbox markdown for the days this touched.
