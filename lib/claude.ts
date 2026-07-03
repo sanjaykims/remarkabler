@@ -44,7 +44,11 @@ function modelChat(): string {
   return (
     getSetting("model_chat") ||
     process.env.CHAT_MODEL ||
-    "claude-sonnet-4-6"
+    // Sonnet 5: adaptive thinking runs by default (no `thinking` param sent),
+    // sampling params and prefills are not used anywhere in this module, so
+    // the call shape is compatible as-is. Fallback stays on 4-6 — a DIFFERENT
+    // model is the point of an overload fallback.
+    "claude-sonnet-5"
   );
 }
 function modelChatFallback(): string {
@@ -395,7 +399,7 @@ export async function chatOverNotes(opts: {
     try {
       resp = await client().messages.create({
         model: usedModel,
-        max_tokens: 4096,
+        max_tokens: 8192,
         system,
         tools: CHAT_TOOLS,
         messages: currentMessages,
@@ -415,7 +419,7 @@ export async function chatOverNotes(opts: {
         usedModel = fallback;
         resp = await client().messages.create({
           model: usedModel,
-          max_tokens: 4096,
+          max_tokens: 8192,
           system,
           tools: CHAT_TOOLS,
           messages: currentMessages,

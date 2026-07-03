@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-07-03 (chat model — Claude Sonnet 5)
+
+Owner-requested: chat now defaults to `claude-sonnet-5` (in-app/env overrides
+still win; the overload fallback deliberately stays on `claude-sonnet-4-6` —
+a different model is the point of a fallback). Compatibility checked: the
+chat call sends no sampling params, no prefills, no thinking config, so it
+rides Sonnet 5's defaults (adaptive thinking on). Chat `max_tokens` raised
+4096 → 8192 because thinking counts toward the cap. `claude-sonnet-5`
+pricing added to the usage table at list price ($3/$15; the $2/$10 intro
+through 2026-08-31 means the cost calendar errs slightly high until then —
+note Sonnet 5's tokenizer counts ~30% more tokens for the same text, so
+token counts shift even at equal prices).
+
+
 ## 2026-07-03 (insights — weekly auto-generation is now an opt-in toggle, default OFF)
 
 Owner-requested: the weekly automatic insight (an Opus call over the full
