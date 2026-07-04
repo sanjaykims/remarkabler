@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-04 (model picker — add Sonnet 5)
+
+The Memory page's model dropdown was a hardcoded list predating Sonnet 5, so
+the new chat default couldn't be selected — and the Railway `CHAT_MODEL` env
+var (claude-sonnet-4-6) was overriding the new code default anyway. Sonnet 5
+is now the first option ("smartest Sonnet, best for chat"); one tap sets the
+in-app override, which wins over the env var.
+
+
 ## 2026-07-03 (chat model — Claude Sonnet 5)
 
 Owner-requested: chat now defaults to `claude-sonnet-5` (in-app/env overrides
