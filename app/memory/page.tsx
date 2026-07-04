@@ -975,7 +975,7 @@ export default function MemoryPage() {
                   slot: "chat" as const,
                   label: "Chat",
                   hint:
-                    "Answers your daily questions. Sonnet is the balanced everyday pick.",
+                    "Answers your daily questions. Sonnet 5 is the recommended everyday pick.",
                   info: models.chat,
                 },
                 {
@@ -995,6 +995,7 @@ export default function MemoryPage() {
               ] as const
             ).map(({ slot, label, hint, info }) => {
               const STANDARD = [
+                { value: "claude-sonnet-5", label: "Sonnet 5 — smartest Sonnet, best for chat" },
                 { value: "claude-opus-4-8", label: "Opus 4.8 — strongest, most expensive" },
                 { value: "claude-sonnet-4-6", label: "Sonnet 4.6 — balanced" },
                 { value: "claude-haiku-4-5", label: "Haiku 4.5 — cheapest, fastest" },
