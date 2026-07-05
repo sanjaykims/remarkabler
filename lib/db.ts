@@ -232,6 +232,24 @@ export function db(): Database.Database {
   } catch {
     // column already exists
   }
+  // Life-wiki: a Claude-written profile per entity (kind, name_norm), embedded
+  // atop that entity's stub note in the Obsidian export. `source_hash` is a
+  // digest of the mentioning pages the summary was written from — when it no
+  // longer matches (a new/edited entry mentions the entity), the profile is
+  // regenerated. Keyed by (kind, name_norm), so it survives casing variants
+  // and rides entity merges (the alias norm's row is simply left unread).
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS entity_wiki (
+      kind        TEXT NOT NULL CHECK (kind IN ('person', 'place', 'project')),
+      name_norm   TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      summary     TEXT NOT NULL,
+      source_hash TEXT NOT NULL,
+      model       TEXT,
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (kind, name_norm)
+    )
+  `);
   // Chat memory: each Clear becomes an archive batch, and the compressor
   // extracts a small set of durable items from the batch's transcript.
   // Batches stay around as the audit unit (last error, attempt count,

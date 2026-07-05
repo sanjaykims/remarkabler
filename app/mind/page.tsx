@@ -234,6 +234,40 @@ export default function MindPage() {
     }
   }
 
+  const [buildingWiki, setBuildingWiki] = useState(false);
+  async function buildWiki() {
+    if (
+      !confirm(
+        "Build your 'life wiki' — a Claude-written profile page for each person, place, and project, saved into your Obsidian export? The first build costs roughly $1–3; after that only entities touched by new entries are rewritten. It processes a batch per tap. Continue?"
+      )
+    ) {
+      return;
+    }
+    setBuildingWiki(true);
+    setAnalyzeMsg(null);
+    try {
+      const r = await fetch("/api/mind/build-wiki", { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed");
+      if (d.skipped === "in-flight") {
+        setAnalyzeMsg("A wiki build is already running — try again in a moment.");
+      } else if (!d.generated && !d.remaining) {
+        setAnalyzeMsg("Life wiki is up to date — every entity profile is current.");
+      } else {
+        const more =
+          d.remaining > 0
+            ? ` ${d.remaining} still to go — tap “Build life wiki” again.`
+            : " All entities done.";
+        setAnalyzeMsg(`Wrote ${d.generated} entity profile(s).${more}`);
+      }
+      await load();
+    } catch (e) {
+      setAnalyzeMsg((e as Error).message || "Wiki build failed.");
+    } finally {
+      setBuildingWiki(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header className="space-y-1">
@@ -296,6 +330,14 @@ export default function MindPage() {
             className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
           >
             {merging ? "Merging…" : "Merge duplicate names"}
+          </button>
+          <button
+            disabled={buildingWiki || analyzing}
+            onClick={buildWiki}
+            title="Claude writes a short profile page for each person, place, and project from your entries — a self-updating 'wiki of your life' in your Obsidian export. First build ~$1–3; then only entities touched by new entries are rewritten."
+            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+          >
+            {buildingWiki ? "Building…" : "Build life wiki"}
           </button>
         </div>
         {labelDebug && (labelDebug.labels || labelDebug.raw || labelDebug.error) && (

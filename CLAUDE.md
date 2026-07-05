@@ -94,7 +94,9 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   cache for `/mind`), `entry_entities` (per-page named entities —
   person/place/project — for the `top_entities` chat tool), `entity_aliases`
   (merge records folding a duplicate spelling into a canonical
-  `(kind, name_norm)`; see `lib/entityMerge.ts`), `locations`,
+  `(kind, name_norm)`; see `lib/entityMerge.ts`), `entity_wiki` (Claude-written
+  profile per entity + a `source_hash` of its mentioning pages, embedded atop
+  the Obsidian stub; see `lib/entityWiki.ts`), `locations`,
   `location_points`, `route_stops`, `geocode_cache`, `chat_archive_batches`
   + `chat_memories` (durable chat-memory layer; one batch per Clear,
   soft-deleted items don't resurrect). Some durable state also lives in
@@ -149,6 +151,15 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `entity_aliases` record makes it stick for future ingests. Claude call +
   pure `parseEntityDuplicates` live in `lib/claude.ts:findEntityDuplicates`
   (conservative — only clear same-entity merges).
+- `lib/entityWiki.ts` — the "life wiki": a Claude-written profile per entity
+  (`composeEntityWiki` + pure `cleanEntityWiki` in `lib/claude.ts`), stored in
+  `entity_wiki` and embedded atop that entity's Obsidian stub note
+  (`renderEntityStubFiles` reads `allEntityWikiRows`). `refreshEntityWiki`
+  is content-addressed (regenerates only entities whose `source_hash` changed
+  — the "keep updated on any change" mechanism), bounded + in-flight guarded;
+  `maybeRefreshEntityWiki` runs a few per maintenance sweep once the user has
+  opted in by tapping "Build life wiki" (`entity_wiki_auto`). Driven by
+  `app/api/mind/build-wiki` (batched — reports `remaining`).
 - `lib/mind.ts` — `/mind` analytics, all free per view (cached): `getHeatmap`,
   `getThemes`, `getSentimentSeries`, `getEmbeddingMap`; the one shared PCA
   (`computePca` + `projectOnto`); the per-entry analysis driver
@@ -228,8 +239,8 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   support utilities; `lib/auth.ts` + `lib/webauthn.ts` — passkey/passcode lock.
 - API routes (`app/api/*`): `auth`, `notebooks`, `chat`, `insights`, `usage`,
   `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
-  `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities`),
-  `embeddings`, `backup`,
+  `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities`,
+  `mind/build-wiki`), `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect,export}`,
   `location`, `owntracks`,
   `remarkable/{connect,refresh,disconnect,status,import,compare,autosync}`,

@@ -1007,6 +1007,14 @@ export function runMaintenanceSweep(): void {
   } catch {
     // best-effort
   }
+  // Life-wiki: keep entity profiles fresh as new entries arrive. Lazy-imported
+  // (entityWiki pulls in notes for DISCIPLINE_ID). No-op unless the user has
+  // built the wiki at least once; bounded to a few Claude calls per sweep.
+  try {
+    void import("./entityWiki").then((m) => m.maybeRefreshEntityWiki());
+  } catch {
+    // best-effort
+  }
 }
 
 let _maybeSyncRemarkable: (() => Promise<unknown>) | null = null;
