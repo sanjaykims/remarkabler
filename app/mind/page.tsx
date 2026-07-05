@@ -238,7 +238,7 @@ export default function MindPage() {
   async function buildWiki() {
     if (
       !confirm(
-        "Build your 'life wiki' — a Claude-written profile page for each person, place, and project, saved into your Obsidian export? The first build costs roughly $1–3; after that only entities touched by new entries are rewritten. It processes a batch per tap. Continue?"
+        "Build your 'life wiki' — a deep, Claude-written profile for each person, place, and project, read from your ENTIRE diary history (who they are, the relationship, how it evolved), saved into your Obsidian export. First full build costs roughly $3–8; after that only entities touched by new/edited entries are rewritten. It processes a batch per tap — keep tapping until it says 'up to date'. Continue?"
       )
     ) {
       return;
@@ -334,7 +334,7 @@ export default function MindPage() {
           <button
             disabled={buildingWiki || analyzing}
             onClick={buildWiki}
-            title="Claude writes a short profile page for each person, place, and project from your entries — a self-updating 'wiki of your life' in your Obsidian export. First build ~$1–3; then only entities touched by new entries are rewritten."
+            title="Claude reads your ENTIRE diary history for each person, place, and project and writes a deep profile (who they are, the relationship, how it evolved) — a self-updating 'wiki of your life' in your Obsidian export. First build ~$3–8; then only entities touched by new/edited entries are rewritten."
             className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
           >
             {buildingWiki ? "Building…" : "Build life wiki"}

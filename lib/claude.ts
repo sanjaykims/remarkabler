@@ -720,8 +720,9 @@ export function parseEntityDuplicates(
 }
 
 // ── Entity wiki profile ────────────────────────────────────────────────────
-// Write a short "who/what is this" profile for one entity from the diary
-// excerpts that mention it — the body of its Obsidian wiki page. English (to
+// Write a rich, grounded biographical profile for one entity from the diary
+// excerpts that mention it (the caller passes its WHOLE mention history, in
+// chronological order) — the body of its Obsidian wiki page. English (to
 // match the /mind analysis convention), names kept in their original script.
 
 export type EntityWikiExcerpt = { date: string | null; text: string };
@@ -738,27 +739,55 @@ export async function composeEntityWiki(
     })
     .filter((s) => s.length > 6);
   if (usable.length === 0) return null;
-  // Bound the input: newest-first excerpts, capped so a heavily-mentioned
-  // entity can't blow up cost.
+  // The caller (lib/entityWiki.ts) already bounds the excerpt set; this is a
+  // defensive backstop far above that budget so it never trims what was
+  // hashed (keeping the freshness hash == the actual prompt input).
   let joined = usable.join("\n\n");
-  if (joined.length > 9000) joined = joined.slice(0, 9000);
+  if (joined.length > 120000) joined = joined.slice(0, 120000);
 
-  const kindWord =
-    kind === "person" ? "person" : kind === "place" ? "place" : "project";
+  const article =
+    kind === "person" ? "a person" : kind === "place" ? "a place" : "a project";
+  const kindWord = kind;
+  const whoWhat =
+    kind === "person"
+      ? "who this person is TO THE AUTHOR — their relationship (e.g. wife, son, close friend, colleague, mentor) and identity (nationality, occupation, family role, where they live) — as the entries show or clearly imply"
+      : kind === "place"
+        ? "what this place is and why it matters to the author (home, workplace, a city they visit, a meaningful spot)"
+        : "what this project is, its goal, and the author's role in it";
+
   const resp = await client().messages.create({
     model: modelChat(),
-    max_tokens: 400,
+    max_tokens: 900,
     system: [
-      `You are writing one short wiki-style profile of a ${kindWord} in someone's`,
-      "private diary, from the excerpts that mention them. Write in ENGLISH",
-      "(translate as needed) but keep the name itself in its original script.",
+      `You are writing a rich, grounded profile of ${article} as it appears`,
+      "across someone's private diary. You are given the diary excerpts that",
+      "mention it, in CHRONOLOGICAL order, each prefixed with its [date]. Read",
+      "the WHOLE set and synthesize a reference entry about this one subject in",
+      "the author's life — like a Wikipedia page, but personal.",
       "",
-      "Return ONLY the profile body as Markdown — no title heading (the page",
-      "already has one), no preamble, no code fence. Aim for 2–5 sentences (a",
-      "short paragraph), optionally followed by a few `- ` bullet points for",
-      "distinct facts or recurring themes. Ground every claim in the excerpts;",
-      "never invent details. If the excerpts are too thin to say anything",
-      "meaningful, return a single line describing what little is known.",
+      "Return ONLY the profile body as Markdown — NO title heading (the page",
+      "already has an H1), no preamble, no code fence.",
+      "",
+      "Cover, ONLY as the excerpts support:",
+      `- An opening paragraph: ${whoWhat}.`,
+      "- A `## Key facts` section: bullet points of concrete, grounded facts",
+      "  (relationship, nationality, work, family, places, recurring people).",
+      "- A `## Over time` section: how the subject / the author's relationship",
+      "  with it has evolved across the dated entries, ending on the most",
+      "  recent status.",
+      "",
+      "Rules:",
+      "- Write in ENGLISH (translate as needed); keep names in their original",
+      "  script (야오팡, not a romanization, if that's how it's written).",
+      "- GROUND everything in the excerpts. NEVER state a fact the diary does",
+      "  not support. If a relationship or attribute is strongly implied but",
+      "  not stated outright, you may infer it CAREFULLY and hedge (\"appears",
+      "  to be the author's wife\").",
+      "- Prefer specifics — names, places, events, dates — over vague",
+      "  generalities. Cite when things happened where the dates make it clear.",
+      "- If the excerpts are genuinely too thin, write one honest sentence",
+      "  about what little is known and omit the sections.",
+      "- Keep it under ~450 words.",
       "",
       `The ${kindWord} is: ${name}`,
     ].join("\n"),
@@ -772,18 +801,20 @@ export async function composeEntityWiki(
 }
 
 // Pure tidy-up of the wiki body: strip an accidental code fence or a leading
-// "# Title" line (the page supplies its own H1), collapse excess blank lines,
-// and cap length. Returns null for empty. Exported for unit testing.
+// "# Title" H1 (the page supplies its own H1) — but KEEP `##` sub-headings,
+// which the deep profile uses for "Key facts" / "Over time". Collapse excess
+// blank lines and cap length. Returns null for empty. Exported for testing.
 export function cleanEntityWiki(raw: string): string | null {
   let s = raw
     .replace(/^```(?:markdown)?\s*/i, "")
     .replace(/```\s*$/i, "")
     .trim();
-  // Drop a leading H1/H2 heading if the model added one despite instructions.
-  s = s.replace(/^#{1,2}\s+.*(?:\r?\n)+/, "").trim();
+  // Drop only a leading H1 ("# Title") the model may add despite instructions;
+  // leave `## Key facts` / `## Over time` sub-headings intact.
+  s = s.replace(/^# .*(?:\r?\n)+/, "").trim();
   s = s.replace(/\n{3,}/g, "\n\n").trim();
   if (!s) return null;
-  if (s.length > 2000) s = s.slice(0, 2000).trim();
+  if (s.length > 6000) s = s.slice(0, 6000).trim();
   return s;
 }
 

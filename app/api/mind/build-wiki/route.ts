@@ -17,7 +17,7 @@ export async function POST() {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   try {
-    const result = await refreshEntityWiki({ limit: 40 });
+    const result = await refreshEntityWiki({ limit: 20 });
     if (result.entities.length > 0) {
       try {
         const { maybeExportDiaryToDropbox } = await import("@/lib/dropbox");

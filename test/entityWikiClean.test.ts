@@ -16,13 +16,14 @@ describe("cleanEntityWiki", () => {
     expect(cleanEntityWiki("```markdown\nA profile.\n```")).toBe("A profile.");
   });
 
-  it("drops a leading H1/H2 the model added despite instructions", () => {
+  it("drops a leading H1 title but KEEPS ## sub-headings", () => {
     expect(cleanEntityWiki("# Jin\n\nThe actual profile line.")).toBe(
       "The actual profile line."
     );
-    expect(cleanEntityWiki("## Seoul\n\nA place profile.")).toBe(
-      "A place profile."
-    );
+    // The deep profile uses `## Key facts` / `## Over time` — must survive.
+    expect(
+      cleanEntityWiki("Opening paragraph.\n\n## Key facts\n- a\n- b")
+    ).toBe("Opening paragraph.\n\n## Key facts\n- a\n- b");
   });
 
   it("keeps bullet lists and collapses excess blank lines", () => {
@@ -37,8 +38,8 @@ describe("cleanEntityWiki", () => {
   });
 
   it("caps very long output", () => {
-    const long = "x".repeat(5000);
+    const long = "x".repeat(9000);
     const out = cleanEntityWiki(long) as string;
-    expect(out.length).toBeLessThanOrEqual(2000);
+    expect(out.length).toBeLessThanOrEqual(6000);
   });
 });

@@ -151,15 +151,22 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `entity_aliases` record makes it stick for future ingests. Claude call +
   pure `parseEntityDuplicates` live in `lib/claude.ts:findEntityDuplicates`
   (conservative — only clear same-entity merges).
-- `lib/entityWiki.ts` — the "life wiki": a Claude-written profile per entity
-  (`composeEntityWiki` + pure `cleanEntityWiki` in `lib/claude.ts`), stored in
-  `entity_wiki` and embedded atop that entity's Obsidian stub note
-  (`renderEntityStubFiles` reads `allEntityWikiRows`). `refreshEntityWiki`
-  is content-addressed (regenerates only entities whose `source_hash` changed
-  — the "keep updated on any change" mechanism), bounded + in-flight guarded;
-  `maybeRefreshEntityWiki` runs a few per maintenance sweep once the user has
-  opted in by tapping "Build life wiki" (`entity_wiki_auto`). Driven by
-  `app/api/mind/build-wiki` (batched — reports `remaining`).
+- `lib/entityWiki.ts` — the "life wiki": a deep Claude-written biographical
+  profile per entity (`composeEntityWiki` + pure `cleanEntityWiki` in
+  `lib/claude.ts`), read from the entity's **entire** diary history in
+  chronological order (identity/relationship + `## Key facts` + `## Over
+  time`), stored in `entity_wiki` and embedded atop that entity's Obsidian
+  stub note (`renderEntityStubFiles` reads `allEntityWikiRows`). `mentions`
+  returns the whole chronological history; pure `selectWikiExcerpts` trims
+  each page and, only if over the `MAX_INPUT_CHARS` budget, takes an even
+  chronological sample (keeping first + last) so the arc stays represented and
+  cost stays bounded. `refreshEntityWiki` is content-addressed (the
+  `source_hash` digests EXACTLY the excerpts sent, so any edit that changes
+  the profile's input regenerates it — and, for entities under budget, that's
+  every mentioning page), bounded + in-flight guarded; `maybeRefreshEntityWiki`
+  runs a few per maintenance sweep once the user opted in by tapping "Build
+  life wiki" (`entity_wiki_auto`), exporting only the regenerated stubs.
+  Driven by `app/api/mind/build-wiki` (batched — reports `remaining`).
 - `lib/mind.ts` — `/mind` analytics, all free per view (cached): `getHeatmap`,
   `getThemes`, `getSentimentSeries`, `getEmbeddingMap`; the one shared PCA
   (`computePca` + `projectOnto`); the per-entry analysis driver

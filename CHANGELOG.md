@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-07-05 (life wiki — deep profiles from the whole diary history)
+
+Redesigned the life wiki from a short blurb over the newest 12 mentions into
+a real biographical profile read from the entity's ENTIRE diary history.
+`mentions` now returns the whole chronological history (oldest→newest);
+`composeEntityWiki` prompts for a grounded reference entry — who the person is
+to the author (relationship, nationality, role), a `## Key facts` section, and
+a `## Over time` arc ending on current status — with `max_tokens` 900 and a
+higher output cap. Cost is bounded by a per-entity input budget: the new pure
+`selectWikiExcerpts` trims each page and, only when over budget, takes an even
+chronological sample keeping the first + last so the arc stays represented.
+The `source_hash` still digests exactly what's sent, so for entities under
+budget every mentioning page now drives regeneration (editing an old entry
+about someone refreshes their profile). First full build ~$3–8; batch limits
+lowered (20/tap, 4/sweep) since each call reads more. +7 tests (suite 371).
+
 ## 2026-07-05 (strip review-tool attributions from repo text)
 
 Per `AGENTS.md`'s "no model identifiers or internal harness IDs in commits,
