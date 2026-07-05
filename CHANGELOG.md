@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-05 (wiki + extraction: profile every named thing, not just people)
+
+Broadened both the entity extraction and the wiki so the deep profiles cover
+**everything named** in the diary, not just people/places. The `project`
+kind is now used broadly for any specific named subject — a work project, a
+book/media, a company/organization, a named concept or method, an event, a
+product, or a notable recurring object (Project Hail Mary, NVidia,
+Psycho-Cybernetics…). `analyzeEntryContent`'s entity guidance was widened to
+capture these; `composeEntityWiki`'s third-kind prompt now writes a grounded
+"what this is + its significance to the author" profile instead of assuming a
+work effort. Places got a richer prompt too. (Existing entries pick up the
+new categories after a "Re-analyse in English" pass; then rebuild the wiki.)
+
 ## 2026-07-05 (life wiki — deep profiles from the whole diary history)
 
 Redesigned the life wiki from a short blurb over the newest 12 mentions into
