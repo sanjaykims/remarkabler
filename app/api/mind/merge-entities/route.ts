@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
-import { dedupeAllEntities } from "@/lib/entityMerge";
+import { dedupeAllEntities, listAliases } from "@/lib/entityMerge";
 import { entityStubRelPathForName } from "@/lib/diaryExportDb";
 
 export const runtime = "nodejs";
@@ -18,30 +18,27 @@ export async function POST() {
   }
   try {
     const result = await dedupeAllEntities();
-    // A merge changes the entity graph. Two Dropbox follow-ups (best-effort,
-    // no-op unless export is enabled + connected):
-    //   1. DELETE the merged-away entities' stub notes (People/<old>.md) —
-    //      the full export overwrites but never deletes, so without this the
-    //      stale stub survives as an orphaned Obsidian node (Codex, #108).
-    //   2. Refresh the export so day-file wikilinks + the canonical stubs
-    //      reflect the merge.
-    if (result.merged > 0) {
-      try {
-        const dropbox = (await import("@/lib/dropbox")) as {
-          deleteDiaryExportFiles: (n: string[]) => Promise<unknown>;
-          maybeExportDiaryToDropbox: () => Promise<unknown>;
-        };
-        const stalePaths: string[] = [];
-        for (const g of result.groups) {
-          for (const alias of g.aliases) {
-            stalePaths.push(entityStubRelPathForName(g.kind, alias));
-          }
-        }
-        await dropbox.deleteDiaryExportFiles(stalePaths);
-        void dropbox.maybeExportDiaryToDropbox();
-      } catch {
-        // best-effort — never fail the merge because of the export
-      }
+    // Dropbox follow-ups (best-effort, no-op unless export is enabled +
+    // connected):
+    //   1. DELETE the stub notes (People/<old>.md) of EVERY recorded alias,
+    //      not just the ones merged this run — the full export overwrites but
+    //      never deletes, so a stale stub (incl. one merged on an earlier
+    //      deploy, when result.merged is now 0) survives as an orphaned
+    //      Obsidian node otherwise (Codex, #108/#109).
+    //   2. When something actually merged, refresh the export so day-file
+    //      wikilinks + the canonical stubs reflect it.
+    try {
+      const dropbox = (await import("@/lib/dropbox")) as {
+        deleteDiaryExportFiles: (n: string[]) => Promise<unknown>;
+        maybeExportDiaryToDropbox: () => Promise<unknown>;
+      };
+      const stalePaths = listAliases().map((a) =>
+        entityStubRelPathForName(a.kind, a.alias_name)
+      );
+      if (stalePaths.length > 0) await dropbox.deleteDiaryExportFiles(stalePaths);
+      if (result.merged > 0) void dropbox.maybeExportDiaryToDropbox();
+    } catch {
+      // best-effort — never fail the merge because of the export
     }
     return NextResponse.json(result);
   } catch (e) {

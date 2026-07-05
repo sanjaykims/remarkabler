@@ -44,6 +44,7 @@ export function applyEntityAlias(
 export function mergeEntity(
   kind: Kind,
   aliasNorm: string,
+  aliasName: string,
   canonicalNorm: string,
   canonicalName: string
 ): number {
@@ -52,13 +53,14 @@ export function mergeEntity(
   db().transaction(() => {
     db()
       .prepare(
-        `INSERT INTO entity_aliases(kind, alias_norm, canonical_norm, canonical_name)
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO entity_aliases(kind, alias_norm, alias_name, canonical_norm, canonical_name)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(kind, alias_norm)
-         DO UPDATE SET canonical_norm = excluded.canonical_norm,
+         DO UPDATE SET alias_name     = excluded.alias_name,
+                       canonical_norm = excluded.canonical_norm,
                        canonical_name = excluded.canonical_name`
       )
-      .run(kind, aliasNorm, canonicalNorm, canonicalName);
+      .run(kind, aliasNorm, aliasName || aliasNorm, canonicalNorm, canonicalName);
     // Repoint any prior alias that folded INTO this now-alias spelling, so a
     // chain X→alias→canonical collapses to X→canonical.
     db()
@@ -81,6 +83,33 @@ export function mergeEntity(
       .run(kind, aliasNorm);
   })();
   return rewritten;
+}
+
+// Every recorded alias, so the merge cleanup can delete the stub note of a
+// merged-away entity even if it was merged on an earlier deploy (its
+// entry_entities rows are long gone, so dedupeAllEntities won't resurface
+// it). Falls back to alias_norm when alias_name is NULL (pre-column rows).
+export function listAliases(): Array<{
+  kind: Kind;
+  alias_norm: string;
+  alias_name: string;
+}> {
+  try {
+    const rows = db()
+      .prepare(`SELECT kind, alias_norm, alias_name FROM entity_aliases`)
+      .all() as Array<{
+      kind: Kind;
+      alias_norm: string;
+      alias_name: string | null;
+    }>;
+    return rows.map((r) => ({
+      kind: r.kind,
+      alias_norm: r.alias_norm,
+      alias_name: r.alias_name || r.alias_norm,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export type MergeReportGroup = {
@@ -144,7 +173,13 @@ export async function dedupeAllEntities(
         const aliasNorm = normaliseEntityName(aliasName);
         if (!aliasNorm || aliasNorm === canonicalNorm) continue;
         try {
-          rewritten += mergeEntity(kind, aliasNorm, canonicalNorm, canonicalName);
+          rewritten += mergeEntity(
+            kind,
+            aliasNorm,
+            aliasName,
+            canonicalNorm,
+            canonicalName
+          );
           appliedAliases.push(aliasName);
         } catch (e) {
           console.warn(

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-05 (entity merge: clean up already-merged stubs; Codex #109)
+
+The stub-deletion in #109 only cleaned up aliases merged in the CURRENT run,
+so a stub for an entity merged on an earlier deploy (its `entry_entities`
+rows already gone → `dedupeAllEntities` returns it in no group, `merged: 0`)
+was never deleted and its orphaned Obsidian node survived. Fixed: the merge
+endpoint now deletes stubs for EVERY recorded alias (`listAliases`), not just
+this run's, and runs that cleanup even when nothing new merged. Added an
+`alias_name` column to `entity_aliases` (migration) storing the merged-away
+display spelling so the exact stub path can be reconstructed. +1 test.
+
 ## 2026-07-05 (entity merge follow-ups; Codex #108)
 
 Two fixes on the entity-merge feature. (1) The chat entity lookups

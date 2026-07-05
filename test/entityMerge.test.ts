@@ -72,7 +72,7 @@ describe("mergeEntity", () => {
     entity("p1", "person", "야오팡");
     entity("p2", "person", "Yaofang");
 
-    const n = mergeMod.mergeEntity("person", "야오팡", "yaofang", "Yaofang");
+    const n = mergeMod.mergeEntity("person", "야오팡", "야오팡", "yaofang", "Yaofang");
     expect(n).toBe(1);
     expect(norms("person")).toEqual(["yaofang"]);
     const names = (
@@ -88,7 +88,7 @@ describe("mergeEntity", () => {
     nb("nb1");
     page("p1", "nb1", 0);
     entity("p1", "person", "야오팡");
-    mergeMod.mergeEntity("person", "야오팡", "yaofang", "Yaofang");
+    mergeMod.mergeEntity("person", "야오팡", "야오팡", "yaofang", "Yaofang");
 
     expect(mergeMod.applyEntityAlias("person", "야오팡", "야오팡")).toEqual({
       norm: "yaofang",
@@ -107,7 +107,7 @@ describe("mergeEntity", () => {
     entity("p1", "person", "야오팡"); // same page carries BOTH spellings
     entity("p1", "person", "Yaofang");
 
-    mergeMod.mergeEntity("person", "야오팡", "yaofang", "Yaofang");
+    mergeMod.mergeEntity("person", "야오팡", "야오팡", "yaofang", "Yaofang");
     // One row survives on the page (UNIQUE(page_id, kind, name_norm)).
     const count = (
       dbMod
@@ -126,9 +126,9 @@ describe("mergeEntity", () => {
     page("p1", "nb1", 0);
     entity("p1", "person", "야오팡");
     // First merge: 야오팡 → Yaofang
-    mergeMod.mergeEntity("person", "야오팡", "yaofang", "Yaofang");
+    mergeMod.mergeEntity("person", "야오팡", "야오팡", "yaofang", "Yaofang");
     // Then the canonical itself gets merged onward: Yaofang → Yao Fang
-    mergeMod.mergeEntity("person", "yaofang", "yao fang", "Yao Fang");
+    mergeMod.mergeEntity("person", "yaofang", "Yaofang", "yao fang", "Yao Fang");
 
     // The original alias must now resolve straight to the final canonical.
     expect(mergeMod.applyEntityAlias("person", "야오팡", "야오팡")).toEqual({
@@ -141,7 +141,23 @@ describe("mergeEntity", () => {
     nb("nb1");
     page("p1", "nb1", 0);
     entity("p1", "person", "Kim");
-    expect(mergeMod.mergeEntity("person", "kim", "kim", "Kim")).toBe(0);
+    expect(mergeMod.mergeEntity("person", "kim", "Kim", "kim", "Kim")).toBe(0);
     expect(norms("person")).toEqual(["kim"]);
+  });
+
+  it("records the alias display name so its stub can be found later (Codex #109)", () => {
+    nb("nb1");
+    page("p1", "nb1", 0);
+    entity("p1", "person", "야오팡");
+    mergeMod.mergeEntity("person", "야오팡", "야오팡", "yaofang", "Yaofang");
+
+    // listAliases surfaces the merged-away display name even though its
+    // entry_entities rows are gone — that's how the export cleanup finds the
+    // stale People/야오팡.md to delete on a LATER run (when merged=0).
+    expect(mergeMod.listAliases()).toContainEqual({
+      kind: "person",
+      alias_norm: "야오팡",
+      alias_name: "야오팡",
+    });
   });
 });

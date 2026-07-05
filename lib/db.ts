@@ -215,12 +215,23 @@ export function db(): Database.Database {
     CREATE TABLE IF NOT EXISTS entity_aliases (
       kind           TEXT NOT NULL CHECK (kind IN ('person', 'place', 'project')),
       alias_norm     TEXT NOT NULL,
+      alias_name     TEXT,
       canonical_norm TEXT NOT NULL,
       canonical_name TEXT NOT NULL,
       created_at     TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (kind, alias_norm)
     )
   `);
+  // alias_name (the merged-away spelling's display form) was added after the
+  // table shipped — needed to reconstruct the exact stub filename
+  // (People/<name>.md) so the merge cleanup can delete a stub even for an
+  // alias recorded on an earlier deploy. NULL for those older rows; callers
+  // fall back to alias_norm (identical for CJK names).
+  try {
+    _db.exec(`ALTER TABLE entity_aliases ADD COLUMN alias_name TEXT`);
+  } catch {
+    // column already exists
+  }
   // Chat memory: each Clear becomes an archive batch, and the compressor
   // extracts a small set of durable items from the batch's transcript.
   // Batches stay around as the audit unit (last error, attempt count,
