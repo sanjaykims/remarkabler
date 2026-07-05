@@ -13,8 +13,14 @@ import { composeEntityWiki, type EntityWikiExcerpt } from "./claude";
 const KINDS = ["person", "place", "project"] as const;
 type Kind = (typeof KINDS)[number];
 
-const EXCERPT_PAGES = 12; // newest mentioning pages fed to Claude
-const EXCERPT_CHARS = 700; // per-page cap; 12×700 stays under the prompt cap
+// The profile is written from the entity's ENTIRE mention history (not a
+// recent slice), in chronological order, so it can capture identity, the arc
+// of the relationship, and current status. Cost is bounded by a per-entity
+// input budget: an entity mentioned more than fits gets an even chronological
+// SAMPLE (always incl. first + last) so the whole timeline is still
+// represented.
+const PER_PAGE_CHARS = 1500; // per-mention cap sent to Claude
+const MAX_INPUT_CHARS = 60000; // ~20K tokens of history per profile
 const AUTO_SETTING = "entity_wiki_auto"; // "1" once the user builds the wiki
 
 // One (kind, name_norm) → its canonical display name, discipline excluded.
@@ -30,30 +36,60 @@ function candidates(kind: Kind): Array<{ norm: string; name: string }> {
     .all(kind, DISCIPLINE_ID) as Array<{ norm: string; name: string }>;
 }
 
-// The mentioning pages for one entity, newest first, capped.
+// ALL mentioning pages for one entity, in CHRONOLOGICAL order (oldest first,
+// undated last), discipline excluded — the entity's whole diary history.
 function mentions(
   kind: Kind,
   norm: string
 ): Array<{ page_id: string; date: string | null; text: string }> {
-  // ALL mentioning pages, newest first — not capped. The freshness hash is
-  // computed over this full set so an edit to any mentioning page (even an
-  // old one outside the newest window) flips it; the EXCERPT_PAGES cap is
-  // applied later, only to what's sent to Claude (PR #111).
   return db()
     .prepare(
       `SELECT p.id AS page_id, NULLIF(p.entry_date, 'none') AS date, p.ocr_text AS text
        FROM entry_entities e JOIN pages p ON p.id = e.page_id
        WHERE e.kind = ? AND e.name_norm = ? AND p.notebook_id != ?
          AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
-       ORDER BY COALESCE(NULLIF(p.entry_date, 'none'), '0000-00-00') DESC,
-                p.page_index ASC
-       LIMIT ?`
+       ORDER BY COALESCE(NULLIF(p.entry_date, 'none'), '9999-99-99') ASC,
+                p.page_index ASC`
     )
-    .all(kind, norm, DISCIPLINE_ID, EXCERPT_PAGES) as Array<{
+    .all(kind, norm, DISCIPLINE_ID) as Array<{
     page_id: string;
     date: string | null;
     text: string;
   }>;
+}
+
+// Turn the full chronological mention set into the excerpts sent to Claude:
+// each page trimmed to `perPageChars`, and if the total would exceed
+// `maxChars`, an even chronological sample (keeping the FIRST and LAST) so the
+// whole arc is represented within budget. Pure — exported for unit testing.
+export function selectWikiExcerpts(
+  rows: Array<{ date: string | null; text: string }>,
+  maxChars = MAX_INPUT_CHARS,
+  perPageChars = PER_PAGE_CHARS
+): EntityWikiExcerpt[] {
+  const capped: EntityWikiExcerpt[] = rows.map((r) => ({
+    date: r.date,
+    text: r.text.length > perPageChars ? r.text.slice(0, perPageChars) : r.text,
+  }));
+  const total = capped.reduce((n, e) => n + e.text.length, 0);
+  if (total <= maxChars || capped.length <= 2) return capped;
+
+  // Over budget: how many pages fit at the average trimmed size?
+  const avg = Math.max(1, Math.round(total / capped.length));
+  const keep = Math.max(2, Math.min(capped.length, Math.floor(maxChars / avg)));
+  if (keep >= capped.length) return capped;
+  // Evenly spaced indices across [0 .. len-1], always including both ends.
+  const out: EntityWikiExcerpt[] = [];
+  const step = (capped.length - 1) / (keep - 1);
+  const seen = new Set<number>();
+  for (let i = 0; i < keep; i++) {
+    const idx = Math.round(i * step);
+    if (!seen.has(idx)) {
+      seen.add(idx);
+      out.push(capped[idx]);
+    }
+  }
+  return out;
 }
 
 // Digest of the EXACT excerpts sent to Claude (date + truncated text), so
@@ -146,15 +182,12 @@ export async function refreshEntityWiki(
   try {
     for (const kind of KINDS) {
       for (const c of candidates(kind)) {
-        const rows = mentions(kind, c.norm); // newest EXCERPT_PAGES
+        const rows = mentions(kind, c.norm); // whole history, chronological
         if (rows.length === 0) continue;
-        // Build the excerpts (exactly what Claude reads) FIRST, then hash
-        // them — so the stored hash matches the profile's actual input.
-        const excerpts: EntityWikiExcerpt[] = rows.map((r) => ({
-          date: r.date,
-          text:
-            r.text.length > EXCERPT_CHARS ? r.text.slice(0, EXCERPT_CHARS) : r.text,
-        }));
+        // Select the excerpts (exactly what Claude reads — the full history,
+        // sampled only if over budget) FIRST, then hash them, so the stored
+        // hash matches the profile's actual input.
+        const excerpts = selectWikiExcerpts(rows);
         const hash = excerptHash(excerpts);
         const existing = db()
           .prepare(
@@ -198,7 +231,7 @@ export async function maybeRefreshEntityWiki(): Promise<void> {
   if (getSetting(AUTO_SETTING) !== "1") return;
   if (!process.env.ANTHROPIC_API_KEY) return;
   try {
-    const res = await refreshEntityWiki({ limit: 8 });
+    const res = await refreshEntityWiki({ limit: 4 });
     // The ingest export already ran (with the OLD profile bodies) before this
     // sweep regenerated them, so push the refreshed profiles to Dropbox now —
     // otherwise new summaries stay in SQLite until a manual export (the review
