@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-05 (chat: related_entities graph tool)
+
+The chat could already read the user's people/places/projects (`top_entities`,
+`pages_for_entity`) but not the *connections* between them — the edges the
+Obsidian graph draws. Added a `related_entities` chat tool: given a
+person/place/project, it returns the entities the user writes about on the
+SAME days, ranked by shared-day count ("who appears with 엄마?", "what places
+connect to this project?"). Pure co-occurrence in `lib/entityGraph.ts`
+(`computeRelatedEntities`), DB glue + effective-date carry-forward in
+`lib/chatTools.ts:relatedEntities`; undated pages excluded (they'd link
+everything), discipline notebook follows the usual chat sharing toggle.
++13 tests (suite 340).
+
 ## 2026-07-05 (docs: Obsidian graph setup + session log)
 
 Recorded the full Obsidian-graph integration in the repo: a user-facing
