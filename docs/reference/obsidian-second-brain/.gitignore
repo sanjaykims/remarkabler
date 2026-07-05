@@ -1,0 +1,35 @@
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.python-version
+
+# Local config (never commit)
+.env
+*.local
+.claude/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Build output (regenerate with `bash scripts/build.sh`)
+dist/
+
+# Node / npm scratch (not part of this skill; nothing here uses JS at runtime)
+node_modules/
+.next/
+package.json
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Per-vault retrieval eval cases (contain private note paths; generate locally)
+scripts/eval/retrieval_cases.jsonl

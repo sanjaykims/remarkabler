@@ -163,7 +163,14 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `carryForwardDates` / `effectiveDateKeys`) + `lib/diaryExportDb.ts`
   (DB-backed `renderDiaryMarkdown`, `renderDiaryDayFiles`,
   `affectedDayFileNames`). Excludes the `github-discipline` notebook,
-  same as `/mind`.
+  same as `/mind`. **Obsidian-native**: entity mentions (person/place/
+  project) render as `[[wikilinks]]` (`pageMetaLine`'s per-page line +
+  YAML frontmatter arrays via `collectEntities`/`yamlQuoted`), with
+  `lib/diaryExportDb.ts:fetchCanonicalEntityNames` resolving one canonical
+  casing per `(kind, name_norm)` — the same `MIN(name) GROUP BY name_norm`
+  convention `/mind`'s `getTopEntities` and the `top_entities` chat tool
+  already use — so the same real-world entity always links to the same
+  Obsidian graph node regardless of which page's casing produced it.
 - `lib/remarkableCloud.ts` — reMarkable-cloud secondary source (rmapi-js,
   unofficial protocol). Phase 0: `pairRemarkable`/`listRemarkableNotebooks`/
   `remarkableStatus`/`unpairRemarkable` + pure `filterNotebooks`. Phase 1b:
