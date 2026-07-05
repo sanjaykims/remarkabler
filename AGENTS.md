@@ -1,7 +1,7 @@
 # AGENTS.md — onboarding for any AI working on this repo
 
 This is the tool-agnostic front door for **any** AI coding agent (a fresh
-Claude Code session, Codex, Cursor, or anything else) about to work on this
+Claude Code session, Cursor, or anything else) about to work on this
 project. Read this first, then the linked docs. The goal: get productive in
 one pass without re-deriving what we already know.
 
