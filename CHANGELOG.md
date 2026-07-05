@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-05 (manual entity merge)
+
+Added a "Merge specific names" form on `/mind` for folding an explicit list
+of spellings into one canonical name — the cases the conservative Claude
+auto-merge won't catch (OCR variants of one Korean name, a cross-script
+pair). `mergeEntitiesManually` in `lib/entityMerge.ts` + a `{ manual }` body
+on `POST /api/mind/merge-entities`; it rewrites the rows everywhere and
+records an alias for EVERY variant (even one not currently extracted) so a
+future ingest of that spelling auto-folds. Reuses the same stale-stub
+cleanup + export refresh as the auto merge. +1 test (suite 374).
+
 ## 2026-07-05 (review-watcher: review-then-ask instead of auto-fix)
 
 Changed the review-forwarding workflow's handoff so the spawned session

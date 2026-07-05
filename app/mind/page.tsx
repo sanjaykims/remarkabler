@@ -234,6 +234,60 @@ export default function MindPage() {
     }
   }
 
+  // Manual merge: fold explicit variant spellings into one canonical name
+  // (for OCR variants / cross-script pairs Claude's conservative auto-merge
+  // won't risk).
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualKind, setManualKind] = useState<"person" | "place" | "project">(
+    "person"
+  );
+  const [manualCanonical, setManualCanonical] = useState("");
+  const [manualVariants, setManualVariants] = useState("");
+  const [manualBusy, setManualBusy] = useState(false);
+  async function mergeManual() {
+    const canonical = manualCanonical.trim();
+    const variants = manualVariants
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!canonical || variants.length === 0) {
+      setAnalyzeMsg("Enter a canonical name and at least one variant to merge.");
+      return;
+    }
+    if (
+      !confirm(
+        `Merge ${variants.join(", ")} → "${canonical}" (as ${manualKind})? This rewrites them everywhere and remembers it for future entries.`
+      )
+    ) {
+      return;
+    }
+    setManualBusy(true);
+    setAnalyzeMsg(null);
+    try {
+      const r = await fetch("/api/mind/merge-entities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          manual: { kind: manualKind, canonical, variants },
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed");
+      setAnalyzeMsg(
+        `Merged ${d.merged} name(s) → "${d.canonical}"${
+          d.rewritten ? ` (${d.rewritten} entity rows rewritten)` : ""
+        }.`
+      );
+      setManualCanonical("");
+      setManualVariants("");
+      await load();
+    } catch (e) {
+      setAnalyzeMsg((e as Error).message || "Manual merge failed.");
+    } finally {
+      setManualBusy(false);
+    }
+  }
+
   const [buildingWiki, setBuildingWiki] = useState(false);
   async function buildWiki() {
     if (
@@ -339,7 +393,59 @@ export default function MindPage() {
           >
             {buildingWiki ? "Building…" : "Build life wiki"}
           </button>
+          <button
+            onClick={() => setManualOpen((v) => !v)}
+            title="Manually fold specific spellings (e.g. OCR variants of one name) into a single canonical name, for cases Claude's automatic merge won't catch."
+            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100"
+          >
+            {manualOpen ? "Close manual merge" : "Merge specific names"}
+          </button>
         </div>
+        {manualOpen && (
+          <div className="rounded border border-stone-200 dark:border-stone-800 p-3 space-y-2">
+            <p className="text-xs opacity-70">
+              Fold specific spellings into one canonical name — for OCR variants
+              or cross-script pairs the automatic merge won&rsquo;t risk. It
+              rewrites them everywhere and remembers each for future entries.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={manualKind}
+                onChange={(e) =>
+                  setManualKind(e.target.value as "person" | "place" | "project")
+                }
+                className="rounded border border-stone-300 dark:border-stone-700 bg-transparent px-2 py-1 text-xs"
+              >
+                <option value="person">person</option>
+                <option value="place">place</option>
+                <option value="project">project / subject</option>
+              </select>
+              <input
+                type="text"
+                value={manualCanonical}
+                onChange={(e) => setManualCanonical(e.target.value)}
+                placeholder="Canonical name (e.g. 야오팡)"
+                spellCheck={false}
+                className="min-w-0 flex-1 rounded border border-stone-300 dark:border-stone-700 bg-transparent px-2 py-1 text-xs"
+              />
+            </div>
+            <input
+              type="text"
+              value={manualVariants}
+              onChange={(e) => setManualVariants(e.target.value)}
+              placeholder="Variants to merge in, comma-separated (e.g. 마오핑, 미오팡, 아오팡, 야오펑, Yaofang)"
+              spellCheck={false}
+              className="w-full rounded border border-stone-300 dark:border-stone-700 bg-transparent px-2 py-1 text-xs"
+            />
+            <button
+              onClick={mergeManual}
+              disabled={manualBusy}
+              className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-xs disabled:opacity-50"
+            >
+              {manualBusy ? "Merging…" : "Merge these"}
+            </button>
+          </div>
+        )}
         {labelDebug && (labelDebug.labels || labelDebug.raw || labelDebug.error) && (
           <details className="rounded border border-stone-200 dark:border-stone-800 p-2 text-[11px] space-y-1">
             <summary className="cursor-pointer opacity-70">
