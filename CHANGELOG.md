@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-07-05 (docs: Obsidian graph setup + session log)
+
+Recorded the full Obsidian-graph integration in the repo: a user-facing
+phone walkthrough (`docs/obsidian-graph-setup.md` — install → Remotely Save
+→ export folder → entity stubs → graph → color groups) and a session log
+(`docs/sessions/2026-07-05.md`) capturing the load-bearing gotchas (Remotely
+Save's hidden `/Apps/remotely-save/<vault>` app folder, the stub-filename ↔
+wikilink alignment rule, and the `Dropbox-API-Arg` non-ASCII/ByteString fix).
+
+## 2026-07-05 (Dropbox upload of non-ASCII paths)
+
+`maybeExportDiaryToDropbox` failed on any file whose Dropbox path contained
+non-ASCII characters — the `Dropbox-API-Arg` HTTP header must be ASCII-only,
+so a Korean entity-stub name like `People/김철수.md` (U+AE40) made `fetch`
+throw "Cannot convert argument to a ByteString". 124 of 215 files failed on
+the live app. Added `dropboxApiArg()` which `\uXXXX`-escapes every non-ASCII
+char (the form Dropbox documents) and routed both the upload and download
+content endpoints through it. +4 tests.
+
+## 2026-07-05 (align entity stub filenames with wikilink text; Codex #104)
+
+`sanitizeEntityName` now also collapses path-unsafe chars (`/ \ : * ? " < >`)
+to spaces, so the day-file `[[wikilink]]` text and the entity stub's filename
+basename derive identical normalization and always resolve in Obsidian.
+
 ## 2026-07-05 (Obsidian entity stub notes)
 
 The diary export's `[[wikilinks]]` for people/places/projects pointed at
