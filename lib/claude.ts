@@ -719,6 +719,74 @@ export function parseEntityDuplicates(
   return out;
 }
 
+// ── Entity wiki profile ────────────────────────────────────────────────────
+// Write a short "who/what is this" profile for one entity from the diary
+// excerpts that mention it — the body of its Obsidian wiki page. English (to
+// match the /mind analysis convention), names kept in their original script.
+
+export type EntityWikiExcerpt = { date: string | null; text: string };
+
+export async function composeEntityWiki(
+  kind: "person" | "place" | "project",
+  name: string,
+  excerpts: EntityWikiExcerpt[]
+): Promise<string | null> {
+  const usable = excerpts
+    .map((e) => {
+      const when = e.date && e.date !== "none" ? e.date : "undated";
+      return `[${when}] ${e.text.trim()}`;
+    })
+    .filter((s) => s.length > 6);
+  if (usable.length === 0) return null;
+  // Bound the input: newest-first excerpts, capped so a heavily-mentioned
+  // entity can't blow up cost.
+  let joined = usable.join("\n\n");
+  if (joined.length > 9000) joined = joined.slice(0, 9000);
+
+  const kindWord =
+    kind === "person" ? "person" : kind === "place" ? "place" : "project";
+  const resp = await client().messages.create({
+    model: modelChat(),
+    max_tokens: 400,
+    system: [
+      `You are writing one short wiki-style profile of a ${kindWord} in someone's`,
+      "private diary, from the excerpts that mention them. Write in ENGLISH",
+      "(translate as needed) but keep the name itself in its original script.",
+      "",
+      "Return ONLY the profile body as Markdown — no title heading (the page",
+      "already has one), no preamble, no code fence. Aim for 2–5 sentences (a",
+      "short paragraph), optionally followed by a few `- ` bullet points for",
+      "distinct facts or recurring themes. Ground every claim in the excerpts;",
+      "never invent details. If the excerpts are too thin to say anything",
+      "meaningful, return a single line describing what little is known.",
+      "",
+      `The ${kindWord} is: ${name}`,
+    ].join("\n"),
+    messages: [{ role: "user", content: joined }],
+  });
+  recordUsage("entity_wiki", modelChat(), resp.usage);
+
+  const block = resp.content.find((b) => b.type === "text");
+  const raw = block && block.type === "text" ? block.text.trim() : "";
+  return cleanEntityWiki(raw);
+}
+
+// Pure tidy-up of the wiki body: strip an accidental code fence or a leading
+// "# Title" line (the page supplies its own H1), collapse excess blank lines,
+// and cap length. Returns null for empty. Exported for unit testing.
+export function cleanEntityWiki(raw: string): string | null {
+  let s = raw
+    .replace(/^```(?:markdown)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+  // Drop a leading H1/H2 heading if the model added one despite instructions.
+  s = s.replace(/^#{1,2}\s+.*(?:\r?\n)+/, "").trim();
+  s = s.replace(/\n{3,}/g, "\n\n").trim();
+  if (!s) return null;
+  if (s.length > 2000) s = s.slice(0, 2000).trim();
+  return s;
+}
+
 /**
  * Label the three PCA axes of the diary embedding map. The caller supplies a
  * handful of entries from the positive and negative extreme of each axis;

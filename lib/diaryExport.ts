@@ -412,6 +412,7 @@ export type EntityStub = {
   name: string; // canonical, already sanitized (see lib/diaryExportDb.ts)
   dates: string[]; // day keys this entity appears on
   undated: boolean; // also appears on at least one undated page
+  summary?: string | null; // Claude-written wiki profile (lib/entityWiki.ts)
 };
 
 const ENTITY_STUB_FOLDER: Record<EntityStub["kind"], string> = {
@@ -454,6 +455,14 @@ function renderEntityStub(stub: EntityStub, exportedAt: string): string {
   lines.push(
     `_${stub.kind} · appears on ${dayCount} day${dayCount === 1 ? "" : "s"} in your diary._`
   );
+  lines.push("");
+  // Claude-written profile (the "wiki" body), when one has been generated.
+  const summary = (stub.summary || "").trim();
+  if (summary) {
+    lines.push(summary);
+    lines.push("");
+  }
+  lines.push("## Mentions");
   lines.push("");
   for (const d of stub.dates) lines.push(`- [[${d}]]`);
   if (stub.undated) lines.push(`- [[undated]]`);

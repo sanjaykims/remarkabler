@@ -31,6 +31,7 @@ beforeEach(() => {
   const d = dbMod.db();
   d.prepare(`DELETE FROM entry_entities`).run();
   d.prepare(`DELETE FROM entry_analysis`).run();
+  d.prepare(`DELETE FROM entity_wiki`).run();
   d.prepare(`DELETE FROM pages`).run();
   d.prepare(`DELETE FROM notebooks`).run();
 });
@@ -283,6 +284,25 @@ describe("renderEntityStubFiles", () => {
     const files = exportMod.renderEntityStubFiles();
     const ghost = files.get("People/Ghost.md") as string;
     expect(ghost).toContain("- [[undated]]");
+  });
+
+  it("embeds a stored life-wiki profile into the entity's stub", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "entry", "2026-06-19");
+    addEntity(p0, "person", "Kim", "kim");
+    // A profile was generated for this entity (keyed by kind + name_norm).
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entity_wiki(kind, name_norm, name, summary, source_hash)
+         VALUES('person','kim','Kim','Kim is the author''s mentor.','h1')`
+      )
+      .run();
+
+    const files = exportMod.renderEntityStubFiles();
+    const kim = files.get("People/Kim.md") as string;
+    expect(kim).toContain("Kim is the author's mentor.");
+    expect(kim.indexOf("mentor")).toBeLessThan(kim.indexOf("## Mentions"));
   });
 
   it("computes the stub path for a merged-away name so it can be deleted (Codex #108)", () => {

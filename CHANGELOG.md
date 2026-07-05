@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-05 (life wiki — Claude-written entity profiles)
+
+Each Obsidian entity note was a bare list of dates. Added a self-updating
+"life wiki": Claude writes a short profile for every person/place/project
+from the entries that mention them, embedded above the `## Mentions`
+backlinks. New "Build life wiki" button on `/mind` (→ `POST
+/api/mind/build-wiki`, batched, reports how many remain) does the initial
+build; after that it's automatic — `lib/entityWiki.ts:refreshEntityWiki` is
+content-addressed (each profile records a `source_hash` of its mentioning
+pages, so a new/edited entry that mentions the entity regenerates only that
+profile), and `maybeRefreshEntityWiki` refreshes a few per maintenance sweep
+once opted in. New `entity_wiki` table; `composeEntityWiki` + pure
+`cleanEntityWiki` in `lib/claude.ts`; export embeds profiles via
+`allEntityWikiRows`. +12 tests (suite 365).
+
 ## 2026-07-05 (entity merge: clean up already-merged stubs; Codex #109)
 
 The stub-deletion in #109 only cleaned up aliases merged in the CURRENT run,

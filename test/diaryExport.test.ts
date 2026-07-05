@@ -470,4 +470,26 @@ describe("buildEntityStubFiles", () => {
   it("returns an empty map for no stubs", () => {
     expect(buildEntityStubFiles({ stubs: [], exportedAt: "x" }).size).toBe(0);
   });
+
+  it("embeds a wiki profile above the Mentions list when present", () => {
+    const files = buildEntityStubFiles({
+      stubs: [stub({ summary: "Jin is the author's close friend from Wuhan." })],
+      exportedAt: "x",
+    });
+    const jin = files.get("People/Jin.md") as string;
+    expect(jin).toContain("Jin is the author's close friend from Wuhan.");
+    expect(jin).toContain("## Mentions");
+    // The profile appears before the day backlinks.
+    expect(jin.indexOf("close friend")).toBeLessThan(jin.indexOf("## Mentions"));
+  });
+
+  it("omits the profile paragraph but keeps Mentions when there's no summary", () => {
+    const files = buildEntityStubFiles({
+      stubs: [stub({ summary: null })],
+      exportedAt: "x",
+    });
+    const jin = files.get("People/Jin.md") as string;
+    expect(jin).toContain("## Mentions");
+    expect(jin).toContain("- [[2026-06-19]]");
+  });
 });
