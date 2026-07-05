@@ -66,4 +66,31 @@ describe("selectWikiExcerpts", () => {
     const out = wiki.selectWikiExcerpts(rows(2, 100000), 10, 100000);
     expect(out).toHaveLength(2);
   });
+
+  it("enforces the ACTUAL budget even with uneven mention lengths (PR #116)", () => {
+    // Many tiny one-liners plus a few long pages, arranged so an even sample
+    // could land on the long ones and overflow an average-based keep count.
+    const mixed = Array.from({ length: 60 }, (_, i) => ({
+      date: `2026-02-${String((i % 28) + 1).padStart(2, "0")}`,
+      text: i % 5 === 0 ? "L".repeat(1500) : "short",
+    }));
+    const budget = 5000;
+    const out = wiki.selectWikiExcerpts(mixed, budget, 1500);
+    const total = out.reduce((n, e) => n + e.text.length, 0);
+    expect(total).toBeLessThanOrEqual(budget); // hard guarantee
+  });
+
+  it("hard-trims when even the two endpoints overflow the budget", () => {
+    const out = wiki.selectWikiExcerpts(
+      [
+        { date: "2026-01-01", text: "A".repeat(5000) },
+        { date: "2026-12-31", text: "B".repeat(5000) },
+      ],
+      2000,
+      5000
+    );
+    const total = out.reduce((n, e) => n + e.text.length, 0);
+    expect(total).toBeLessThanOrEqual(2000);
+    expect(out).toHaveLength(2); // both endpoints kept, just trimmed
+  });
 });

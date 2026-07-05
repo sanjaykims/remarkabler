@@ -58,10 +58,35 @@ function mentions(
   }>;
 }
 
+function excerptsLen(arr: EntityWikiExcerpt[]): number {
+  return arr.reduce((n, e) => n + e.text.length, 0);
+}
+
+// Evenly spaced indices across [0 .. len-1], always including both ends.
+function evenSample<T>(arr: T[], keep: number): T[] {
+  if (keep >= arr.length) return arr.slice();
+  const step = (arr.length - 1) / (keep - 1);
+  const out: T[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < keep; i++) {
+    const idx = Math.round(i * step);
+    if (!seen.has(idx)) {
+      seen.add(idx);
+      out.push(arr[idx]);
+    }
+  }
+  return out;
+}
+
 // Turn the full chronological mention set into the excerpts sent to Claude:
 // each page trimmed to `perPageChars`, and if the total would exceed
 // `maxChars`, an even chronological sample (keeping the FIRST and LAST) so the
-// whole arc is represented within budget. Pure — exported for unit testing.
+// whole arc is represented. The returned set's ACTUAL total is guaranteed
+// ≤ maxChars — the keep count is derived from the average but then verified
+// against the real selected sizes and reduced until it fits, and as a final
+// guard the kept texts are hard-trimmed if even first+last overflow (uneven
+// mention lengths could otherwise blow the budget; PR #116). Pure — exported
+// for unit testing.
 export function selectWikiExcerpts(
   rows: Array<{ date: string | null; text: string }>,
   maxChars = MAX_INPUT_CHARS,
@@ -71,25 +96,29 @@ export function selectWikiExcerpts(
     date: r.date,
     text: r.text.length > perPageChars ? r.text.slice(0, perPageChars) : r.text,
   }));
-  const total = capped.reduce((n, e) => n + e.text.length, 0);
-  if (total <= maxChars || capped.length <= 2) return capped;
+  if (excerptsLen(capped) <= maxChars) return capped;
 
-  // Over budget: how many pages fit at the average trimmed size?
-  const avg = Math.max(1, Math.round(total / capped.length));
-  const keep = Math.max(2, Math.min(capped.length, Math.floor(maxChars / avg)));
-  if (keep >= capped.length) return capped;
-  // Evenly spaced indices across [0 .. len-1], always including both ends.
-  const out: EntityWikiExcerpt[] = [];
-  const step = (capped.length - 1) / (keep - 1);
-  const seen = new Set<number>();
-  for (let i = 0; i < keep; i++) {
-    const idx = Math.round(i * step);
-    if (!seen.has(idx)) {
-      seen.add(idx);
-      out.push(capped[idx]);
-    }
+  // Over budget: find the largest even sample whose ACTUAL total fits. Start
+  // from an average-based estimate, then shrink until the real sum is within
+  // budget (never below the two endpoints).
+  const avg = Math.max(1, Math.round(excerptsLen(capped) / capped.length));
+  let keep = Math.max(2, Math.min(capped.length, Math.floor(maxChars / avg)));
+  let sample = evenSample(capped, keep);
+  while (keep > 2 && excerptsLen(sample) > maxChars) {
+    keep--;
+    sample = evenSample(capped, keep);
   }
-  return out;
+  // Final guard: if even the endpoints overflow, hard-trim each kept text to
+  // an equal share of the budget so the sent input is always ≤ maxChars
+  // (keeps hash == prompt input, and the cost cap, honest).
+  if (excerptsLen(sample) > maxChars) {
+    const per = Math.max(1, Math.floor(maxChars / sample.length));
+    sample = sample.map((e) => ({
+      date: e.date,
+      text: e.text.length > per ? e.text.slice(0, per) : e.text,
+    }));
+  }
+  return sample;
 }
 
 // Digest of the EXACT excerpts sent to Claude (date + truncated text), so

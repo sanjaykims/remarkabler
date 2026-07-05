@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-05 (life wiki: enforce the real excerpt budget)
+
+`selectWikiExcerpts` chose how many pages to keep from the *average* mention
+length but never checked the *actual* total of the pages it selected — so
+with uneven lengths (many one-liners + some long pages) the sample could land
+on the long ones and exceed `MAX_INPUT_CHARS`, breaking both the cost cap and
+the hash==prompt guarantee. Now it verifies the real selected size and shrinks
+the sample until it fits, with a final hard-trim if even the two endpoints
+overflow — the returned set is guaranteed ≤ budget. +2 tests (suite 373).
+
 ## 2026-07-05 (wiki + extraction: profile every named thing, not just people)
 
 Broadened both the entity extraction and the wiki so the deep profiles cover
