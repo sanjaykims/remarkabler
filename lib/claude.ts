@@ -531,12 +531,18 @@ export async function analyzeEntryContent(text: string): Promise<{
       '  ]',
       "}",
       "",
-      "Entity guidance: a person is a specific named individual the writer",
-      "refers to (\"Pastor Kim\", \"Mom\", \"Sanjay\"). A place is a specific",
-      "named location (\"Seoul Iris Garden\", \"Costco\", \"Shenzhen\"). A",
-      "project is a specific named effort or work item (\"Sermorizer\",",
-      "\"the 2026 book project\"). If uncertain whether something is a real",
-      "named entity, skip it.",
+      "Entity guidance:",
+      "- person: a specific named individual (\"Pastor Kim\", \"Mom\", \"Sanjay\").",
+      "- place: a specific named location (\"Seoul Iris Garden\", \"Costco\", \"Shenzhen\").",
+      "- project: use this BROADLY for any specific NAMED subject/thing the",
+      "  writer engages with — a work project, a book/movie/media, a company or",
+      "  organization, a named concept/method/course, an event, a product, or a",
+      "  notable recurring object (e.g. \"Project Hail Mary\", \"NVidia\",",
+      "  \"Psycho-Cybernetics\", \"the 2026 book project\", \"WWDC\").",
+      "Capture every specific named thing across these three kinds — but keep it",
+      "NAMED and specific: never generic words (\"work\", \"reading\", \"the",
+      "meeting\", \"coffee\"). If uncertain whether something is a real named",
+      "entity, skip it.",
       "",
       "If the entry is too short or empty to analyse, return:",
       '{"themes": [], "sentiment": null, "summary": "", "entities": []}',
@@ -746,14 +752,14 @@ export async function composeEntityWiki(
   if (joined.length > 120000) joined = joined.slice(0, 120000);
 
   const article =
-    kind === "person" ? "a person" : kind === "place" ? "a place" : "a project";
-  const kindWord = kind;
+    kind === "person" ? "a person" : kind === "place" ? "a place" : "a subject";
+  const kindWord = kind === "project" ? "subject" : kind;
   const whoWhat =
     kind === "person"
       ? "who this person is TO THE AUTHOR — their relationship (e.g. wife, son, close friend, colleague, mentor) and identity (nationality, occupation, family role, where they live) — as the entries show or clearly imply"
       : kind === "place"
-        ? "what this place is and why it matters to the author (home, workplace, a city they visit, a meaningful spot)"
-        : "what this project is, its goal, and the author's role in it";
+        ? "what this place is and why it matters to the author (home, workplace, a city they visit, a meaningful spot), and what tends to happen there"
+        : "WHAT this is — it may be a project, a book or piece of media, a company or organization, a named concept or method, an event, a product, or another notable recurring thing in the author's life — plus what it's about / its purpose, its significance to the author, and how they engage with it";
 
   const resp = await client().messages.create({
     model: modelChat(),
