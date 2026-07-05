@@ -7,6 +7,12 @@ import {
   disciplineExcludeIdForChat,
 } from "./notes";
 import { normaliseEntityName } from "./mind";
+import { isDatedEntry } from "./diaryExport";
+import {
+  computeRelatedEntities,
+  type DayMembership,
+  type EntityKind,
+} from "./entityGraph";
 import { isLocationEnabled } from "./location";
 import {
   owntracksRouteContext,
@@ -146,6 +152,31 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
         limit: {
           type: "integer",
           description: "Max excerpts to return (1-20, default 8).",
+        },
+      },
+      required: ["kind", "name"],
+    },
+  },
+  {
+    name: "related_entities",
+    description:
+      "Find the entities CONNECTED to a given person, place, or project — the ones the user writes about on the SAME days. This is the relationship/graph view (the edges behind the Obsidian graph), not a flat ranking. Use for \"who appears alongside 엄마?\", \"what places are connected to this project?\", \"who is in my circle around Taeyoon?\", \"who shows up most with X?\". Returns related entities with shared_days (how many days they co-occur) and a few example days, ranked by shared_days. Undated pages are excluded (they'd link everything). Follow up with pages_for_entity for real excerpts.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          enum: ["person", "place", "project"],
+          description: "The kind of the entity you're starting from.",
+        },
+        name: {
+          type: "string",
+          description:
+            "The entity name (case-insensitive, matches by name_norm), e.g. \"엄마\", \"Wuhan\", \"Remarkabler\".",
+        },
+        limit: {
+          type: "integer",
+          description: "Max related entities to return (1-30, default 10).",
         },
       },
       required: ["kind", "name"],
@@ -845,6 +876,117 @@ function pagesForEntity(input: {
   }
 }
 
+function relatedEntities(input: {
+  kind?: string;
+  name?: string;
+  limit?: number;
+}): unknown {
+  const kind = String(input.kind || "").trim().toLowerCase();
+  if (kind !== "person" && kind !== "place" && kind !== "project") {
+    return { related: [], note: "Bad kind. Use 'person', 'place', or 'project'." };
+  }
+  const rawName = String(input.name || "").trim();
+  if (!rawName) return { related: [], note: "Missing entity name." };
+  // Same normalisation the writer stamps into name_norm (lib/mind.ts) so
+  // casing / spelling variants match — exactly like pages_for_entity.
+  const targetNorm = normaliseEntityName(rawName);
+  const limit = Math.min(30, Math.max(1, Math.floor(Number(input.limit) || 10)));
+  const excludeId = disciplineExcludeIdForChat();
+  try {
+    // 1. Effective diary date per page (carry-forward within each notebook,
+    //    the same rule the diary export uses), for transcribed non-discipline
+    //    pages. Ordered so carry-forward is correct.
+    const pageRows = db()
+      .prepare(
+        `SELECT p.id, p.notebook_id, p.entry_date
+         FROM pages p JOIN notebooks n ON n.id = p.notebook_id
+         WHERE p.ocr_text IS NOT NULL AND p.ocr_text != '' AND p.notebook_id != ?
+         ORDER BY n.synced_at ASC, p.notebook_id ASC, p.page_index ASC`
+      )
+      .all(excludeId) as Array<{
+      id: string;
+      notebook_id: string;
+      entry_date: string | null;
+    }>;
+    const dayByPage = new Map<string, string | null>();
+    let curNb: string | null = null;
+    let carry: string | null = null;
+    for (const r of pageRows) {
+      if (r.notebook_id !== curNb) {
+        curNb = r.notebook_id;
+        carry = null;
+      }
+      if (isDatedEntry(r.entry_date)) carry = r.entry_date;
+      dayByPage.set(r.id, isDatedEntry(r.entry_date) ? r.entry_date : carry);
+    }
+
+    // 2. One canonical display name per (kind, name_norm) — MIN(name), the
+    //    same convention getTopEntities / the diary export use.
+    const canonRows = db()
+      .prepare(
+        `SELECT e.kind, e.name_norm AS norm, MIN(e.name) AS name
+         FROM entry_entities e JOIN pages p ON p.id = e.page_id
+         WHERE p.notebook_id != ?
+         GROUP BY e.kind, e.name_norm`
+      )
+      .all(excludeId) as Array<{ kind: string; norm: string; name: string }>;
+    const canon = new Map<string, string>();
+    for (const c of canonRows) canon.set(`${c.kind} ${c.norm}`, c.name);
+
+    // 3. Build (day, entity) memberships; drop undated pages (a null day) so
+    //    they can't spuriously link every entity together.
+    const entRows = db()
+      .prepare(
+        `SELECT e.page_id, e.kind, e.name_norm AS norm
+         FROM entry_entities e JOIN pages p ON p.id = e.page_id
+         WHERE p.notebook_id != ?`
+      )
+      .all(excludeId) as Array<{ page_id: string; kind: string; norm: string }>;
+    const memberships: DayMembership[] = [];
+    for (const e of entRows) {
+      if (e.kind !== "person" && e.kind !== "place" && e.kind !== "project")
+        continue;
+      const day = dayByPage.get(e.page_id);
+      if (!day) continue; // blank page or undated → not a graph edge
+      memberships.push({
+        day,
+        kind: e.kind as EntityKind,
+        norm: e.norm,
+        name: canon.get(`${e.kind} ${e.norm}`) ?? e.norm,
+      });
+    }
+
+    const related = computeRelatedEntities(
+      memberships,
+      { kind: kind as EntityKind, norm: targetNorm },
+      limit
+    );
+    if (related.length === 0) {
+      const exists = memberships.some(
+        (m) => m.kind === kind && m.norm === targetNorm
+      );
+      return {
+        related: [],
+        note: exists
+          ? `No other entities share a dated day with ${kind} "${rawName}".`
+          : `No ${kind} named "${rawName}" found on a dated page. Try top_entities or pages_for_entity.`,
+      };
+    }
+    return {
+      kind,
+      name: canon.get(`${kind} ${targetNorm}`) ?? rawName,
+      related: related.map((r) => ({
+        name: r.name,
+        kind: r.kind,
+        shared_days: r.sharedDays,
+        example_days: r.days.slice(0, 5),
+      })),
+    };
+  } catch {
+    return { related: [], note: "Lookup failed." };
+  }
+}
+
 function countEntriesMentioning(input: { term?: string }): unknown {
   const term = String(input.term || "").trim();
   if (!term) return { count: 0, note: "Empty term." };
@@ -900,6 +1042,8 @@ export async function executeTool(
         return JSON.stringify(topEntities(i));
       case "pages_for_entity":
         return JSON.stringify(pagesForEntity(i));
+      case "related_entities":
+        return JSON.stringify(relatedEntities(i));
       case "get_recent_locations":
         return JSON.stringify(await getRecentLocations(i));
       case "search_chat_history":

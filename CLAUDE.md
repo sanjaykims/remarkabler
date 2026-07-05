@@ -129,7 +129,15 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `encodeEmbedding`/`decodeEmbedding` Float32-BLOB codec, `cosineSimilarity`).
   Stored per-page on `pages.embedding`; gated by `VOYAGE_API_KEY`.
 - `lib/chatTools.ts` — the tools Claude calls during chat (`search_diary`,
-  `get_entries_by_date`, `get_day_summary`, …), dispatched on demand.
+  `get_entries_by_date`, `get_day_summary`, `top_entities`,
+  `pages_for_entity`, `related_entities`, …), dispatched on demand. The
+  `related_entities` tool surfaces the entity graph's *edges* (who/what the
+  user writes about on the same days) via the pure `lib/entityGraph.ts`
+  co-occurrence helper — the relationship view behind the Obsidian graph,
+  not just a flat ranking.
+- `lib/entityGraph.ts` — pure `computeRelatedEntities`: ranks the entities
+  that share diary days with a target (undated pages excluded). DB glue +
+  effective-date carry-forward live in `lib/chatTools.ts:relatedEntities`.
 - `lib/mind.ts` — `/mind` analytics, all free per view (cached): `getHeatmap`,
   `getThemes`, `getSentimentSeries`, `getEmbeddingMap`; the one shared PCA
   (`computePca` + `projectOnto`); the per-entry analysis driver
