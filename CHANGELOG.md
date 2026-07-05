@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-07-05 (diary export — Obsidian-native: entity wikilinks + frontmatter)
+
+The per-day Markdown files auto-exported to Dropbox now make Obsidian's
+graph view actually useful: entity mentions (person/place/project, already
+extracted by `/mind`'s analysis) render as `[[wikilinks]]` instead of plain
+text, and each day's YAML frontmatter gains deduped `people:`/`places:`/
+`projects:` arrays. Canonicalization (`lib/diaryExportDb.ts`,
+`fetchCanonicalEntityNames`) reuses the exact `MIN(name) GROUP BY name_norm`
+convention already used by `/mind`'s `getTopEntities` and the
+`top_entities` chat tool, so every mention of the same person across the
+whole diary — regardless of casing on any given page — links to one
+wikilink target and one graph node. `lib/diaryExport.ts` gains `wikilink`,
+`yamlQuoted` (safe YAML string escaping), and `collectEntities`
+(cross-page dedup for the frontmatter arrays); `PageEntities` now carries
+canonical, sanitized names rather than raw per-page casing. No changes to
+the Dropbox export path or folder structure — Obsidian resolves
+`[[wikilinks]]` vault-wide regardless of folder depth, and shows
+unresolved links as graph nodes with no extra "entity stub" files needed.
+Tests +10 (suite 284).
+
+Also vendored, at the owner's request, three Obsidian-related repos for
+reference: `kepano/obsidian-skills` (a genuine Agent Skills repo, no
+hooks) is installed live under `.claude/skills/`; `obsidian-mind` and
+`obsidian-second-brain` — full agent frameworks with hooks/subagents/
+auto-rewrite behavior that would conflict with Remarkabler being the sole
+writer of the diary files — are vendored as inert reference material under
+`docs/reference/` (their `.claude`/`.codex`/`.gemini`/`.shardmind` hook
+directories stripped; decorative binary assets dropped). See
+`docs/reference/README.md` for the full rationale.
+
 ## 2026-07-04 (model picker — add Sonnet 5)
 
 The Memory page's model dropdown was a hardcoded list predating Sonnet 5, so

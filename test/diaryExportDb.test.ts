@@ -111,8 +111,29 @@ describe("renderDiaryMarkdown", () => {
     const md = exportMod.renderDiaryMarkdown();
     expect(md).toContain("themes: sleep, work");
     expect(md).toContain("sentiment: -0.20");
-    expect(md).toContain("people: Jin");
-    expect(md).toContain("places: Seoul");
+    expect(md).toContain("people: [[Jin]]");
+    expect(md).toContain("places: [[Seoul]]");
+  });
+
+  it("canonicalizes an entity's casing across pages so all mentions link to one wikilink target", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const pageA = addPage("nb1", 0, "entry one", "2026-06-19");
+    const pageB = addPage("nb1", 1, "entry two", "2026-06-20");
+    const addEntity = dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES(?,?,?,?)`
+      );
+    // Same real person, different casing per page — same name_norm.
+    addEntity.run(pageA, "person", "Kim", "kim");
+    addEntity.run(pageB, "person", "kim", "kim");
+
+    const md = exportMod.renderDiaryMarkdown();
+    // MIN("Kim", "kim") = "Kim" (uppercase sorts first) — both pages must
+    // render that SAME casing, or Obsidian's graph would split one person
+    // into two nodes.
+    expect(md.match(/people: \[\[Kim\]\]/g)?.length).toBe(2);
+    expect(md).not.toContain("[[kim]]");
   });
 
   it("handles an empty diary without throwing", () => {

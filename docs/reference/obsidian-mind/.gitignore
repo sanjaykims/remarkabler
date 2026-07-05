@@ -1,0 +1,22 @@
+# Obsidian (runtime state, not vault config)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/plugins/*/data.json
+.obsidian/graph.json
+
+# OS
+.DS_Store
+.Trash/
+
+# Claude Code (local settings are personal)
+.claude/settings.local.json
+
+# QMD index (local, regenerated)
+.qmd/
+
+# Session logs (local transcripts)
+thinking/session-logs/
+
+# Node typecheck deps (CI + local dev only; runtime is zero-deps)
+node_modules/
+.claude/scripts/node_modules/

@@ -1,0 +1,18 @@
+filters:
+  and:
+    - file.inFolder("templates")
+    - file.ext == "md"
+properties:
+  file.name:
+    displayName: Template
+  description:
+    displayName: Purpose
+  file.mtime:
+    displayName: Last Modified
+views:
+  - type: table
+    name: All Templates
+    order:
+      - file.name
+      - description
+      - file.mtime

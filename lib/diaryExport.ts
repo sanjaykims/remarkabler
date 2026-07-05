@@ -15,6 +15,13 @@ export type DiaryPageRow = {
   sentiment: number | null;
 };
 
+// Entity arrays hold CANONICAL, sanitized display names (one consistent
+// casing per real-world entity, resolved by the DB layer via MIN(name)
+// GROUP BY name_norm — see lib/diaryExportDb.ts:fetchCanonicalEntityNames),
+// not each page's raw per-page casing. This is what lets every mention of
+// the same person/place/project across the whole diary link to the SAME
+// Obsidian wikilink target, so the graph view coalesces them into one node
+// instead of splitting "Jin" and "jin" into two.
 export type PageEntities = {
   person: string[];
   place: string[];
@@ -69,6 +76,12 @@ export function carryForwardDates(rows: DiaryPageRow[]): EnrichedRow[] {
   return out;
 }
 
+// Obsidian wikilink syntax. Names are already sanitized (see
+// lib/diaryExportDb.ts) so this is a plain wrap, not a second escape pass.
+function wikilink(name: string): string {
+  return `[[${name}]]`;
+}
+
 function pageMetaLine(
   r: DiaryPageRow,
   entities: PageEntities | undefined
@@ -80,13 +93,60 @@ function pageMetaLine(
     parts.push(`sentiment: ${r.sentiment.toFixed(2)}`);
   if (entities) {
     if (entities.person.length)
-      parts.push(`people: ${entities.person.join(", ")}`);
+      parts.push(`people: ${entities.person.map(wikilink).join(", ")}`);
     if (entities.place.length)
-      parts.push(`places: ${entities.place.join(", ")}`);
+      parts.push(`places: ${entities.place.map(wikilink).join(", ")}`);
     if (entities.project.length)
-      parts.push(`projects: ${entities.project.join(", ")}`);
+      parts.push(`projects: ${entities.project.map(wikilink).join(", ")}`);
   }
   return `_${parts.join(" · ")}_`;
+}
+
+// Render a string as a double-quoted YAML scalar, escaping backslashes and
+// double quotes and flattening newlines. Entity names are free-text from
+// Claude's extraction — a bare ":" would corrupt YAML block-mapping
+// parsing, "#" could be read as a comment, etc. Quoting sidesteps all of
+// that. Exported for direct unit testing.
+export function yamlQuoted(value: string): string {
+  const flat = value.replace(/\r?\n/g, " ");
+  return `"${flat.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+// One YAML block-sequence line per name, each item a wikilink, e.g.:
+//   people:
+//     - "[[Jin]]"
+// Returns [] (omits the key entirely) when there are no names, matching
+// the existing "omit absent metadata" convention used elsewhere in this
+// file (themes, sentiment, range).
+function yamlWikilinkListLines(key: string, names: string[]): string[] {
+  if (!names.length) return [];
+  const lines = [`${key}:`];
+  for (const n of names) lines.push(`  - ${yamlQuoted(wikilink(n))}`);
+  return lines;
+}
+
+// Union of entities across a set of pages, deduplicated and sorted for
+// deterministic output — used for day-file and whole-document frontmatter
+// arrays (a per-page line is already rendered via pageMetaLine).
+function collectEntities(
+  pages: DiaryPageRow[],
+  entitiesByPage: Map<string, PageEntities>
+): PageEntities {
+  const person = new Set<string>();
+  const place = new Set<string>();
+  const project = new Set<string>();
+  for (const p of pages) {
+    const e = entitiesByPage.get(p.id);
+    if (!e) continue;
+    e.person.forEach((n) => person.add(n));
+    e.place.forEach((n) => place.add(n));
+    e.project.forEach((n) => project.add(n));
+  }
+  return {
+    person: [...person].sort(),
+    place: [...place].sort(),
+    project: [...project].sort(),
+  };
 }
 
 /**
@@ -125,6 +185,7 @@ export function buildDiaryMarkdown(opts: {
   const firstDate = sortedDates.length ? sortedDates[0] : "";
   const lastDate = sortedDates.length ? sortedDates[sortedDates.length - 1] : "";
   const notebookCount = new Set(rows.map((r) => r.notebook_name)).size;
+  const docEntities = collectEntities(rows, entitiesByPage);
 
   const lines: string[] = [];
 
@@ -135,6 +196,9 @@ export function buildDiaryMarkdown(opts: {
   lines.push(`pages: ${rows.length}`);
   lines.push(`notebooks: ${notebookCount}`);
   if (firstDate && lastDate) lines.push(`range: ${firstDate} → ${lastDate}`);
+  lines.push(...yamlWikilinkListLines("people", docEntities.person));
+  lines.push(...yamlWikilinkListLines("places", docEntities.place));
+  lines.push(...yamlWikilinkListLines("projects", docEntities.project));
   lines.push("---");
   lines.push("");
   lines.push("# My Diary");
@@ -238,6 +302,7 @@ function renderDayFile(
   exportedAt: string
 ): string {
   const notebooks = new Set(pages.map((p) => p.notebook_name));
+  const dayEntities = collectEntities(pages, entitiesByPage);
   const lines: string[] = [];
   lines.push("---");
   lines.push(`title: "${date}"`);
@@ -245,6 +310,9 @@ function renderDayFile(
   lines.push(`date: ${date}`);
   lines.push(`notebooks: ${notebooks.size}`);
   lines.push(`pages: ${pages.length}`);
+  lines.push(...yamlWikilinkListLines("people", dayEntities.person));
+  lines.push(...yamlWikilinkListLines("places", dayEntities.place));
+  lines.push(...yamlWikilinkListLines("projects", dayEntities.project));
   lines.push(`exported: ${exportedAt || "unknown"}`);
   lines.push("---");
   lines.push("");
@@ -264,11 +332,15 @@ function renderUndatedFile(
   entitiesByPage: Map<string, PageEntities>,
   exportedAt: string
 ): string {
+  const undatedEntities = collectEntities(pages, entitiesByPage);
   const lines: string[] = [];
   lines.push("---");
   lines.push('title: "Undated entries"');
   lines.push("source: Remarkabler");
   lines.push(`pages: ${pages.length}`);
+  lines.push(...yamlWikilinkListLines("people", undatedEntities.person));
+  lines.push(...yamlWikilinkListLines("places", undatedEntities.place));
+  lines.push(...yamlWikilinkListLines("projects", undatedEntities.project));
   lines.push(`exported: ${exportedAt || "unknown"}`);
   lines.push("---");
   lines.push("");

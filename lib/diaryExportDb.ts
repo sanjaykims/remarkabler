@@ -26,9 +26,40 @@ function fmtExportedAt(): string {
     .replace("T", " ");
 }
 
+// Canonical display name per (kind, name_norm), reusing the exact
+// MIN(name) GROUP BY name_norm convention already used by
+// lib/mind.ts:getTopEntities and the top_entities chat tool
+// (lib/chatTools.ts) — so the diary export, /mind, and chat all agree on
+// one display casing per real-world entity. One aggregate query for the
+// whole table; joined to per-page rows in JS below (no N+1).
+function fetchCanonicalEntityNames(): Map<string, string> {
+  const rows = db()
+    .prepare(
+      `SELECT kind, name_norm, MIN(name) AS canonical_name
+       FROM entry_entities
+       GROUP BY kind, name_norm`
+    )
+    .all() as Array<{ kind: string; name_norm: string; canonical_name: string }>;
+  const map = new Map<string, string>();
+  // Space-joined key: kind is always one of a fixed 3-value enum with no
+  // whitespace of its own, so this key is unambiguous even though
+  // name_norm is free text.
+  for (const r of rows) map.set(`${r.kind} ${r.name_norm}`, r.canonical_name);
+  return map;
+}
+
+// Strip characters that would corrupt [[wikilink]] or YAML syntax if an
+// extracted name happens to contain them (rare — Claude's entity
+// extraction has no character allowlist). Applied once here so every
+// consumer (pageMetaLine, the frontmatter arrays) gets already-safe names.
+function sanitizeEntityName(name: string): string {
+  return name.replace(/[[\]|]/g, "").replace(/\r?\n/g, " ").trim();
+}
+
 // Shared fetch: all diary pages (discipline notebook excluded) in
 // notebook-walk order so carry-forward is correct, plus the per-page
-// entity map.
+// entity map (canonical, sanitized display names — see
+// fetchCanonicalEntityNames/sanitizeEntityName above).
 function fetchDiaryData(): {
   rows: DiaryPageRow[];
   entitiesByPage: Map<string, PageEntities>;
@@ -50,11 +81,12 @@ function fetchDiaryData(): {
     )
     .all(DISCIPLINE_ID) as DiaryPageRow[];
 
+  const canonicalNames = fetchCanonicalEntityNames();
   const entityRows = db()
     .prepare(
-      `SELECT page_id, kind, name FROM entry_entities ORDER BY kind, name`
+      `SELECT page_id, kind, name_norm FROM entry_entities ORDER BY kind, name_norm`
     )
-    .all() as Array<{ page_id: string; kind: string; name: string }>;
+    .all() as Array<{ page_id: string; kind: string; name_norm: string }>;
   const entitiesByPage = new Map<string, PageEntities>();
   for (const e of entityRows) {
     let bucket = entitiesByPage.get(e.page_id);
@@ -63,7 +95,9 @@ function fetchDiaryData(): {
       entitiesByPage.set(e.page_id, bucket);
     }
     if (e.kind === "person" || e.kind === "place" || e.kind === "project") {
-      bucket[e.kind].push(e.name);
+      const canonical =
+        canonicalNames.get(`${e.kind} ${e.name_norm}`) ?? e.name_norm;
+      bucket[e.kind].push(sanitizeEntityName(canonical));
     }
   }
   return { rows, entitiesByPage };

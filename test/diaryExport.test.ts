@@ -6,6 +6,7 @@ import {
   effectiveDateKeys,
   isDatedEntry,
   parseThemes,
+  yamlQuoted,
   UNDATED_FILE,
   type DiaryPageRow,
   type PageEntities,
@@ -202,9 +203,9 @@ describe("buildDiaryMarkdown", () => {
     expect(md).toContain("notebook: Diary 2026");
     expect(md).toContain("themes: sleep, work");
     expect(md).toContain("sentiment: -0.20");
-    expect(md).toContain("people: Jin");
-    expect(md).toContain("places: Seoul");
-    expect(md).toContain("projects: Sermorizer");
+    expect(md).toContain("people: [[Jin]]");
+    expect(md).toContain("places: [[Seoul]]");
+    expect(md).toContain("projects: [[Sermorizer]]");
   });
 
   it("omits optional metadata fields when absent", () => {
@@ -305,7 +306,7 @@ describe("buildDayFiles", () => {
     expect(files.get(UNDATED_FILE)).toContain("floating");
   });
 
-  it("renders entities in a day file", () => {
+  it("renders entities as wikilinks in a day file's metadata line", () => {
     const ent = new Map<string, PageEntities>([
       ["a", { person: ["Jin"], place: [], project: [] }],
     ]);
@@ -314,6 +315,92 @@ describe("buildDayFiles", () => {
       entitiesByPage: ent,
       exportedAt: "x",
     });
-    expect(files.get("2026-06-19.md")).toContain("people: Jin");
+    expect(files.get("2026-06-19.md")).toContain("people: [[Jin]]");
+  });
+});
+
+describe("frontmatter entity arrays", () => {
+  it("adds a YAML wikilink array to a day file's frontmatter", () => {
+    const ent = new Map<string, PageEntities>([
+      ["a", { person: ["Jin"], place: ["Seoul"], project: [] }],
+    ]);
+    const files = buildDayFiles({
+      rows: [row({ id: "a", notebook_id: "nb1", entry_date: "2026-06-19" })],
+      entitiesByPage: ent,
+      exportedAt: "x",
+    });
+    const day = files.get("2026-06-19.md") as string;
+    expect(day).toContain('people:\n  - "[[Jin]]"');
+    expect(day).toContain('places:\n  - "[[Seoul]]"');
+    expect(day).not.toContain("projects:");
+  });
+
+  it("dedupes an entity mentioned on multiple pages of the same day", () => {
+    const ent = new Map<string, PageEntities>([
+      ["a", { person: ["Jin"], place: [], project: [] }],
+      ["b", { person: ["Jin"], place: [], project: [] }],
+    ]);
+    const files = buildDayFiles({
+      rows: [
+        row({ id: "a", notebook_id: "nb1", entry_date: "2026-06-19", page_index: 0 }),
+        row({ id: "b", notebook_id: "nb1", entry_date: "none", page_index: 1 }),
+      ],
+      entitiesByPage: ent,
+      exportedAt: "x",
+    });
+    const day = files.get("2026-06-19.md") as string;
+    expect(day.match(/\[\[Jin\]\]/g)?.length).toBe(3); // frontmatter once + one per page line
+  });
+
+  it("omits all entity keys from frontmatter when a day has no entities", () => {
+    const files = buildDayFiles({
+      rows: [row({ id: "a", notebook_id: "nb1", entry_date: "2026-06-19" })],
+      entitiesByPage: new Map<string, PageEntities>(),
+      exportedAt: "x",
+    });
+    const day = files.get("2026-06-19.md") as string;
+    expect(day).not.toContain("people:");
+    expect(day).not.toContain("places:");
+    expect(day).not.toContain("projects:");
+  });
+
+  it("aggregates entities across multiple days in the combined document", () => {
+    const ent = new Map<string, PageEntities>([
+      ["a", { person: ["Jin"], place: [], project: [] }],
+      ["b", { person: ["Kim"], place: [], project: [] }],
+    ]);
+    const md = buildDiaryMarkdown({
+      rows: [
+        row({ id: "a", entry_date: "2026-06-19" }),
+        row({ id: "b", entry_date: "2026-06-20", page_index: 1 }),
+      ],
+      entitiesByPage: ent,
+      exportedAt: "x",
+    });
+    const frontmatter = md.slice(0, md.indexOf("\n---\n", 4));
+    expect(frontmatter).toContain('"[[Jin]]"');
+    expect(frontmatter).toContain('"[[Kim]]"');
+  });
+});
+
+describe("yamlQuoted", () => {
+  it("quotes a plain string", () => {
+    expect(yamlQuoted("Jin")).toBe('"Jin"');
+  });
+
+  it("preserves a colon inside quotes", () => {
+    expect(yamlQuoted("Dr. Kim: MD")).toBe('"Dr. Kim: MD"');
+  });
+
+  it("escapes an embedded double quote", () => {
+    expect(yamlQuoted('Say "hi"')).toBe('"Say \\"hi\\""');
+  });
+
+  it("escapes a backslash", () => {
+    expect(yamlQuoted("back\\slash")).toBe('"back\\\\slash"');
+  });
+
+  it("flattens a newline to a space", () => {
+    expect(yamlQuoted("line1\nline2")).toBe('"line1 line2"');
   });
 });
