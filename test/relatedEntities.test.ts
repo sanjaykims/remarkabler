@@ -186,7 +186,7 @@ describe("related_entities", () => {
     entity("p1", "person", "야오팡");
     entity("p1", "person", "Kim");
     // Merge 야오팡 → Yaofang: the 야오팡 rows are rewritten to yaofang.
-    mergeMod.mergeEntity("person", "야오팡", "yaofang", "Yaofang");
+    mergeMod.mergeEntity("person", "야오팡", "야오팡", "yaofang", "Yaofang");
 
     // Asking by the OLD spelling must still work (it's aliased), and return
     // the canonical's co-occurrences.
