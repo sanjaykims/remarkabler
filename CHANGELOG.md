@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-05 (editable Dropbox diary export folder)
+
+The diary auto-export destination was hardcoded to the
+`dropbox_export_folder` setting with no UI to change it. Added an editable
+"Destination folder" field on the Memory page (Dropbox export section) that
+POSTs `{ folder }` to `/api/dropbox/export`, normalized by the new
+`setDropboxExportFolder()` in `lib/dropbox.ts` (leading slash, no trailing
+slash, empty → default). This lets the export point at an Obsidian sync
+tool's app folder (e.g. `/Apps/remotely-save/Diary`) so plugins like
+Remotely Save — which only read their own scoped Dropbox app folder, not
+arbitrary paths — can actually see the day files. Saving with export
+already on runs one export immediately so the files land in the new place.
+
 ## 2026-07-05 (detect duplicate notebooks)
 
 Old notebooks (Dropbox-ingested or manually uploaded) can cover the same

@@ -84,6 +84,7 @@ export default function MemoryPage() {
   const [dropbox, setDropbox] = useState<DropboxStatus | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
+  const [folderDraft, setFolderDraft] = useState<string | null>(null);
   const [dropboxBusy, setDropboxBusy] = useState(false);
 
   type RemarkableNotebook = {
@@ -356,6 +357,41 @@ export default function MemoryPage() {
         );
       else if (d.ran?.error) setExportMsg(d.ran.error);
       else if (d.ran?.skipped) setExportMsg(`Skipped: ${d.ran.skipped}`);
+      await loadDropbox();
+    } catch (e) {
+      setExportMsg((e as Error).message);
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  // Change the Dropbox destination folder (e.g. to a sync tool's app folder
+  // like /Apps/remotely-save/Diary). Saves the folder, then — if export is
+  // already on — runs one export so the day files land in the new place.
+  async function saveExportFolder() {
+    if (exportBusy || folderDraft === null) return;
+    setExportBusy(true);
+    setExportMsg(null);
+    try {
+      const r = await fetch("/api/dropbox/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folder: folderDraft,
+          runNow: dropbox?.exportEnabled === true,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Couldn't save folder.");
+      if (d.ran?.ok)
+        setExportMsg(
+          d.fullSyncStarted
+            ? "Folder saved ✓ — syncing every day there in the background."
+            : "Folder saved ✓ — saved to Dropbox."
+        );
+      else if (d.ran?.error) setExportMsg(d.ran.error);
+      else setExportMsg("Folder saved ✓");
+      setFolderDraft(null);
       await loadDropbox();
     } catch (e) {
       setExportMsg((e as Error).message);
@@ -1205,6 +1241,39 @@ export default function MemoryPage() {
                       ? "On"
                       : "Turn on"}
                 </button>
+              </div>
+              {/* Destination folder. Editable so it can point at a sync
+                  tool's app folder (e.g. Remotely Save reads only
+                  /Apps/remotely-save/<vault>, not arbitrary Dropbox paths). */}
+              <div className="space-y-1">
+                <label className="text-xs opacity-70">Destination folder</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={folderDraft ?? dropbox.exportFolder}
+                    onChange={(e) => setFolderDraft(e.target.value)}
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    className="min-w-0 flex-1 rounded border border-stone-300 dark:border-stone-700 bg-transparent px-2 py-1 text-xs font-mono"
+                    placeholder="/Remarkabler/diary"
+                  />
+                  <button
+                    onClick={saveExportFolder}
+                    disabled={
+                      exportBusy ||
+                      folderDraft === null ||
+                      folderDraft.trim() === dropbox.exportFolder
+                    }
+                    className="shrink-0 rounded border border-stone-300 dark:border-stone-700 px-3 py-1 text-xs disabled:opacity-40"
+                  >
+                    Save
+                  </button>
+                </div>
+                <p className="text-[11px] opacity-50">
+                  Using Remotely Save in Obsidian? Set this to{" "}
+                  <code>/Apps/remotely-save/Diary</code> (match your vault
+                  name) so the plugin can see the files.
+                </p>
               </div>
               {dropbox.exportEnabled && (
                 <div className="flex items-center gap-3">

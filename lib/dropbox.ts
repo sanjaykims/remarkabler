@@ -300,6 +300,29 @@ export function setDropboxExportEnabled(enabled: boolean): void {
   setSetting("dropbox_export_enabled", enabled ? "1" : "0");
 }
 
+// Normalize a user-entered export folder to a Dropbox absolute path:
+// leading slash, no trailing slash, no duplicate slashes. An empty string
+// clears the override so dropboxExportFolder() falls back to the default.
+// Returns the stored value (default path when cleared) so the caller can
+// echo it back to the UI.
+export function setDropboxExportFolder(folder: string): string {
+  const trimmed = (folder || "").trim();
+  if (!trimmed) {
+    setSetting("dropbox_export_folder", "");
+    return DEFAULT_EXPORT_FOLDER;
+  }
+  const normalized =
+    "/" +
+    trimmed
+      .replace(/\\/g, "/") // tolerate backslashes
+      .split("/")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join("/");
+  setSetting("dropbox_export_folder", normalized);
+  return normalized;
+}
+
 export function dropboxStatus(): DropboxStatus {
   const countRow = db()
     .prepare(

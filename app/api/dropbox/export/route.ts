@@ -3,6 +3,7 @@ import { isAuthenticated } from "@/lib/auth";
 import {
   dropboxStatus,
   setDropboxExportEnabled,
+  setDropboxExportFolder,
   maybeExportDiaryToDropbox,
   dropboxConnected,
 } from "@/lib/dropbox";
@@ -24,11 +25,17 @@ export async function POST(req: NextRequest) {
   if (!isAuthenticated()) return LOCKED();
 
   const body = (await req.json().catch(() => null)) as
-    | { enabled?: unknown; runNow?: unknown }
+    | { enabled?: unknown; runNow?: unknown; folder?: unknown }
     | null;
 
   if (body && typeof body.enabled === "boolean") {
     setDropboxExportEnabled(body.enabled);
+  }
+
+  // Change the destination folder (e.g. to a sync tool's app folder). Set
+  // BEFORE any runNow probe so the probe writes to the new location.
+  if (body && typeof body.folder === "string") {
+    setDropboxExportFolder(body.folder);
   }
 
   let ran: Awaited<ReturnType<typeof maybeExportDiaryToDropbox>> | null = null;
