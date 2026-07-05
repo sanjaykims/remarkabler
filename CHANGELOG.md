@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-05 (diary export — scope canonical entity names to exported pages; Codex #101)
+
+`fetchCanonicalEntityNames` aggregated MIN(name) across ALL of
+`entry_entities`, including the excluded `github-discipline` notebook's
+entities. A discipline-notebook entity with a lexicographically smaller
+name could win the MIN(name) tie-break and leak an entity spelling into
+the diary export that the diary's own (discipline-excluded) data never
+produced. Fixed by joining through `pages` and applying the same
+`notebook_id != DISCIPLINE_ID` scope the exported rows (and
+`getTopEntities`/`topEntities`) already use. +1 regression test pinning
+the exact leak scenario (suite 285).
+
+
 ## 2026-07-05 (diary export — Obsidian-native: entity wikilinks + frontmatter)
 
 The per-day Markdown files auto-exported to Dropbox now make Obsidian's

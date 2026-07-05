@@ -32,14 +32,27 @@ function fmtExportedAt(): string {
 // (lib/chatTools.ts) — so the diary export, /mind, and chat all agree on
 // one display casing per real-world entity. One aggregate query for the
 // whole table; joined to per-page rows in JS below (no N+1).
+//
+// MUST join through pages and apply the same notebook_id != DISCIPLINE_ID
+// scope as the exported rows (and as getTopEntities/topEntities) — without
+// it, a discipline-notebook entity with a lexicographically smaller name
+// could win MIN(name) and leak an entity spelling into the diary export
+// that the diary's own (discipline-excluded) data never produced (Codex,
+// PR #101).
 function fetchCanonicalEntityNames(): Map<string, string> {
   const rows = db()
     .prepare(
-      `SELECT kind, name_norm, MIN(name) AS canonical_name
-       FROM entry_entities
-       GROUP BY kind, name_norm`
+      `SELECT e.kind, e.name_norm, MIN(e.name) AS canonical_name
+       FROM entry_entities e
+       JOIN pages p ON p.id = e.page_id
+       WHERE p.notebook_id != ?
+       GROUP BY e.kind, e.name_norm`
     )
-    .all() as Array<{ kind: string; name_norm: string; canonical_name: string }>;
+    .all(DISCIPLINE_ID) as Array<{
+    kind: string;
+    name_norm: string;
+    canonical_name: string;
+  }>;
   const map = new Map<string, string>();
   // Space-joined key: kind is always one of a fixed 3-value enum with no
   // whitespace of its own, so this key is unambiguous even though

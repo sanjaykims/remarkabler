@@ -115,6 +115,27 @@ describe("renderDiaryMarkdown", () => {
     expect(md).toContain("places: [[Seoul]]");
   });
 
+  it("never resolves a canonical name from the excluded discipline notebook's entities", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const diaryPage = addPage("nb1", 0, "real diary entry", "2026-06-19");
+    addNotebook(notesMod.DISCIPLINE_ID, "Discipline", "2026-06-20 00:00:00");
+    const disciplinePage = addPage(notesMod.DISCIPLINE_ID, 0, "repo notes", null);
+    const addEntity = dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES(?,?,?,?)`
+      );
+    // Same name_norm, but the discipline notebook's spelling would win
+    // MIN(name) if the canonical-name query weren't scoped to exported
+    // (non-discipline) pages — "AAA" < "Kim" lexicographically.
+    addEntity.run(diaryPage, "person", "Kim", "kim");
+    addEntity.run(disciplinePage, "person", "AAA", "kim");
+
+    const md = exportMod.renderDiaryMarkdown();
+    expect(md).toContain("[[Kim]]");
+    expect(md).not.toContain("[[AAA]]");
+  });
+
   it("canonicalizes an entity's casing across pages so all mentions link to one wikilink target", () => {
     addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
     const pageA = addPage("nb1", 0, "entry one", "2026-06-19");
