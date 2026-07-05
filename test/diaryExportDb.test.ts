@@ -215,3 +215,107 @@ describe("affectedDayFileNames", () => {
     expect(exportMod.affectedDayFileNames(notesMod.DISCIPLINE_ID)).toEqual([]);
   });
 });
+
+describe("renderEntityStubFiles", () => {
+  function addEntity(pageId: string, kind: string, name: string, norm: string) {
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES(?,?,?,?)`
+      )
+      .run(pageId, kind, name, norm);
+  }
+
+  it("writes one stub per entity listing the days it appears", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "day 19", "2026-06-19");
+    const p1 = addPage("nb1", 1, "day 20", "2026-06-20");
+    addEntity(p0, "person", "Jin", "jin");
+    addEntity(p1, "person", "Jin", "jin");
+    addEntity(p0, "place", "Seoul", "seoul");
+
+    const files = exportMod.renderEntityStubFiles();
+    expect([...files.keys()].sort()).toEqual(["People/Jin.md", "Places/Seoul.md"]);
+    const jin = files.get("People/Jin.md") as string;
+    expect(jin).toContain("- [[2026-06-19]]");
+    expect(jin).toContain("- [[2026-06-20]]");
+    const seoul = files.get("Places/Seoul.md") as string;
+    expect(seoul).toContain("- [[2026-06-19]]");
+    expect(seoul).not.toContain("2026-06-20");
+  });
+
+  it("excludes discipline-notebook entities", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "real", "2026-06-19");
+    addEntity(p0, "person", "Jin", "jin");
+    addNotebook(notesMod.DISCIPLINE_ID, "Discipline", "2026-06-20 00:00:00");
+    const dp = addPage(notesMod.DISCIPLINE_ID, 0, "repo", "2026-06-20");
+    addEntity(dp, "person", "Secret", "secret");
+
+    const files = exportMod.renderEntityStubFiles();
+    expect([...files.keys()]).toEqual(["People/Jin.md"]);
+    expect(files.has("People/Secret.md")).toBe(false);
+  });
+
+  it("uses the canonical casing and the carried-forward date", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "start", "2026-06-19");
+    const p1 = addPage("nb1", 1, "continuation", "none"); // carries to 06-19
+    addEntity(p0, "person", "Kim", "kim");
+    addEntity(p1, "person", "kim", "kim"); // lowercase on the continuation page
+
+    const files = exportMod.renderEntityStubFiles();
+    // MIN("Kim","kim") = "Kim" — one stub, one canonical casing.
+    expect(files.has("People/Kim.md")).toBe(true);
+    expect(files.has("People/kim.md")).toBe(false);
+    const kim = files.get("People/Kim.md") as string;
+    // The continuation page's mention carries forward to 06-19, not "none".
+    expect(kim).toContain("- [[2026-06-19]]");
+    expect(kim.match(/\[\[2026-06-19\]\]/g)?.length).toBe(1); // deduped to one day
+    expect(kim).not.toContain("[[none]]");
+  });
+
+  it("links undated mentions to [[undated]]", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "floating", "none");
+    addEntity(p0, "person", "Ghost", "ghost");
+
+    const files = exportMod.renderEntityStubFiles();
+    const ghost = files.get("People/Ghost.md") as string;
+    expect(ghost).toContain("- [[undated]]");
+  });
+});
+
+describe("affectedEntityStubFileNames", () => {
+  function addEntity(pageId: string, kind: string, name: string, norm: string) {
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES(?,?,?,?)`
+      )
+      .run(pageId, kind, name, norm);
+  }
+
+  it("returns the stub files a notebook's entities touch (canonical, deduped)", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "a", "2026-06-19");
+    const p1 = addPage("nb1", 1, "b", "2026-06-20");
+    addEntity(p0, "person", "Jin", "jin");
+    addEntity(p1, "person", "jin", "jin"); // same entity, different casing
+    addEntity(p0, "place", "Seoul", "seoul");
+
+    expect(exportMod.affectedEntityStubFileNames("nb1").sort()).toEqual([
+      "People/Jin.md",
+      "Places/Seoul.md",
+    ]);
+  });
+
+  it("returns [] for the discipline notebook", () => {
+    addNotebook(notesMod.DISCIPLINE_ID, "Discipline", "2026-06-21 00:00:00");
+    const dp = addPage(notesMod.DISCIPLINE_ID, 0, "repo", "none");
+    addEntity(dp, "person", "Secret", "secret");
+    expect(exportMod.affectedEntityStubFileNames(notesMod.DISCIPLINE_ID)).toEqual(
+      []
+    );
+  });
+});

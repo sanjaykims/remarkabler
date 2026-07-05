@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-05 (Obsidian entity stub notes)
+
+The diary export's `[[wikilinks]]` for people/places/projects pointed at
+notes that didn't exist, so Obsidian showed them as "unresolved" graph
+nodes you couldn't open. Now the Dropbox export also writes one stub note
+per entity — `People/Jin.md`, `Places/Seoul.md`, `Projects/…` — each with
+`type:` frontmatter and a list of `[[YYYY-MM-DD]]` links back to the days it
+appears, so every graph node is clickable and opens to that entity's days.
+Pure `buildEntityStubFiles`/`entityStubFileName` + `EntityStub` type in
+`lib/diaryExport.ts`; DB-backed `renderEntityStubFiles` /
+`affectedEntityStubFileNames` in `lib/diaryExportDb.ts` (reuse the canonical
+casing + carry-forward date, exclude the discipline notebook). Stubs are
+merged into `maybeExportDiaryToDropbox`'s file map — refreshed incrementally
+per notebook and fully on a whole-vault sync. +13 tests (suite 322).
+
 ## 2026-07-05 (editable Dropbox diary export folder)
 
 The diary auto-export destination was hardcoded to the
