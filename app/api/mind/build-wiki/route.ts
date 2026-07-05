@@ -18,12 +18,15 @@ export async function POST() {
   }
   try {
     const result = await refreshEntityWiki({ limit: 40 });
-    if (result.generated > 0) {
+    if (result.entities.length > 0) {
       try {
-        const { maybeExportDiaryToDropbox } = (await import(
-          "@/lib/dropbox"
-        )) as { maybeExportDiaryToDropbox: () => Promise<unknown> };
-        void maybeExportDiaryToDropbox();
+        const { maybeExportDiaryToDropbox } = await import("@/lib/dropbox");
+        const { entityStubRelPathForName } = await import("@/lib/diaryExportDb");
+        // Upload only the regenerated profile stubs, not the whole vault.
+        const stubPaths = result.entities.map((e) =>
+          entityStubRelPathForName(e.kind, e.name)
+        );
+        void maybeExportDiaryToDropbox({ onlyEntityStubs: stubPaths });
       } catch {
         // best-effort — never fail the build because of the export
       }
