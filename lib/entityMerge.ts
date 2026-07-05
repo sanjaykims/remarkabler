@@ -119,6 +119,42 @@ export type MergeReportGroup = {
   rewritten: number;
 };
 
+// Manually fold an explicit list of variant spellings into one canonical name
+// (for cases the conservative Claude dedup won't catch — OCR variants of one
+// name, a cross-script pair, a self-reference). Records an alias for EVERY
+// variant even if it isn't currently an extracted entity, so a future ingest
+// of that spelling auto-folds too. Returns how many variants were applied.
+export function mergeEntitiesManually(
+  kind: Kind,
+  canonicalName: string,
+  variantNames: string[]
+): { merged: number; rewritten: number; canonical: string; applied: string[] } {
+  const canonical = (canonicalName || "").trim();
+  const canonicalNorm = normaliseEntityName(canonical);
+  if (!canonicalNorm) {
+    return { merged: 0, rewritten: 0, canonical, applied: [] };
+  }
+  let rewritten = 0;
+  const applied: string[] = [];
+  const seen = new Set<string>([canonicalNorm]);
+  for (const raw of variantNames) {
+    const v = (raw || "").trim();
+    const aliasNorm = normaliseEntityName(v);
+    if (!aliasNorm || seen.has(aliasNorm)) continue; // skip empties / the canonical / dups
+    seen.add(aliasNorm);
+    try {
+      rewritten += mergeEntity(kind, aliasNorm, v, canonicalNorm, canonical);
+      applied.push(v);
+    } catch (e) {
+      console.warn(
+        `[entityMerge] manual merge ${v}→${canonical} failed:`,
+        (e as Error).message
+      );
+    }
+  }
+  return { merged: applied.length, rewritten, canonical, applied };
+}
+
 // Distinct entity display names for one kind (discipline notebook excluded,
 // same as every other entity surface), most-used first so Claude sees the
 // prominent names. Uses the MIN(name) canonical convention.

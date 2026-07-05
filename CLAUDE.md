@@ -144,9 +144,12 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   effective-date carry-forward live in `lib/chatTools.ts:relatedEntities`.
 - `lib/entityMerge.ts` — entity de-duplication. `applyEntityAlias` (fold a
   merged-away spelling on insert), `mergeEntity` (rewrite `name_norm` rows +
-  record the alias + collapse chains), and the Claude-driven
-  `dedupeAllEntities` driver behind `app/api/mind/merge-entities` and the
-  `/mind` "Merge duplicate names" button. Because every reader keys on
+  record the alias + collapse chains), the Claude-driven `dedupeAllEntities`
+  driver behind `app/api/mind/merge-entities` and the `/mind` "Merge duplicate
+  names" button, and `mergeEntitiesManually` (fold an explicit variant list
+  into one canonical — the `/mind` "Merge specific names" form, for OCR
+  variants / cross-script pairs Claude won't risk; records an alias even for
+  a variant not yet extracted, so a future ingest auto-folds). Because every reader keys on
   `name_norm`, a merge is a data rewrite with no read-path changes; the
   `entity_aliases` record makes it stick for future ingests. Claude call +
   pure `parseEntityDuplicates` live in `lib/claude.ts:findEntityDuplicates`

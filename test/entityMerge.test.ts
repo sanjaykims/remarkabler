@@ -145,6 +145,27 @@ describe("mergeEntity", () => {
     expect(norms("person")).toEqual(["kim"]);
   });
 
+  it("manually folds explicit variants into one canonical (incl. ones not yet extracted)", () => {
+    nb("nb1");
+    page("p1", "nb1", 0);
+    page("p2", "nb1", 1);
+    entity("p1", "person", "마오핑"); // an OCR variant that exists
+    entity("p2", "person", "야오팡"); // the intended canonical exists too
+
+    const res = mergeMod.mergeEntitiesManually("person", "야오팡", [
+      "마오핑",
+      "미오팡", // does NOT exist as an entity — still recorded as an alias
+      "야오팡", // equals canonical — skipped
+      "", // empty — skipped
+    ]);
+    expect(res.merged).toBe(2); // 마오핑 + 미오팡 applied
+    expect(res.rewritten).toBe(1); // only 마오핑 had a row to rewrite
+    expect(norms("person")).toEqual(["야오팡"]);
+    // Both variants now resolve to the canonical on a future ingest.
+    expect(mergeMod.applyEntityAlias("person", "마오핑", "마오핑").norm).toBe("야오팡");
+    expect(mergeMod.applyEntityAlias("person", "미오팡", "미오팡").norm).toBe("야오팡");
+  });
+
   it("records the alias display name so its stub can be found later (PR #109)", () => {
     nb("nb1");
     page("p1", "nb1", 0);
