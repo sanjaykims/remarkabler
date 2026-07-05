@@ -65,7 +65,7 @@ jobs:
             echo ""
             echo "---"
             echo ""
-            echo "Please investigate the finding. If it's clearly actionable and correct, fix it on a branch and open a PR — but do **not** merge without the user's confirmation. If the finding is ambiguous or needs design input, post a clarifying question on the thread instead of acting."
+            echo "Please investigate the finding and decide whether it's valid — read the referenced code, don't take the note at face value. Then, BEFORE changing any code, report back to the user with: (1) whether the finding is valid and why, (2) the exact fix you would make (or why none is needed), and (3) a clear ask for their go-ahead. Do **not** edit code, open a fix PR, or merge anything until the user confirms — even if the finding looks obviously correct. The user wants to be asked after every review, not to have fixes applied automatically."
           } > /tmp/review-handoff.md
 
           gh issue comment "${PR_NUMBER}" \

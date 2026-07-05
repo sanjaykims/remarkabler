@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-05 (review-watcher: review-then-ask instead of auto-fix)
+
+Changed the review-forwarding workflow's handoff so the spawned session
+investigates a code-review finding and then REPORTS BACK + asks the owner for
+a go-ahead before changing any code — rather than auto-opening a fix PR. The
+owner wants every review finding surfaced for a yes/no, not applied silently.
+This session also subscribes to each PR's activity so findings arrive in-chat.
+
 ## 2026-07-05 (life wiki: enforce the real excerpt budget)
 
 `selectWikiExcerpts` chose how many pages to keep from the *average* mention

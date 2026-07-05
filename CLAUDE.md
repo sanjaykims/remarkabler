@@ -268,8 +268,12 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   bot (GitHub actor `chatgpt-codex-connector`, its fixed external username)
   posts a review comment, review, or issue comment, the workflow auto-pings
   `@claude` on the same thread so the Claude Code GitHub App spawns a session
-  to investigate. No new secrets; uses the default `GITHUB_TOKEN`. Disable by
-  deleting the file or commenting out the `on:` triggers.
+  to investigate. The handoff instructs that session to **review the finding
+  and ASK the user before applying anything** — verify validity, report the
+  finding + proposed fix, and wait for the user's go-ahead rather than
+  auto-fixing (the owner wants to be asked after every review). No new
+  secrets; uses the default `GITHUB_TOKEN`. Disable by deleting the file or
+  commenting out the `on:` triggers.
 
 ## Tests
 
