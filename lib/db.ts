@@ -204,6 +204,23 @@ export function db(): Database.Database {
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_entry_entities_unique
        ON entry_entities(page_id, kind, name_norm)`
   );
+  // Entity aliases: a merge record mapping one (kind, alias_norm) to the
+  // canonical (kind, canonical_norm) it was folded into. Merging rewrites
+  // the matching entry_entities rows in place (so every reader — /mind,
+  // chat tools, the diary export graph — reflects it with no read-path
+  // change), and this table lets a FUTURE ingest of the same alias spelling
+  // auto-fold to the canonical too (applyEntityAlias on insert). Keyed by
+  // (kind, alias_norm): one row per merged-away spelling.
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS entity_aliases (
+      kind           TEXT NOT NULL CHECK (kind IN ('person', 'place', 'project')),
+      alias_norm     TEXT NOT NULL,
+      canonical_norm TEXT NOT NULL,
+      canonical_name TEXT NOT NULL,
+      created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (kind, alias_norm)
+    )
+  `);
   // Chat memory: each Clear becomes an archive batch, and the compressor
   // extracts a small set of durable items from the batch's transcript.
   // Batches stay around as the audit unit (last error, attempt count,

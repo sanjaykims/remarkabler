@@ -10,6 +10,7 @@ import {
   encodeEmbedding,
 } from "@/lib/embeddings";
 import { DISCIPLINE_ID, disciplineExcludeIdForMind } from "@/lib/notes";
+import { applyEntityAlias } from "@/lib/entityMerge";
 
 // ──────────────────────────────────────────────────────────────────────────
 // Stored PCA axes for the embedding map. Persisted to settings so the labels
@@ -278,12 +279,15 @@ export async function analyzePending(
           if (result.entities.length > 0) {
             delEntities.run(row.id);
             for (const e of result.entities) {
-              insEntity.run(
-                row.id,
+              // Fold a spelling that was previously merged away to its
+              // canonical, so re-analysing a page can't resurrect a duplicate
+              // the user already merged (entity_aliases).
+              const resolved = applyEntityAlias(
                 e.kind,
-                e.name,
-                normaliseEntityName(e.name)
+                normaliseEntityName(e.name),
+                e.name
               );
+              insEntity.run(row.id, e.kind, resolved.name, resolved.norm);
             }
           }
         })();

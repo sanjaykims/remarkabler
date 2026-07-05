@@ -92,7 +92,9 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `insights`, `credentials`, `chat_attachments`, `api_usage`, `profile`,
   `daily_summaries`, `entry_analysis` (per-entry themes/sentiment/summary
   cache for `/mind`), `entry_entities` (per-page named entities —
-  person/place/project — for the `top_entities` chat tool), `locations`,
+  person/place/project — for the `top_entities` chat tool), `entity_aliases`
+  (merge records folding a duplicate spelling into a canonical
+  `(kind, name_norm)`; see `lib/entityMerge.ts`), `locations`,
   `location_points`, `route_stops`, `geocode_cache`, `chat_archive_batches`
   + `chat_memories` (durable chat-memory layer; one batch per Clear,
   soft-deleted items don't resurrect). Some durable state also lives in
@@ -138,6 +140,15 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - `lib/entityGraph.ts` — pure `computeRelatedEntities`: ranks the entities
   that share diary days with a target (undated pages excluded). DB glue +
   effective-date carry-forward live in `lib/chatTools.ts:relatedEntities`.
+- `lib/entityMerge.ts` — entity de-duplication. `applyEntityAlias` (fold a
+  merged-away spelling on insert), `mergeEntity` (rewrite `name_norm` rows +
+  record the alias + collapse chains), and the Claude-driven
+  `dedupeAllEntities` driver behind `app/api/mind/merge-entities` and the
+  `/mind` "Merge duplicate names" button. Because every reader keys on
+  `name_norm`, a merge is a data rewrite with no read-path changes; the
+  `entity_aliases` record makes it stick for future ingests. Claude call +
+  pure `parseEntityDuplicates` live in `lib/claude.ts:findEntityDuplicates`
+  (conservative — only clear same-entity merges).
 - `lib/mind.ts` — `/mind` analytics, all free per view (cached): `getHeatmap`,
   `getThemes`, `getSentimentSeries`, `getEmbeddingMap`; the one shared PCA
   (`computePca` + `projectOnto`); the per-entry analysis driver
@@ -217,7 +228,8 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   support utilities; `lib/auth.ts` + `lib/webauthn.ts` — passkey/passcode lock.
 - API routes (`app/api/*`): `auth`, `notebooks`, `chat`, `insights`, `usage`,
   `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
-  `mind/axis-labels`, `mind/reparse-dates`), `embeddings`, `backup`,
+  `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities`),
+  `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect,export}`,
   `location`, `owntracks`,
   `remarkable/{connect,refresh,disconnect,status,import,compare,autosync}`,

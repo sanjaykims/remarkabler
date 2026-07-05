@@ -609,6 +609,116 @@ export function parseAnalyzeEntryContent(raw: string): {
   return { themes, sentiment, summary, entities };
 }
 
+// ── Entity duplicate detection ─────────────────────────────────────────────
+// Claude clusters the entity names of ONE kind into same-real-world-thing
+// groups (e.g. a Korean name and its romanization: "야오팡" + "Yaofang"), so
+// the merge step can fold each group to one canonical spelling. Deliberately
+// conservative — only merge when clearly the same entity, never merely
+// similar — because a wrong merge silently blends two real people.
+
+export type EntityDuplicateGroup = { canonical: string; aliases: string[] };
+
+export async function findEntityDuplicates(
+  kind: "person" | "place" | "project",
+  names: string[]
+): Promise<EntityDuplicateGroup[]> {
+  const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+  if (unique.length < 2) return [];
+  const kindWord =
+    kind === "person" ? "people" : kind === "place" ? "places" : "projects";
+
+  const resp = await client().messages.create({
+    model: modelChat(),
+    max_tokens: 1500,
+    system: [
+      `You are given a list of ${kindWord} names extracted from one person's diary.`,
+      "Some names refer to the SAME real-world entity written different ways:",
+      "a name and its romanization/transliteration (e.g. Korean \"야오팡\" and",
+      "\"Yaofang\"), a translation, an obvious typo, or spacing/casing variants.",
+      "",
+      "Return STRICT JSON, nothing else — no preamble, no Markdown fence:",
+      '{ "groups": [ { "canonical": string, "aliases": [string, ...] }, ... ] }',
+      "",
+      "Rules:",
+      "- Only group names you are CONFIDENT are the same real entity. When in",
+      "  doubt, do NOT group them — a wrong merge blends two different people.",
+      "- `canonical` is the best display spelling for the group (prefer the",
+      "  form the reader would recognise; keep original script if that's what",
+      "  they mostly use). Every string MUST be copied EXACTLY from the input",
+      "  list (same characters, same casing) — do not invent or reformat names.",
+      "- `aliases` are the OTHER spellings in the group (never include the",
+      "  canonical itself). A group needs ≥1 alias.",
+      "- Omit singletons entirely. If nothing should merge, return",
+      '  {"groups": []}.',
+    ].join("\n"),
+    messages: [{ role: "user", content: unique.map((n) => `- ${n}`).join("\n") }],
+  });
+  recordUsage("entity_dedup", modelChat(), resp.usage);
+
+  const block = resp.content.find((b) => b.type === "text");
+  const raw = block && block.type === "text" ? block.text.trim() : "";
+  return parseEntityDuplicates(raw, unique);
+}
+
+/**
+ * Pure parser for findEntityDuplicates' JSON. Validates every returned name
+ * against the input set (case-insensitively) so Claude can't invent a name or
+ * merge something that wasn't offered, drops groups with no real alias, and
+ * de-loops a name that appears as both canonical and alias. Extracted for
+ * unit testing.
+ */
+export function parseEntityDuplicates(
+  raw: string,
+  inputNames: string[]
+): EntityDuplicateGroup[] {
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripped);
+  } catch {
+    return [];
+  }
+  if (!parsed || typeof parsed !== "object") return [];
+  const groupsRaw = (parsed as Record<string, unknown>).groups;
+  if (!Array.isArray(groupsRaw)) return [];
+
+  // Map lowercased → exact input spelling so we only ever emit real names.
+  const byLower = new Map<string, string>();
+  for (const n of inputNames) {
+    const t = (n || "").trim();
+    if (t) byLower.set(t.toLowerCase(), t);
+  }
+
+  const out: EntityDuplicateGroup[] = [];
+  const claimed = new Set<string>(); // a name can belong to only one group
+  for (const g of groupsRaw) {
+    if (!g || typeof g !== "object") continue;
+    const gr = g as Record<string, unknown>;
+    const canonRaw = typeof gr.canonical === "string" ? gr.canonical.trim() : "";
+    const canonical = byLower.get(canonRaw.toLowerCase());
+    if (!canonical || claimed.has(canonical.toLowerCase())) continue;
+    const aliasArr = Array.isArray(gr.aliases) ? gr.aliases : [];
+    const aliases: string[] = [];
+    const seen = new Set<string>([canonical.toLowerCase()]);
+    for (const a of aliasArr) {
+      if (typeof a !== "string") continue;
+      const mapped = byLower.get(a.trim().toLowerCase());
+      if (!mapped) continue;
+      const low = mapped.toLowerCase();
+      if (seen.has(low) || claimed.has(low)) continue;
+      seen.add(low);
+      aliases.push(mapped);
+    }
+    if (aliases.length === 0) continue;
+    for (const s of seen) claimed.add(s);
+    out.push({ canonical, aliases });
+  }
+  return out;
+}
+
 /**
  * Label the three PCA axes of the diary embedding map. The caller supplies a
  * handful of entries from the positive and negative extreme of each axis;
