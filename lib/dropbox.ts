@@ -607,13 +607,26 @@ async function listFolder(folder: string): Promise<DropboxFile[]> {
   return out;
 }
 
+// Dropbox's content endpoints carry their JSON args in the Dropbox-API-Arg
+// HTTP header, which must be ASCII-only. JSON.stringify leaves non-ASCII
+// (e.g. Korean in a file path) as raw chars, and fetch then throws "Cannot
+// convert argument to a ByteString" for any code point > 255. Escape every
+// non-ASCII char to \uXXXX — the form Dropbox documents for this header.
+// Exported for unit testing.
+export function dropboxApiArg(obj: unknown): string {
+  return JSON.stringify(obj).replace(
+    /[^\x00-\x7f]/g,
+    (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0")
+  );
+}
+
 async function downloadFile(path: string): Promise<Uint8Array> {
   const token = await getAccessToken();
   const resp = await fetch("https://content.dropboxapi.com/2/files/download", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
-      "Dropbox-API-Arg": JSON.stringify({ path }),
+      "Dropbox-API-Arg": dropboxApiArg({ path }),
     },
   });
   if (!resp.ok) {
@@ -651,7 +664,7 @@ async function uploadTextFile(dropboxPath: string, contents: string): Promise<vo
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        "Dropbox-API-Arg": JSON.stringify({
+        "Dropbox-API-Arg": dropboxApiArg({
           path: dropboxPath,
           mode: "overwrite",
           mute: true,
