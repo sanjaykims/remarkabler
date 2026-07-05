@@ -2,13 +2,16 @@ import { describe, it, expect } from "vitest";
 import {
   buildDiaryMarkdown,
   buildDayFiles,
+  buildEntityStubFiles,
   carryForwardDates,
   effectiveDateKeys,
+  entityStubFileName,
   isDatedEntry,
   parseThemes,
   yamlQuoted,
   UNDATED_FILE,
   type DiaryPageRow,
+  type EntityStub,
   type PageEntities,
 } from "@/lib/diaryExport";
 
@@ -402,5 +405,69 @@ describe("yamlQuoted", () => {
 
   it("flattens a newline to a space", () => {
     expect(yamlQuoted("line1\nline2")).toBe('"line1 line2"');
+  });
+});
+
+describe("entityStubFileName", () => {
+  it("files each kind under its folder", () => {
+    expect(entityStubFileName("person", "Jin")).toBe("People/Jin.md");
+    expect(entityStubFileName("place", "Seoul")).toBe("Places/Seoul.md");
+    expect(entityStubFileName("project", "Thesis")).toBe("Projects/Thesis.md");
+  });
+
+  it("replaces path-illegal characters so the file can be written", () => {
+    expect(entityStubFileName("person", "Dr/Kim: MD")).toBe(
+      "People/Dr Kim MD.md"
+    );
+  });
+
+  it("falls back to 'unnamed' when a name reduces to empty", () => {
+    expect(entityStubFileName("person", "///")).toBe("People/unnamed.md");
+  });
+});
+
+describe("buildEntityStubFiles", () => {
+  const stub = (over: Partial<EntityStub>): EntityStub => ({
+    kind: "person",
+    name: "Jin",
+    dates: ["2026-06-19"],
+    undated: false,
+    ...over,
+  });
+
+  it("writes one file per entity with day wikilinks back to the day notes", () => {
+    const files = buildEntityStubFiles({
+      stubs: [stub({ dates: ["2026-06-19", "2026-06-20"] })],
+      exportedAt: "x",
+    });
+    const jin = files.get("People/Jin.md") as string;
+    expect(jin).toContain("type: person");
+    expect(jin).toContain("# Jin");
+    expect(jin).toContain("- [[2026-06-19]]");
+    expect(jin).toContain("- [[2026-06-20]]");
+    expect(jin).toContain("appears on 2 days");
+  });
+
+  it("adds an [[undated]] link and counts it toward mentions", () => {
+    const files = buildEntityStubFiles({
+      stubs: [stub({ dates: ["2026-06-19"], undated: true })],
+      exportedAt: "x",
+    });
+    const jin = files.get("People/Jin.md") as string;
+    expect(jin).toContain("- [[undated]]");
+    expect(jin).toContain("mentions: 2");
+  });
+
+  it("quotes the title so a name with a colon can't corrupt YAML", () => {
+    const files = buildEntityStubFiles({
+      stubs: [stub({ name: "Dr. Kim: MD", dates: ["2026-06-19"] })],
+      exportedAt: "x",
+    });
+    const f = files.get("People/Dr. Kim MD.md") as string;
+    expect(f).toContain('title: "Dr. Kim: MD"');
+  });
+
+  it("returns an empty map for no stubs", () => {
+    expect(buildEntityStubFiles({ stubs: [], exportedAt: "x" }).size).toBe(0);
   });
 });

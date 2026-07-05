@@ -397,3 +397,84 @@ export function buildDayFiles(opts: {
   }
   return files;
 }
+
+// ── Entity stub notes ──────────────────────────────────────────────────────
+// One Markdown note per person/place/project so the [[wikilinks]] in the day
+// files resolve to a real page instead of an "unresolved" graph node. Each
+// stub lists the days that entity appears (as [[YYYY-MM-DD]] links back to the
+// day files); Obsidian's backlinks panel derives the same list live, so even a
+// slightly stale stub stays useful. Filed under People/ Places/ Projects/ —
+// Obsidian resolves wikilinks by basename vault-wide, so the folder is just
+// for tidiness.
+
+export type EntityStub = {
+  kind: "person" | "place" | "project";
+  name: string; // canonical, already sanitized (see lib/diaryExportDb.ts)
+  dates: string[]; // day keys this entity appears on
+  undated: boolean; // also appears on at least one undated page
+};
+
+const ENTITY_STUB_FOLDER: Record<EntityStub["kind"], string> = {
+  person: "People",
+  place: "Places",
+  project: "Projects",
+};
+
+// Turn a (kind, canonical name) into the stub's vault path. The basename MUST
+// equal the wikilink text the day files emit so [[Jin]] resolves here. Callers
+// pass names already run through lib/diaryExportDb.ts:sanitizeEntityName, which
+// strips the same path chars — so the day-file wikilink and this basename are
+// identically normalized and always match. The strip below is an idempotent
+// safety net for any caller that hasn't pre-sanitized.
+export function entityStubFileName(
+  kind: EntityStub["kind"],
+  name: string
+): string {
+  const base =
+    name
+      .replace(/[/\\:*?"<>|]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || "unnamed";
+  return `${ENTITY_STUB_FOLDER[kind]}/${base}.md`;
+}
+
+function renderEntityStub(stub: EntityStub, exportedAt: string): string {
+  const dayCount = stub.dates.length + (stub.undated ? 1 : 0);
+  const lines: string[] = [];
+  lines.push("---");
+  lines.push(`title: ${yamlQuoted(stub.name)}`);
+  lines.push(`type: ${stub.kind}`);
+  lines.push("source: Remarkabler");
+  lines.push(`mentions: ${dayCount}`);
+  lines.push(`exported: ${exportedAt || "unknown"}`);
+  lines.push("---");
+  lines.push("");
+  lines.push(`# ${stub.name}`);
+  lines.push("");
+  lines.push(
+    `_${stub.kind} · appears on ${dayCount} day${dayCount === 1 ? "" : "s"} in your diary._`
+  );
+  lines.push("");
+  for (const d of stub.dates) lines.push(`- [[${d}]]`);
+  if (stub.undated) lines.push(`- [[undated]]`);
+  lines.push("");
+  return lines.join("\n");
+}
+
+/**
+ * Build { filename → Markdown } for the entity stub notes. `stubs` should
+ * already carry canonical, sanitized names (one per real-world entity).
+ */
+export function buildEntityStubFiles(opts: {
+  stubs: EntityStub[];
+  exportedAt: string;
+}): Map<string, string> {
+  const files = new Map<string, string>();
+  for (const stub of opts.stubs) {
+    files.set(
+      entityStubFileName(stub.kind, stub.name),
+      renderEntityStub(stub, opts.exportedAt)
+    );
+  }
+  return files;
+}

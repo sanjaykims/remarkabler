@@ -170,7 +170,14 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   casing per `(kind, name_norm)` — the same `MIN(name) GROUP BY name_norm`
   convention `/mind`'s `getTopEntities` and the `top_entities` chat tool
   already use — so the same real-world entity always links to the same
-  Obsidian graph node regardless of which page's casing produced it.
+  Obsidian graph node regardless of which page's casing produced it. Also
+  emits **entity stub notes** (`buildEntityStubFiles`/`entityStubFileName` +
+  `EntityStub` pure; `renderEntityStubFiles`/`affectedEntityStubFileNames`
+  DB-backed): one `People|Places|Projects/<name>.md` per entity with
+  `[[YYYY-MM-DD]]` backlinks to its days, so the day files' `[[wikilinks]]`
+  resolve to real (clickable) Obsidian pages instead of unresolved nodes.
+  Merged into `maybeExportDiaryToDropbox`'s file map (incremental per
+  notebook, full on a whole-vault sync).
 - `lib/notebookDedup.ts` (pure: `classifyDuplicate`, `buildCloudCoverage`,
   `buildCandidate`) + `lib/notebookDedupDb.ts` (DB-backed
   `findDuplicateCandidates`) — flags old (Dropbox-ingested or manually
