@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-05 (entity merge follow-ups; Codex #108)
+
+Two fixes on the entity-merge feature. (1) The chat entity lookups
+(`related_entities`, `pages_for_entity`) normalized the raw query name but
+didn't resolve it through `entity_aliases` — so after merging 야오팡 → Yaofang,
+asking for "야오팡" returned "not found" even though the alias was recorded.
+Now both fold the query name through `applyEntityAlias` first. (2) The
+Dropbox export overwrites but never deletes, so a merged-away entity's stub
+note (`People/야오팡.md`) survived as an orphaned Obsidian graph node. The
+merge endpoint now deletes the stale alias stub files (new
+`deleteDiaryExportFiles` in `lib/dropbox.ts` + `entityStubRelPathForName` in
+`lib/diaryExportDb.ts`) before refreshing the export. +2 tests (suite 355).
+
 ## 2026-07-05 (merge duplicate entities)
 
 Entity dedup was exact-match on `name_norm`, so one real person written two
