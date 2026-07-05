@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-05 (docs + life-wiki consistency; Codex #112)
+
+Added `ARCHITECTURE.md` — the whole-app structure map (data-flow + layer
+diagrams, annotated tree, lib modules by domain, data model, external
+services) — wired into the `SKILL.md` companion chain. Plus two wiki fixes:
+(1) the freshness hash now digests EXACTLY the excerpts sent to Claude (the
+newest 12, truncated) instead of the full mention set, so a hash change
+always means the profile's actual input changed — no more marking a profile
+"fresh" after regenerating from an unchanged prompt. (2) The post-refresh
+Dropbox push now uploads ONLY the regenerated profile stubs (new
+`onlyEntityStubs` path) instead of re-syncing every day file + stub, so a
+sweep that refreshes a few profiles no longer rewrites the whole vault.
+
 ## 2026-07-05 (life wiki follow-ups; Codex #111)
 
 Two fixes on the wiki. (1) The maintenance-sweep auto-refresh

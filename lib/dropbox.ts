@@ -776,6 +776,9 @@ export async function maybeExportDiaryToDropbox(
     // notebook's affected set but still holds the old text and must be
     // rewritten from the fresh DB state.
     extraDayFiles?: string[];
+    // Upload ONLY these entity-stub files (e.g. after a wiki refresh) —
+    // skips every day file so a profile change doesn't re-sync the vault.
+    onlyEntityStubs?: string[];
   }
 ): Promise<DiaryExportResult> {
   if (!dropboxExportEnabled()) return { ok: false, skipped: "disabled" };
@@ -796,6 +799,8 @@ export async function maybeExportDiaryToDropbox(
     let names: string[];
     if (opts?.onlyNewest) {
       names = newestFileName(files);
+    } else if (opts?.onlyEntityStubs) {
+      names = opts.onlyEntityStubs.filter((n) => files.has(n));
     } else if (opts?.notebookId) {
       const wanted = new Set(affectedDayFileNames(opts.notebookId));
       for (const n of opts.extraDayFiles || []) wanted.add(n);
