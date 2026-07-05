@@ -13,6 +13,7 @@ import {
   type DayMembership,
   type EntityKind,
 } from "./entityGraph";
+import { applyEntityAlias } from "./entityMerge";
 import { isLocationEnabled } from "./location";
 import {
   owntracksRouteContext,
@@ -825,8 +826,10 @@ function pagesForEntity(input: {
   const rawName = String(input.name || "").trim();
   if (!rawName) return { excerpts: [], note: "Missing entity name." };
   // Use the same normalisation the writer side stamps into name_norm
-  // (lib/mind.ts:normaliseEntityName) so casing / extra spaces match.
-  const norm = normaliseEntityName(rawName);
+  // (lib/mind.ts:normaliseEntityName) so casing / extra spaces match, THEN
+  // fold a merged-away spelling to its canonical (entity_aliases) — otherwise
+  // asking for a name the user already merged returns nothing (Codex, #108).
+  const norm = applyEntityAlias(kind, normaliseEntityName(rawName), rawName).norm;
   const limit = Math.min(
     20,
     Math.max(1, Math.floor(Number(input.limit) || 8))
@@ -887,9 +890,14 @@ function relatedEntities(input: {
   }
   const rawName = String(input.name || "").trim();
   if (!rawName) return { related: [], note: "Missing entity name." };
-  // Same normalisation the writer stamps into name_norm (lib/mind.ts) so
-  // casing / spelling variants match — exactly like pages_for_entity.
-  const targetNorm = normaliseEntityName(rawName);
+  // Same normalisation the writer stamps into name_norm (lib/mind.ts), then
+  // fold a merged-away spelling to its canonical (entity_aliases) so a query
+  // for an already-merged name still resolves (Codex, #108).
+  const targetNorm = applyEntityAlias(
+    kind,
+    normaliseEntityName(rawName),
+    rawName
+  ).norm;
   const limit = Math.min(30, Math.max(1, Math.floor(Number(input.limit) || 10)));
   const excludeId = disciplineExcludeIdForChat();
   try {

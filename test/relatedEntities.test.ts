@@ -10,21 +10,26 @@ import path from "path";
 type DbMod = typeof import("@/lib/db");
 type ChatToolsMod = typeof import("@/lib/chatTools");
 type NotesMod = typeof import("@/lib/notes");
+type MergeMod = typeof import("@/lib/entityMerge");
 
 let dbMod: DbMod;
 let chatToolsMod: ChatToolsMod;
 let notesMod: NotesMod;
+let mergeMod: MergeMod;
 
 beforeAll(async () => {
   process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "related-entities-"));
+  process.env.ANTHROPIC_API_KEY = "test-key";
   dbMod = await import("@/lib/db");
   chatToolsMod = await import("@/lib/chatTools");
   notesMod = await import("@/lib/notes");
+  mergeMod = await import("@/lib/entityMerge");
   dbMod.db();
 });
 
 beforeEach(() => {
   dbMod.db().prepare(`DELETE FROM entry_entities`).run();
+  dbMod.db().prepare(`DELETE FROM entity_aliases`).run();
   dbMod.db().prepare(`DELETE FROM pages`).run();
   dbMod.db().prepare(`DELETE FROM notebooks`).run();
   notesMod.setDisciplineEnabled(true);
@@ -173,5 +178,20 @@ describe("related_entities", () => {
     const r = await runTool({ kind: "animal", name: "Kim" });
     expect(r.related).toEqual([]);
     expect(r.note).toMatch(/Bad kind/);
+  });
+
+  it("resolves a merged-away alias to its canonical before lookup (Codex #108)", async () => {
+    nb("nb1", "2026-06-01T00:00:00Z");
+    page("p1", "nb1", 0, "2026-06-19");
+    entity("p1", "person", "야오팡");
+    entity("p1", "person", "Kim");
+    // Merge 야오팡 → Yaofang: the 야오팡 rows are rewritten to yaofang.
+    mergeMod.mergeEntity("person", "야오팡", "yaofang", "Yaofang");
+
+    // Asking by the OLD spelling must still work (it's aliased), and return
+    // the canonical's co-occurrences.
+    const r = await runTool({ kind: "person", name: "야오팡" });
+    expect((r.name || "").toLowerCase()).toBe("yaofang");
+    expect(r.related.map((x) => x.name)).toEqual(["Kim"]);
   });
 });

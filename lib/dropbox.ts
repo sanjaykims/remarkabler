@@ -687,6 +687,63 @@ async function uploadTextFile(dropboxPath: string, contents: string): Promise<vo
   }
 }
 
+// Delete a single path. Uses the RPC endpoint (path travels in the JSON
+// body, not a header, so non-ASCII is fine without escaping). Requires the
+// same files.content.write scope as upload.
+async function deleteFile(dropboxPath: string): Promise<void> {
+  const token = await getAccessToken();
+  const resp = await fetch("https://api.dropboxapi.com/2/files/delete_v2", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path: dropboxPath }),
+  });
+  if (!resp.ok) {
+    const summary = await parseErrorSummary(resp);
+    throw new DropboxApiError(resp.status, summary);
+  }
+}
+
+/**
+ * Delete a set of files (relative to the export folder) from Dropbox — used
+ * to remove entity stub notes whose entity was merged away, so a stale
+ * People/<old-name>.md can't survive as an orphaned Obsidian graph node.
+ * Best-effort and export-gated: a missing file (already gone / never
+ * exported) is not an error. Never throws.
+ */
+export async function deleteDiaryExportFiles(
+  relNames: string[]
+): Promise<{ deleted: number; failed: number; skipped?: string }> {
+  if (!dropboxExportEnabled()) return { deleted: 0, failed: 0, skipped: "disabled" };
+  if (!dropboxConnected()) return { deleted: 0, failed: 0, skipped: "not-connected" };
+  const folder = dropboxExportFolder();
+  let deleted = 0;
+  let failed = 0;
+  for (let i = 0; i < relNames.length; i++) {
+    try {
+      await deleteFile(`${folder}/${relNames[i]}`);
+      deleted++;
+    } catch (e) {
+      // A merged-away stub may never have been exported — not_found is fine.
+      if (
+        e instanceof DropboxApiError &&
+        /not_found|path_lookup|path\/not_found/i.test(e.message)
+      ) {
+        continue;
+      }
+      failed++;
+      console.warn(
+        `[dropbox] delete ${relNames[i]} failed, continuing:`,
+        (e as Error).message
+      );
+    }
+    if (i < relNames.length - 1) await new Promise((r) => setTimeout(r, 100));
+  }
+  return { deleted, failed };
+}
+
 let exportInFlight = false;
 
 export type DiaryExportResult = {

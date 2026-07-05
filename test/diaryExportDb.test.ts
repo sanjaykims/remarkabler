@@ -285,6 +285,20 @@ describe("renderEntityStubFiles", () => {
     expect(ghost).toContain("- [[undated]]");
   });
 
+  it("computes the stub path for a merged-away name so it can be deleted (Codex #108)", () => {
+    // The path must match how the stub was written (People/<sanitized>.md),
+    // including non-ASCII names, so the merge cleanup deletes the right file.
+    expect(exportMod.entityStubRelPathForName("person", "야오팡")).toBe(
+      "People/야오팡.md"
+    );
+    expect(exportMod.entityStubRelPathForName("place", "Suzhou W hotel")).toBe(
+      "Places/Suzhou W hotel.md"
+    );
+    expect(exportMod.entityStubRelPathForName("person", "Dr/Kim")).toBe(
+      "People/Dr Kim.md"
+    );
+  });
+
   it("keeps the day-file wikilink text and the stub basename aligned for a path-char name (Codex #104)", () => {
     addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
     const p0 = addPage("nb1", 0, "entry", "2026-06-19");
