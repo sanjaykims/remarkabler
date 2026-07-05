@@ -420,10 +420,12 @@ const ENTITY_STUB_FOLDER: Record<EntityStub["kind"], string> = {
   project: "Projects",
 };
 
-// Turn a (kind, canonical name) into the stub's vault path. The basename must
-// equal the wikilink text the day files emit (the canonical sanitized name) so
-// [[Jin]] resolves here — we only additionally strip characters that are
-// illegal in file paths, which the common person/place/project name never has.
+// Turn a (kind, canonical name) into the stub's vault path. The basename MUST
+// equal the wikilink text the day files emit so [[Jin]] resolves here. Callers
+// pass names already run through lib/diaryExportDb.ts:sanitizeEntityName, which
+// strips the same path chars — so the day-file wikilink and this basename are
+// identically normalized and always match. The strip below is an idempotent
+// safety net for any caller that hasn't pre-sanitized.
 export function entityStubFileName(
   kind: EntityStub["kind"],
   name: string

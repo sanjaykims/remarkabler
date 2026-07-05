@@ -284,6 +284,23 @@ describe("renderEntityStubFiles", () => {
     const ghost = files.get("People/Ghost.md") as string;
     expect(ghost).toContain("- [[undated]]");
   });
+
+  it("keeps the day-file wikilink text and the stub basename aligned for a path-char name (Codex #104)", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "entry", "2026-06-19");
+    // A name with a slash + colon — both must normalize identically in the
+    // day file's [[wikilink]] and the stub's filename, or Obsidian can't
+    // resolve the link.
+    addEntity(p0, "person", "Dr/Kim: MD", "dr/kim: md");
+
+    const dayFiles = exportMod.renderDiaryDayFiles();
+    const stubFiles = exportMod.renderEntityStubFiles();
+    const day = dayFiles.get("2026-06-19.md") as string;
+    // Wikilink text is the sanitized name...
+    expect(day).toContain("[[Dr Kim MD]]");
+    // ...and the stub's basename matches it exactly, so the link resolves.
+    expect(stubFiles.has("People/Dr Kim MD.md")).toBe(true);
+  });
 });
 
 describe("affectedEntityStubFileNames", () => {
