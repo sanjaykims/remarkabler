@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-07-05 (detect duplicate notebooks)
+
+Old notebooks (Dropbox-ingested or manually uploaded) can cover the same
+diary dates as a notebook later imported/synced from the reMarkable cloud —
+both copies then sit in the DB feeding chat/`/mind`/diary export. Added a
+read-only detector (`lib/notebookDedup.ts` pure classification +
+`lib/notebookDedupDb.ts` one-query DB layer) and a "Possible duplicates"
+section on `/notebooks` (`GET /api/notebooks/duplicates`) so the user can
+review and manually delete redundant old notebooks — never automatic.
+Classifies each old notebook as `full` (every date already covered by a
+cloud notebook) or `partial` (some dates would be lost), reusing the
+existing `effectiveDateKeys` carry-forward helper and the existing
+`remove()` delete pattern. +24 tests (suite 309).
+
 ## 2026-07-05 (diary export — scope canonical entity names to exported pages; Codex #101)
 
 `fetchCanonicalEntityNames` aggregated MIN(name) across ALL of
