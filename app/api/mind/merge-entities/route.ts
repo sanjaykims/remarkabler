@@ -24,7 +24,7 @@ export async function POST() {
     //      not just the ones merged this run — the full export overwrites but
     //      never deletes, so a stale stub (incl. one merged on an earlier
     //      deploy, when result.merged is now 0) survives as an orphaned
-    //      Obsidian node otherwise (Codex, #108/#109).
+    //      Obsidian node otherwise (PR #108/#109).
     //   2. When something actually merged, refresh the export so day-file
     //      wikilinks + the canonical stubs reflect it.
     try {

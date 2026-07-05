@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 // from a canonical APP_BASE_URL env var — NOT from request headers (which a
 // misconfigured proxy could let an attacker influence). In dev we honour
 // forwarded headers so localhost works without ceremony. This is the
-// "fail-closed in production" stance Codex pushed for.
+// "fail-closed in production" stance the review pushed for.
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalBaseUrl = process.env.APP_BASE_URL;
@@ -75,7 +75,7 @@ describe("resolveAppBaseUrl", () => {
     expect(r.ok).toBe(false);
   });
 
-  // Codex's optional cleanup: validate the configured value so a misformed
+  // the review's optional cleanup: validate the configured value so a misformed
   // APP_BASE_URL is caught at startup rather than producing a confusing
   // Dropbox redirect error.
   it("rejects an unparseable APP_BASE_URL", async () => {

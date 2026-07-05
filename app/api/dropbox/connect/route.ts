@@ -27,7 +27,7 @@ const COOKIE_MAX_AGE_SECONDS = 10 * 60;
 // in the environment — we don't fall back to forwarded headers there. In
 // dev we honour forwarded headers for localhost/preview convenience. This
 // makes the OAuth origin a canonical configured value in prod rather than
-// "whatever the proxy said," which is the posture Codex pushed for.
+// "whatever the proxy said," which is the posture the review pushed for.
 export async function GET(req: NextRequest) {
   if (!isAuthenticated()) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });

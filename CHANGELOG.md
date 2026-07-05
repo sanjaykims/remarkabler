@@ -1,6 +1,17 @@
 # Changelog
 
-## 2026-07-05 (docs + life-wiki consistency; Codex #112)
+## 2026-07-05 (strip review-tool attributions from repo text)
+
+Per `AGENTS.md`'s "no model identifiers or internal harness IDs in commits,
+PRs, or code" rule: neutralized the automated-review-tool name that had
+accumulated as inline attributions across the CHANGELOG and code/test
+comments (~50 spots), keeping the GitHub PR numbers as plain references
+(`(PR #NN)`). The one deliberate integration that must name the tool — the
+`.github/workflows/codex-watcher.yml` GitHub Action and its `CLAUDE.md`
+documentation — is intentionally left as-is, since it can't function without
+naming what it responds to.
+
+## 2026-07-05 (docs + life-wiki consistency)
 
 Added `ARCHITECTURE.md` — the whole-app structure map (data-flow + layer
 diagrams, annotated tree, lib modules by domain, data model, external
@@ -13,7 +24,7 @@ Dropbox push now uploads ONLY the regenerated profile stubs (new
 `onlyEntityStubs` path) instead of re-syncing every day file + stub, so a
 sweep that refreshes a few profiles no longer rewrites the whole vault.
 
-## 2026-07-05 (life wiki follow-ups; Codex #111)
+## 2026-07-05 (life wiki follow-ups)
 
 Two fixes on the wiki. (1) The maintenance-sweep auto-refresh
 (`maybeRefreshEntityWiki`) regenerated profiles but never re-exported them —
@@ -41,7 +52,7 @@ once opted in. New `entity_wiki` table; `composeEntityWiki` + pure
 `cleanEntityWiki` in `lib/claude.ts`; export embeds profiles via
 `allEntityWikiRows`. +12 tests (suite 365).
 
-## 2026-07-05 (entity merge: clean up already-merged stubs; Codex #109)
+## 2026-07-05 (entity merge: clean up already-merged stubs)
 
 The stub-deletion in #109 only cleaned up aliases merged in the CURRENT run,
 so a stub for an entity merged on an earlier deploy (its `entry_entities`
@@ -52,7 +63,7 @@ this run's, and runs that cleanup even when nothing new merged. Added an
 `alias_name` column to `entity_aliases` (migration) storing the merged-away
 display spelling so the exact stub path can be reconstructed. +1 test.
 
-## 2026-07-05 (entity merge follow-ups; Codex #108)
+## 2026-07-05 (entity merge follow-ups)
 
 Two fixes on the entity-merge feature. (1) The chat entity lookups
 (`related_entities`, `pages_for_entity`) normalized the raw query name but
@@ -112,7 +123,7 @@ the live app. Added `dropboxApiArg()` which `\uXXXX`-escapes every non-ASCII
 char (the form Dropbox documents) and routed both the upload and download
 content endpoints through it. +4 tests.
 
-## 2026-07-05 (align entity stub filenames with wikilink text; Codex #104)
+## 2026-07-05 (align entity stub filenames with wikilink text)
 
 `sanitizeEntityName` now also collapses path-unsafe chars (`/ \ : * ? " < >`)
 to spaces, so the day-file `[[wikilink]]` text and the entity stub's filename
@@ -160,7 +171,7 @@ cloud notebook) or `partial` (some dates would be lost), reusing the
 existing `effectiveDateKeys` carry-forward helper and the existing
 `remove()` delete pattern. +24 tests (suite 309).
 
-## 2026-07-05 (diary export — scope canonical entity names to exported pages; Codex #101)
+## 2026-07-05 (diary export — scope canonical entity names to exported pages)
 
 `fetchCanonicalEntityNames` aggregated MIN(name) across ALL of
 `entry_entities`, including the excluded `github-discipline` notebook's
@@ -237,12 +248,12 @@ own. `maybeGenerateWeeklyInsight` is gated on the new
 insights" button is unaffected.
 
 
-## 2026-07-03 (reMarkable sync — versioned cursor + Sync now button; Codex #96)
+## 2026-07-03 (reMarkable sync — versioned cursor + Sync now button)
 
 The same-day notebook STILL didn't import after the 24h-grace fix: the last
 clean sweep (under the old gate) had advanced the rootHash cursor, and with
 no new tablet edits the fast-path short-circuited before the new gate ever
-ran — exactly what Codex flagged on #96.
+ran — exactly what the review flagged on #96.
 
 - **The cursor is now versioned**: stored as gate-version + folder
   subscriptions + cloud root, so it self-invalidates when ANY of the three
@@ -265,7 +276,7 @@ active notebook, and one day never reaches the archive. Fails closed on
 missing/garbage timestamps. +4 tests (suite 274).
 
 
-## 2026-07-03 (reMarkable sync — don't fast-retry rate limits; Codex #94)
+## 2026-07-03 (reMarkable sync — don't fast-retry rate limits)
 
 `withNetRetry` no longer treats HTTP 429 as a transient socket hiccup:
 replaying a hundreds-of-requests fan-out one second into a rate limit
@@ -296,9 +307,9 @@ ruling out happy-eyeballs.
   updates on failed attempts too instead of freezing at the last success.
 
 
-## 2026-07-03 (reMarkable sync — defer profile folds until the notebook settles; Codex #92)
+## 2026-07-03 (reMarkable sync — defer profile folds until the notebook settles)
 
-Codex on PR #92: with the 5-minute quiesce, a premature pass can OCR a
+The review on PR #92: with the 5-minute quiesce, a premature pass can OCR a
 half-written page. The PAGE text self-corrects (the settled re-OCR replaces
 it wholesale) but `updateSelfModel` is append-only — a garbled half-sentence
 folded into the long-lived profile can't be unfolded. Now ingest stays fast
@@ -318,7 +329,7 @@ still-growing page simply re-OCRs once it settles), and the tablet's own
 upload delay after the cover closes adds a natural buffer.
 
 
-## 2026-07-03 (reMarkable sync — edits fully propagate; Codex #90 fix)
+## 2026-07-03 (reMarkable sync — edits fully propagate)
 
 Editing an already-synced page on the tablet now propagates EVERYWHERE, not
 just to the page text. A stale-cache sweep of every derived store found two
@@ -335,7 +346,7 @@ per-day markdown, notebook.pdf — were already invalidated):
   notebook's affected set and kept the old text. `maybeExportDiaryToDropbox`
   accepts `extraDayFiles`; the sync passes the notebook's pre-update day
   files.
-- **Codex (PR #90, P1): legacy folder-setting conversion is persisted.** The
+- **Review (PR #90, P1): legacy folder-setting conversion is persisted.** The
   array→map upgrade computed a fresh enabledAt on every read without saving
   it — a perpetually moving cutoff that would have skipped every new
   notebook forever. It now writes the converted map back on first read.
@@ -365,7 +376,7 @@ window shortened 30 → 15 minutes so a finished entry reaches chat sooner —
 page diffing makes a premature pass cost pennies.
 
 
-## 2026-07-03 (reMarkable sync — Codex review fixes on PR #87)
+## 2026-07-03 (reMarkable sync — review fixes on PR #87)
 
 - **Enabling a folder invalidates the root cursor.** The rootHash fast-path
   compares against the CLOUD's change counter, which knows nothing about
@@ -535,7 +546,7 @@ present only in the import). Fail-soft messages for every miss case (not
 imported, still transcribing, errored, no dated entries, no overlapping
 dates).
 
-## 2026-07-03 (reMarkable import — Codex review fixes on PR #78)
+## 2026-07-03 (reMarkable import — review fixes on PR #78)
 
 - **Failed imports are recoverable.** The dedupe no longer treats a same-hash
   notebook whose OCR ended in `status='error'` as "unchanged" — that made a
@@ -755,9 +766,9 @@ text copy stays current with no manual "Download" tap.
 
 Ingest remains strictly read-only; only this opt-in export ever writes.
 
-## 2026-07-02 (Diary export follow-ups from Codex review of #69)
+## 2026-07-02 (Diary export follow-ups from review of #69)
 
-Two P2 correctness fixes Codex caught on the diary-export PR:
+Two P2 correctness fixes the review caught on the diary-export PR:
 
 1. **Exclude the discipline notebook.** The GitHub "discipline" sync
    stores repo text files as `pages` under `notebook_id = DISCIPLINE_ID`
@@ -995,7 +1006,7 @@ rule, the `db.ts`, `claude.ts`, `chatTools.ts`, and
 
 ## 2026-06-20 (Tier-1: chat-memory backfill + entity write correctness)
 
-Codex + Claude code-review found five correctness issues across the
+Code review found five correctness issues across the
 chat-memory layer and the new entities layer. All five are regressions
 of explicit "do not regress" rules or silent-data-loss class — fixing
 together in one PR.
@@ -1069,7 +1080,7 @@ test never exercised the path that matters — fixed to match.
 - `test/chunkedBackfill.test.ts` (7) — multi-chunk creation for long
   conversations, single-chunk for short, `onlyArchived: true` skips
   active messages, empty conversation is a no-op, 100K-char regression
-  test (Codex specifically asked for this), empty id list, denormalised
+  test (specifically asked for this), empty id list, denormalised
   stats.
 - `test/entityWriteAtomicity.test.ts` (3) — empty entities preserves
   old set, non-empty replaces, mid-write throw rolls back entirely.
@@ -1309,7 +1320,7 @@ maintenance sweep catches any batch the inline trigger missed.
   PII.
 - **Non-authoritative recall framing.** Recalled block tells Claude
   to prefer the current message if it conflicts with a memory.
-- **Smaller transcript default** (16K chars vs 32K) per Codex's
+- **Smaller transcript default** (16K chars vs 32K) per the review's
   cost caution. Raise via `MAX_TRANSCRIPT_CHARS` if extraction
   misses context.
 
@@ -1345,9 +1356,9 @@ groups every orphan archived message by `conversation_id` into one
 batch each and stamps the messages. The maintenance sweep then
 extracts memories on the next tick. Idempotent — re-runs are no-ops.
 
-## 2026-06-16 (Codex PR #37 final-pass nits)
+## 2026-06-16 (PR #37 final-pass nits)
 
-Codex's final verification pass declared the Dropbox loop closed and
+the review's final verification pass declared the Dropbox loop closed and
 flagged three NITs (explicitly "not urgent"). Shipped all three while
 the context is fresh — they're each cheap and exactly the kind of
 hygiene that compounds if left.
@@ -1371,9 +1382,9 @@ hygiene that compounds if left.
 ### Tests (+2, total 77)
 - `dropboxBaseUrl.test.ts` — query-string and URL-fragment rejection.
 
-## 2026-06-16 (Codex verification follow-up)
+## 2026-06-16 (verification follow-up)
 
-Codex verified PR #36 and flagged three real issues plus one optional
+The review verified PR #36 and flagged three real issues plus one optional
 cleanup. All are fixed here.
 
 ### Fixed
@@ -1406,10 +1417,10 @@ cleanup. All are fixed here.
   via the `||` falsey coercion; the UI showed "never polled" for an
   empty folder. Fixed to use an explicit `Number.isFinite()` check.
 
-### Codex's other optional cleanups (not applicable)
+### Review's other optional cleanups (not applicable)
 - "Add seconds/random suffix to backup filenames" — the real
   `lib/backup.ts` already uses UTC seconds via `stampNow()`; the file
-  I sent Codex for review during paste-the-diff was mis-pasted from
+  I sent for review during paste-the-diff was mis-pasted from
   memory and didn't match the merged commit. No change needed.
 - "Confirm root-level backup tarballs are intentional" — same issue;
   the real code already uploads under `backups/{stamp}.tar.gz`, not
@@ -1426,9 +1437,9 @@ cleanup. All are fixed here.
 - `dropboxStatus.test.ts` (new) — locks the `lastSeenFileCount = 0`
   preservation property.
 
-## 2026-06-16 (Dropbox review-pass fixes from Codex)
+## 2026-06-16 (Dropbox review-pass fixes from the review)
 
-Codex independently reviewed PR #35. None of its findings were security-
+An independent review checked PR #35. None of its findings were security-
 critical, but several were operationally/cost-critical and worth shipping
 together as a tightening pass. This PR addresses each one in the order it
 was prioritized.
@@ -1539,10 +1550,10 @@ that to one tap on the device.
 `token_access_type=offline` (the only thing that gives us a refresh token at
 all; if a future edit drops it the watcher would die every 4 hours).
 
-## 2026-06-15 (Codex review follow-through)
+## 2026-06-15 (review follow-through)
 
 ### Fixed
-- **`/mind` discipline-filter inconsistency (the bug Codex found).**
+- **`/mind` discipline-filter inconsistency (the bug the review found).**
   `getEmbeddingMap` did not exclude the discipline notebook while
   `generateAxisLabels` did — so the 3D map could include synced GitHub
   content the axis labels were never derived from. The map now applies the

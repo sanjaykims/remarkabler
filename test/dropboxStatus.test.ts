@@ -3,7 +3,7 @@ import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
-// Codex's verification pass flagged that the previous
+// the review's verification pass flagged that the previous
 //   `seenCount ? Number(seenCount) || null : null`
 // expression collapsed a stored "0" to null via the `||` falsey coercion —
 // so an empty Dropbox folder appeared as "never polled" in the UI rather

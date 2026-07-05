@@ -3,7 +3,7 @@ import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
-// Integration test for the bug Codex found: getEmbeddingMap did NOT exclude
+// Integration test for the bug the review found: getEmbeddingMap did NOT exclude
 // the discipline notebook, while generateAxisLabels did — so the 3D map could
 // be shaped by synced GitHub content the axis labels never saw. This test
 // inserts a normal notebook + a discipline notebook into a throwaway SQLite

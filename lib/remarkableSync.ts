@@ -39,7 +39,7 @@ import { affectedDayFileNames } from "./diaryExportDb";
 // get rendered + OCR'd (a daily diary session = 1-2 pages, not the whole
 // notebook). Ordering (`page_index`) is re-synced for the WHOLE notebook from
 // the cloud page order on every sync — inserts/reorders shift positions
-// without changing content hashes (Codex, PR #76). Pages deleted on the
+// without changing content hashes (PR #76). Pages deleted on the
 // tablet are KEPT (the diary is an append-only record) and ordered after the
 // live pages.
 //
@@ -86,7 +86,7 @@ export function shouldAutoImport(
 // The PROFILE fold, however, waits longer. Page text is self-correcting
 // (a later re-OCR replaces it wholesale) but updateSelfModel is append-only —
 // a half-written sentence folded into the long-lived profile can't be
-// unfolded by the corrected pass (Codex, PR #92). Pages ingested before this
+// unfolded by the corrected pass (PR #92). Pages ingested before this
 // settling period are marked profile_fold_pending and folded by a later
 // sweep once the notebook has been quiet this long.
 const PROFILE_SETTLE_MS = 30 * 60 * 1000;
@@ -130,7 +130,7 @@ function syncFolderMap(): Record<string, string> {
       // Legacy array shape (pre-timestamp) — treat as enabled "now" so no
       // archive backfill fires, and PERSIST the conversion immediately: a
       // freshly computed timestamp on every read would be a perpetually
-      // moving cutoff that skips every new notebook forever (Codex, PR #90).
+      // moving cutoff that skips every new notebook forever (PR #90).
       const now = new Date().toISOString();
       const map = Object.fromEntries(
         v.filter((x): x is string => typeof x === "string").map((p) => [p, now])
@@ -165,7 +165,7 @@ export function setSyncFolder(parent: string, enabled: boolean): string[] {
   // Invalidate the account cursor: the fast-path compares against the CLOUD's
   // change counter, which knows nothing about LOCAL subscription changes — a
   // freshly enabled folder must get a full list/diff pass even though nothing
-  // changed on the reMarkable side (Codex, PR #87).
+  // changed on the reMarkable side (PR #87).
   clearSetting(ROOT_HASH_KEY);
   return keys;
 }
@@ -298,7 +298,7 @@ async function foldPendingProfile(notebookId: string): Promise<boolean> {
 }
 
 // The stored cursor = gate version + folder subscriptions + cloud root, so
-// it self-invalidates when ANY of the three changes (Codex, PR #96).
+// it self-invalidates when ANY of the three changes (PR #96).
 function cursorValue(
   root: string,
   folderMap: Record<string, string>
@@ -390,7 +390,7 @@ export async function maybeSyncRemarkable(
           // Create its row and ingest through the SAME per-page incremental
           // engine — NOT the whole-PDF import path, whose rows lack per-page
           // hashes and would force a full re-OCR restructure on the first
-          // later edit (Codex, PR #87). The import lock keeps a concurrent
+          // later edit (PR #87). The import lock keeps a concurrent
           // user Import tap from creating a duplicate row for the same doc.
           if (!lockRemarkableImport(nb.id)) {
             allSettled = false;
@@ -427,7 +427,7 @@ export async function maybeSyncRemarkable(
         }
         // "Unchanged" requires a hash match AND a healthy row: an errored
         // notebook carries the same stamped hash but no usable transcription
-        // — skipping it would strand it forever (Codex, PR #87). Let it fall
+        // — skipping it would strand it forever (PR #87). Let it fall
         // through to a fresh incremental pass. Before skipping, settle any
         // deferred profile folds (pages ingested while the notebook was
         // still being written; the fold waited for it to go quiet).
@@ -785,7 +785,7 @@ async function incrementalSyncNotebook(
     // processNotebook; skipped when no profile exists yet — the seed sweep
     // owns first creation). Deferred when the notebook isn't settled: the
     // upsert marked those pages profile_fold_pending and a later sweep folds
-    // their final text instead (Codex, PR #92 — the fold is append-only, so
+    // their final text instead (PR #92 — the fold is append-only, so
     // half-written OCR must never reach it).
     if (settledNow) {
       try {

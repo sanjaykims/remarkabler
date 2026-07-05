@@ -3,7 +3,7 @@ import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
-// Codex's NIT 2 + NIT 3 — lock the chat tool's response shape and the
+// the review's NIT 2 + NIT 3 — lock the chat tool's response shape and the
 // "place when cached" branch of currentLocation(). These properties are
 // what Claude actually reads to decide between "you're at <place> now"
 // and "no location data" — anything that quietly breaks them silently
