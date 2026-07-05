@@ -6,10 +6,14 @@ Per `AGENTS.md`'s "no model identifiers or internal harness IDs in commits,
 PRs, or code" rule: neutralized the automated-review-tool name that had
 accumulated as inline attributions across the CHANGELOG and code/test
 comments (~50 spots), keeping the GitHub PR numbers as plain references
-(`(PR #NN)`). The one deliberate integration that must name the tool — the
-`.github/workflows/codex-watcher.yml` GitHub Action and its `CLAUDE.md`
-documentation — is intentionally left as-is, since it can't function without
-naming what it responds to.
+(`(PR #NN)`). Extended to the review-forwarding GitHub Action too — renamed
+`codex-watcher.yml` → `review-watcher.yml` and de-branded its name/comments.
+The ONLY remaining reference is the bot's fixed GitHub username
+`chatgpt-codex-connector` in that workflow's actor filter (+ the `CLAUDE.md`
+line documenting it): it's an external service's public login the trigger
+must match verbatim, not our identifier, so it stays. Vendored third-party
+material under `docs/reference/**` is left untouched (it's upstream source,
+not our text).
 
 ## 2026-07-05 (docs + life-wiki consistency)
 
@@ -210,7 +214,7 @@ hooks) is installed live under `.claude/skills/`; `obsidian-mind` and
 `obsidian-second-brain` — full agent frameworks with hooks/subagents/
 auto-rewrite behavior that would conflict with Remarkabler being the sole
 writer of the diary files — are vendored as inert reference material under
-`docs/reference/` (their `.claude`/`.codex`/`.gemini`/`.shardmind` hook
+`docs/reference/` (their per-tool `.claude`/`.gemini`/`.shardmind`/… hook
 directories stripped; decorative binary assets dropped). See
 `docs/reference/README.md` for the full rationale.
 

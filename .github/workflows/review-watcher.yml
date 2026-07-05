@@ -1,12 +1,12 @@
-name: Codex watcher
+name: Review watcher
 
-# When Codex (chatgpt-codex-connector) posts a review, review comment, or
-# issue comment on this repo, this workflow pings @claude in the same
-# thread so the Claude Code GitHub App spawns a session to investigate
-# and respond.
+# When the automated code-review bot (GitHub actor `chatgpt-codex-connector`)
+# posts a review, review comment, or issue comment on this repo, this
+# workflow pings @claude in the same thread so the Claude Code GitHub App
+# spawns a session to investigate and respond.
 #
-# Without this, Codex's findings sit unanswered until someone reads them
-# by hand. With it, every Codex comment automatically reaches Claude.
+# Without this, the reviewer's findings sit unanswered until someone reads
+# them by hand. With it, every review comment automatically reaches Claude.
 #
 # Setup requirements:
 # - The Claude Code GitHub App must be installed on this repo (it
@@ -30,9 +30,10 @@ permissions:
 
 jobs:
   forward-to-claude:
-    # Filter: only fire on events authored by Codex's connector. Without
-    # this the workflow would loop on every comment in the repo, including
-    # its own @claude pings.
+    # Filter: only fire on events authored by the review bot's GitHub actor
+    # (`chatgpt-codex-connector` is its fixed username, set by the external
+    # service — required verbatim here). Without this the workflow would loop
+    # on every comment in the repo, including its own @claude pings.
     if: github.event.sender.login == 'chatgpt-codex-connector'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -46,7 +47,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REPO: ${{ github.repository }}
         run: |
-          # Truncate Codex's comment so a 20k-char essay doesn't bloat
+          # Truncate the review comment so a 20k-char essay doesn't bloat
           # the downstream @claude ping. The URL is always the source of
           # truth — Claude can fetch the full body from there.
           TRUNCATED=$(printf '%s' "${COMMENT_BODY:-(no body — see linked thread)}" | head -c 3500)
@@ -54,7 +55,7 @@ jobs:
           # Build the comment body in a tmp file to avoid shell-quoting
           # hell with multiline content that may include backticks etc.
           {
-            echo "@claude — Codex (chatgpt-codex-connector) posted a ${EVENT_NAME} here:"
+            echo "@claude — the automated code-review bot posted a ${EVENT_NAME} here:"
             echo ""
             echo "${COMMENT_URL}"
             echo ""
@@ -65,8 +66,8 @@ jobs:
             echo "---"
             echo ""
             echo "Please investigate the finding. If it's clearly actionable and correct, fix it on a branch and open a PR — but do **not** merge without the user's confirmation. If the finding is ambiguous or needs design input, post a clarifying question on the thread instead of acting."
-          } > /tmp/codex-handoff.md
+          } > /tmp/review-handoff.md
 
           gh issue comment "${PR_NUMBER}" \
             --repo "${REPO}" \
-            --body-file /tmp/codex-handoff.md
+            --body-file /tmp/review-handoff.md

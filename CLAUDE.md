@@ -257,12 +257,12 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 
 ## GitHub Actions
 
-- `.github/workflows/codex-watcher.yml` — when Codex
-  (`chatgpt-codex-connector`) posts a review comment, review, or issue
-  comment, the workflow auto-pings `@claude` on the same thread so the
-  Claude Code GitHub App spawns a session to investigate. No new secrets;
-  uses the default `GITHUB_TOKEN`. Disable by deleting the file or
-  commenting out the `on:` triggers.
+- `.github/workflows/review-watcher.yml` — when the automated code-review
+  bot (GitHub actor `chatgpt-codex-connector`, its fixed external username)
+  posts a review comment, review, or issue comment, the workflow auto-pings
+  `@claude` on the same thread so the Claude Code GitHub App spawns a session
+  to investigate. No new secrets; uses the default `GITHUB_TOKEN`. Disable by
+  deleting the file or commenting out the `on:` triggers.
 
 ## Tests
 
