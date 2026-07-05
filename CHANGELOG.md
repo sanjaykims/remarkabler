@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-07-05 (editable Dropbox diary export folder)
+
+The diary auto-export destination was hardcoded to the
+`dropbox_export_folder` setting with no UI to change it. Added an editable
+"Destination folder" field on the Memory page (Dropbox export section) that
+POSTs `{ folder }` to `/api/dropbox/export`, normalized by the new
+`setDropboxExportFolder()` in `lib/dropbox.ts` (leading slash, no trailing
+slash, empty → default). This lets the export point at an Obsidian sync
+tool's app folder (e.g. `/Apps/remotely-save/Diary`) so plugins like
+Remotely Save — which only read their own scoped Dropbox app folder, not
+arbitrary paths — can actually see the day files. Saving with export
+already on runs one export immediately so the files land in the new place.
+
+## 2026-07-05 (detect duplicate notebooks)
+
+Old notebooks (Dropbox-ingested or manually uploaded) can cover the same
+diary dates as a notebook later imported/synced from the reMarkable cloud —
+both copies then sit in the DB feeding chat/`/mind`/diary export. Added a
+read-only detector (`lib/notebookDedup.ts` pure classification +
+`lib/notebookDedupDb.ts` one-query DB layer) and a "Possible duplicates"
+section on `/notebooks` (`GET /api/notebooks/duplicates`) so the user can
+review and manually delete redundant old notebooks — never automatic.
+Classifies each old notebook as `full` (every date already covered by a
+cloud notebook) or `partial` (some dates would be lost), reusing the
+existing `effectiveDateKeys` carry-forward helper and the existing
+`remove()` delete pattern. +24 tests (suite 309).
+
 ## 2026-07-05 (diary export — scope canonical entity names to exported pages; Codex #101)
 
 `fetchCanonicalEntityNames` aggregated MIN(name) across ALL of

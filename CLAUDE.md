@@ -171,6 +171,13 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   convention `/mind`'s `getTopEntities` and the `top_entities` chat tool
   already use — so the same real-world entity always links to the same
   Obsidian graph node regardless of which page's casing produced it.
+- `lib/notebookDedup.ts` (pure: `classifyDuplicate`, `buildCloudCoverage`,
+  `buildCandidate`) + `lib/notebookDedupDb.ts` (DB-backed
+  `findDuplicateCandidates`) — flags old (Dropbox-ingested or manually
+  uploaded) notebooks whose diary dates are already covered by a
+  reMarkable-cloud-imported notebook, via `app/api/notebooks/duplicates`
+  and a "Possible duplicates" section on `/notebooks`. Manual delete only,
+  reusing `app/notebooks/page.tsx`'s existing `remove()` pattern.
 - `lib/remarkableCloud.ts` — reMarkable-cloud secondary source (rmapi-js,
   unofficial protocol). Phase 0: `pairRemarkable`/`listRemarkableNotebooks`/
   `remarkableStatus`/`unpairRemarkable` + pure `filterNotebooks`. Phase 1b:
