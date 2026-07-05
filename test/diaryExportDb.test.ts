@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import path from "path";
 
 // DB-backed integration test for renderDiaryMarkdown (lib/diaryExportDb).
-// Pins the two behaviours Codex flagged on PR #69 at the query level:
+// Pins the two behaviours the review flagged on PR #69 at the query level:
 //   1. the github-discipline notebook is excluded from the diary export
 //   2. entry-date carry-forward keeps multi-page sessions together
 // plus entity/theme rendering through the real SQL path.
@@ -305,7 +305,7 @@ describe("renderEntityStubFiles", () => {
     expect(kim.indexOf("mentor")).toBeLessThan(kim.indexOf("## Mentions"));
   });
 
-  it("computes the stub path for a merged-away name so it can be deleted (Codex #108)", () => {
+  it("computes the stub path for a merged-away name so it can be deleted (PR #108)", () => {
     // The path must match how the stub was written (People/<sanitized>.md),
     // including non-ASCII names, so the merge cleanup deletes the right file.
     expect(exportMod.entityStubRelPathForName("person", "야오팡")).toBe(
@@ -319,7 +319,7 @@ describe("renderEntityStubFiles", () => {
     );
   });
 
-  it("keeps the day-file wikilink text and the stub basename aligned for a path-char name (Codex #104)", () => {
+  it("keeps the day-file wikilink text and the stub basename aligned for a path-char name (PR #104)", () => {
     addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
     const p0 = addPage("nb1", 0, "entry", "2026-06-19");
     // A name with a slash + colon — both must normalize identically in the

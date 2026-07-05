@@ -41,7 +41,7 @@ describe("classifyDropboxError", () => {
     expect(classifyDropboxError(409)).toBe("unknown");
   });
 
-  // Codex (verification pass) correctly pointed out that bare 400/404
+  // the review (verification pass) correctly pointed out that bare 400/404
   // shouldn't be treated as file-local without evidence. Only a recognised
   // Dropbox path-style .error_summary flips them back to file-local. A
   // bare 400 might just as easily be a malformed app-level request, which

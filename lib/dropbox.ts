@@ -179,7 +179,7 @@ export function classifyDropboxError(
     }
     return "unknown";
   }
-  // 400 / 404 used to map to "file-local" by default. Codex correctly
+  // 400 / 404 used to map to "file-local" by default. The review correctly
   // pointed out the asymmetry: we only have evidence something is
   // file-local when Dropbox's .error_summary says so. A bare 400 / 404
   // could be a malformed app-level request (systemic) just as easily as
@@ -272,7 +272,7 @@ export type DropboxStatus = {
   lastAttemptAt: string | null;
   lastError: string | null;
   ingestedCount: number;
-  // Operational visibility added after Codex's review. Sanitised — never
+  // Operational visibility added after the review's review. Sanitised — never
   // contains raw provider response bodies. lastSkipped surfaces files the
   // size/format guards rejected. lastRevokeWarning surfaces a Dropbox-side
   // revoke failure on disconnect (local state is always cleared regardless).
@@ -948,7 +948,7 @@ export async function maybeIngestDropbox(): Promise<{
     // listFolder throws DropboxApiError on any failure — auth, rate-limit,
     // transient, anything. That throw propagates to the outer catch where it
     // records dropbox_last_error and engages backoff. That's the fix to the
-    // "401 mid-poll looked like a green success" bug Codex caught.
+    // "401 mid-poll looked like a green success" bug the review caught.
     const files = await listFolder(folder);
     setSetting("dropbox_last_seen_file_count", String(files.length));
     if (files.length > FOLDER_SIZE_WARN) {
@@ -1022,7 +1022,7 @@ export async function maybeIngestDropbox(): Promise<{
         // The only errors we silently continue past are file-local ones
         // (per-file 404, malformed path, etc). Auth/rate-limit/transient
         // errors propagate to the outer catch so the failure is visible AND
-        // engages backoff — that's the core of Codex's "systemic failure
+        // engages backoff — that's the core of the review's "systemic failure
         // masquerading as success" fix.
         if (e instanceof DropboxApiError && !isPollLevelError(e.kind)) {
           noteSkip(f.name, e.message);

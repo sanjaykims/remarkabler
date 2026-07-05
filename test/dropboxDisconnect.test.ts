@@ -3,7 +3,7 @@ import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
-// Disconnect's core property — explicitly insisted on by Codex — is that
+// Disconnect's core property — explicitly insisted on by the review — is that
 // LOCAL STATE IS ALWAYS CLEARED, regardless of whether the Dropbox revoke
 // call succeeded. This is the user's hard escape hatch: even if Dropbox is
 // down or the cached token is invalid, the user must be able to stop this
@@ -12,7 +12,7 @@ import path from "path";
 // `fetch` is mocked so this test never touches the real Dropbox API even
 // if a future refactor changes the order in which the token-refresh path
 // short-circuits. The original test only avoided the network by accident
-// (getAccessToken throws before revoke is attempted), which Codex flagged
+// (getAccessToken throws before revoke is attempted), which the review flagged
 // as a future-fragility risk.
 
 type DbMod = typeof import("@/lib/db");

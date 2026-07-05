@@ -57,7 +57,7 @@ export default function LockScreen() {
   //      awaits this promise (losing activation, same as a live fetch
   //      would). But we use the SAME promise, never fire a parallel
   //      one, so the server's single fc_challenge cookie never gets
-  //      overwritten by a stale response (the race Codex caught on PR
+  //      overwritten by a stale response (the race the review caught on PR
   //      #64).
   //
   // The challenge cookie has a 5-minute TTL; the prefetched challenge
@@ -188,7 +188,7 @@ export default function LockScreen() {
       // challenge B, and if its response landed before our
       // login-verify, the server would check the (still-correct)
       // signed assertion for A against cookie B and reject a valid
-      // unlock. (Codex caught this on PR #66.) The cache gets re-primed
+      // unlock. (caught this on PR #66.) The cache gets re-primed
       // by completeUnlock's catch block on failure; on success the
       // location.reload() refreshes everything.
       const credPromise = startAuthentication({ optionsJSON: value });
@@ -200,7 +200,7 @@ export default function LockScreen() {
     // promise (or fire one) and await it. Activation may be lost here
     // on iOS, but there's no race — exactly one login-options request
     // is ever in play, so the fc_challenge cookie stays consistent with
-    // the assertion we sign (Codex's PR #64 race fix preserved).
+    // the assertion we sign (the review's PR #64 race fix preserved).
     const promise =
       cachedAuthOptionsPromise.current ??
       (post({

@@ -38,7 +38,7 @@ function mentions(
   // ALL mentioning pages, newest first — not capped. The freshness hash is
   // computed over this full set so an edit to any mentioning page (even an
   // old one outside the newest window) flips it; the EXCERPT_PAGES cap is
-  // applied later, only to what's sent to Claude (Codex, #111).
+  // applied later, only to what's sent to Claude (PR #111).
   return db()
     .prepare(
       `SELECT p.id AS page_id, NULLIF(p.entry_date, 'none') AS date, p.ocr_text AS text
@@ -58,7 +58,7 @@ function mentions(
 
 // Digest of the EXACT excerpts sent to Claude (date + truncated text), so
 // the stored hash and the generated profile always reflect the same input;
-// a hash change always means the profile input actually changed (Codex #112).
+// a hash change always means the profile input actually changed (PR #112).
 function excerptHash(excerpts: EntityWikiExcerpt[]): string {
   const h = createHash("sha256");
   for (const e of excerpts) h.update(`${e.date ?? ""}\u0000${e.text}\u0001`);
@@ -201,10 +201,10 @@ export async function maybeRefreshEntityWiki(): Promise<void> {
     const res = await refreshEntityWiki({ limit: 8 });
     // The ingest export already ran (with the OLD profile bodies) before this
     // sweep regenerated them, so push the refreshed profiles to Dropbox now —
-    // otherwise new summaries stay in SQLite until a manual export (Codex
+    // otherwise new summaries stay in SQLite until a manual export (the review
     // #111). Upload ONLY the regenerated stub files, not the whole vault: a
     // full re-sync would rewrite every day file + stub and hog the write
-    // quota / in-flight guard just to push a few profiles (Codex #112).
+    // quota / in-flight guard just to push a few profiles (PR #112).
     if (res.entities.length > 0) {
       const [{ maybeExportDiaryToDropbox }, { entityStubRelPathForName }] =
         await Promise.all([import("./dropbox"), import("./diaryExportDb")]);

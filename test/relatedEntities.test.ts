@@ -180,7 +180,7 @@ describe("related_entities", () => {
     expect(r.note).toMatch(/Bad kind/);
   });
 
-  it("resolves a merged-away alias to its canonical before lookup (Codex #108)", async () => {
+  it("resolves a merged-away alias to its canonical before lookup (PR #108)", async () => {
     nb("nb1", "2026-06-01T00:00:00Z");
     page("p1", "nb1", 0, "2026-06-19");
     entity("p1", "person", "야오팡");

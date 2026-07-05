@@ -121,7 +121,7 @@ async function importRemarkableNotebookInner(
   // "Unchanged" only counts when the prior import actually SUCCEEDED. A row
   // whose OCR errored has the same cloud hash but no usable transcription —
   // treating it as unchanged would make it permanently unrecoverable from the
-  // UI (Codex, PR #78). Let error rows fall through to the replace path.
+  // UI (PR #78). Let error rows fall through to the replace path.
   // `force` skips the shortcut entirely: after a renderer upgrade the cloud
   // hash is unchanged but a re-render produces a better PDF.
   if (

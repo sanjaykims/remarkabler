@@ -122,7 +122,7 @@ select,
  * (`input`/`textarea`, specificity 0,0,1), so without it this rule is
  * silently overridden by any input that carries `text-sm` — which the
  * chat composer and the memory profile textarea both did before this
- * commit. (Thanks to Codex review on PR #62 for catching exactly that.)
+ * commit. (Thanks to the review on PR #62 for catching exactly that.)
  * Per-input className changes belt-and-suspenders this; the global
  * rule remains as a safety net for any input added later. iOS auto-
  * zoom on focus is a hard accessibility constraint, not a stylistic

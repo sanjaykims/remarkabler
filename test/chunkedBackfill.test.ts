@@ -143,7 +143,7 @@ describe("chunkedBackfillForConversation — chunks long conversations", () => {
   });
 
   it("100K chars of archived chat produces many small batches, not one giant one", () => {
-    // Specifically requested by Codex: "Add a DB-backed test proving 100K
+    // Specifically requested by the review: "Add a DB-backed test proving 100K
     // chars of orphan archived chat creates multiple batches on
     // startup/migration, not one."
     const chunk = "y".repeat(1000);

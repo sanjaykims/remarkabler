@@ -145,7 +145,7 @@ describe("mergeEntity", () => {
     expect(norms("person")).toEqual(["kim"]);
   });
 
-  it("records the alias display name so its stub can be found later (Codex #109)", () => {
+  it("records the alias display name so its stub can be found later (PR #109)", () => {
     nb("nb1");
     page("p1", "nb1", 0);
     entity("p1", "person", "야오팡");

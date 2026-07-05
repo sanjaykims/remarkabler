@@ -5,7 +5,7 @@ import path from "path";
 
 // End-to-end-ish: drive the schema + Clear-batch creation + Option B history
 // filter. These are the invariants that broke if the implementation skewed
-// from the plan — and the ones Codex explicitly asked for as guardrails.
+// from the plan — and the ones the review explicitly asked for as guardrails.
 
 type DbMod = typeof import("@/lib/db");
 

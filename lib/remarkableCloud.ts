@@ -174,7 +174,7 @@ function causeCodes(e: unknown): string {
 // Is this a socket/DNS/TLS-level hiccup (worth an immediate retry) rather
 // than an HTTP-status or logic error? Deliberately NOT 429: replaying a
 // hundreds-of-requests fan-out one second after a rate limit prolongs the
-// limit (Codex, PR #94) — a 429 falls through to the sweep's 10-minute
+// limit (PR #94) — a 429 falls through to the sweep's 10-minute
 // backoff instead.
 function isTransientNetworkError(e: unknown): boolean {
   const err = e as { status?: number; message?: string };
@@ -410,7 +410,7 @@ export async function downloadNotebook(
     // parsed, its verdict stands even if it yielded zero pages: an empty or
     // all-deleted order, or active ids matching no `.rm` (blank pages), must
     // NOT dredge up stale/deleted `.rm` blobs still shipping in the ZIP
-    // (Codex, PR #78) — report "no drawn pages" instead.
+    // (PR #78) — report "no drawn pages" instead.
     if (pages.length === 0 && !contentParsed && allRm.length > 0) {
       const sorted = allRm.slice().sort((a, b) => a.name.localeCompare(b.name));
       for (const f of sorted) {
