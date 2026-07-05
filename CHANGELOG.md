@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-05 (life wiki follow-ups; Codex #111)
+
+Two fixes on the wiki. (1) The maintenance-sweep auto-refresh
+(`maybeRefreshEntityWiki`) regenerated profiles but never re-exported them —
+the ingest export had already written the old bodies — so updated summaries
+stayed in SQLite until a manual export. It now fires
+`maybeExportDiaryToDropbox` when it generates anything. (2) The freshness
+`source_hash` was computed from the same newest-12 pages sent to Claude, so
+an edit to an older (13th+) mentioning page wouldn't flip it and the profile
+was wrongly skipped. Now `mentions()` returns the full uncapped set, the hash
+covers all of it, and the 12-page cap is applied only to the excerpts sent to
+Claude.
+
 ## 2026-07-05 (life wiki — Claude-written entity profiles)
 
 Each Obsidian entity note was a bare list of dates. Added a self-updating
