@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-05 (merge duplicate entities)
+
+Entity dedup was exact-match on `name_norm`, so one real person written two
+ways (a Korean name + its romanization, "야오팡" / "Yaofang") became two graph
+nodes and two chat entities. Added a Claude-driven merge: the new "Merge
+duplicate names" button on `/mind` (→ `POST /api/mind/merge-entities`) has
+Claude find same-real-entity spellings per kind (conservatively) and folds
+each group into one canonical name. New `entity_aliases` table +
+`lib/entityMerge.ts`: `mergeEntity` rewrites the `entry_entities` rows in
+place (every reader keys on `name_norm`, so no read-path changes), records
+the alias, and collapses chains; `applyEntityAlias` folds the same spelling
+on FUTURE ingests so a merge sticks. Claude call + pure
+`parseEntityDuplicates` (validates every returned name against the input, no
+invented merges) in `lib/claude.ts`. +13 tests (suite 353).
+
 ## 2026-07-05 (chat: related_entities graph tool)
 
 The chat could already read the user's people/places/projects (`top_entities`,

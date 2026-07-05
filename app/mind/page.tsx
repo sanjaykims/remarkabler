@@ -199,6 +199,41 @@ export default function MindPage() {
     }
   }
 
+  const [merging, setMerging] = useState(false);
+  async function mergeDuplicates() {
+    if (
+      !confirm(
+        "Ask Claude to find and merge duplicate names (e.g. 야오팡 = Yaofang) across your people, places, and projects? It merges only clear duplicates and remembers them for future entries. Costs a few cents. Continue?"
+      )
+    ) {
+      return;
+    }
+    setMerging(true);
+    setAnalyzeMsg(null);
+    try {
+      const r = await fetch("/api/mind/merge-entities", { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed");
+      if (!d.merged) {
+        setAnalyzeMsg("No duplicate names found — nothing to merge.");
+      } else {
+        const detail = (d.groups || [])
+          .map(
+            (g: { canonical: string; aliases: string[] }) =>
+              `${g.aliases.join(", ")} → ${g.canonical}`
+          )
+          .slice(0, 12)
+          .join(" · ");
+        setAnalyzeMsg(`Merged ${d.merged} duplicate name(s): ${detail}`);
+      }
+      await load();
+    } catch (e) {
+      setAnalyzeMsg((e as Error).message || "Merge failed.");
+    } finally {
+      setMerging(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header className="space-y-1">
@@ -253,6 +288,14 @@ export default function MindPage() {
             className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
           >
             {reanalyzing ? "Re-analysing…" : "Re-analyse in English"}
+          </button>
+          <button
+            disabled={merging || analyzing}
+            onClick={mergeDuplicates}
+            title="Claude finds duplicate spellings of the same person/place/project (e.g. a Korean name and its romanization) and merges them into one name everywhere — graph, chat, and this page. Remembers each merge for future entries."
+            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+          >
+            {merging ? "Merging…" : "Merge duplicate names"}
           </button>
         </div>
         {labelDebug && (labelDebug.labels || labelDebug.raw || labelDebug.error) && (
