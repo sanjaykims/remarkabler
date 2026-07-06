@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-06 (manual merge: resolve canonical through aliases + a "make canonical" override; Codex #120)
+
+Fixed a bug in the manual merge: if the canonical name the user typed was
+itself already merged away in an earlier run, folding variants straight into
+it rewrote rows to a dead alias and resurrected the duplicate. Now the typed
+canonical is resolved through the alias table first, so variants fold into the
+REAL canonical by default. Added a "make this the canonical name" override
+(default on in the form) that promotes the typed spelling to THE canonical and
+folds the existing canonical + its whole alias cluster into it — so the user
+can force which spelling wins (e.g. 야오팡 vs Yaofang). +2 tests (suite 376).
+
 ## 2026-07-05 (manual entity merge)
 
 Added a "Merge specific names" form on `/mind` for folding an explicit list

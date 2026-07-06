@@ -46,7 +46,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   const body = (await req.json().catch(() => null)) as
-    | { manual?: { kind?: string; canonical?: string; variants?: unknown } }
+    | {
+        manual?: {
+          kind?: string;
+          canonical?: string;
+          variants?: unknown;
+          makeCanonical?: unknown;
+        };
+      }
     | null;
 
   try {
@@ -62,7 +69,9 @@ export async function POST(req: NextRequest) {
       const variants = Array.isArray(body.manual.variants)
         ? body.manual.variants.filter((v): v is string => typeof v === "string")
         : [];
-      const result = mergeEntitiesManually(kind, canonical, variants);
+      const result = mergeEntitiesManually(kind, canonical, variants, {
+        makeCanonical: body.manual.makeCanonical === true,
+      });
       await postMergeDropbox(result.merged);
       return NextResponse.json(result);
     }

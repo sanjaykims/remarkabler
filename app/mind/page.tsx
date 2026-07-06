@@ -243,6 +243,7 @@ export default function MindPage() {
   );
   const [manualCanonical, setManualCanonical] = useState("");
   const [manualVariants, setManualVariants] = useState("");
+  const [manualMakeCanonical, setManualMakeCanonical] = useState(true);
   const [manualBusy, setManualBusy] = useState(false);
   async function mergeManual() {
     const canonical = manualCanonical.trim();
@@ -268,7 +269,12 @@ export default function MindPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          manual: { kind: manualKind, canonical, variants },
+          manual: {
+            kind: manualKind,
+            canonical,
+            variants,
+            makeCanonical: manualMakeCanonical,
+          },
         }),
       });
       const d = await r.json();
@@ -437,6 +443,19 @@ export default function MindPage() {
               spellCheck={false}
               className="w-full rounded border border-stone-300 dark:border-stone-700 bg-transparent px-2 py-1 text-xs"
             />
+            <label className="flex items-start gap-2 text-[11px] opacity-70">
+              <input
+                type="checkbox"
+                checked={manualMakeCanonical}
+                onChange={(e) => setManualMakeCanonical(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Make the canonical name above the winning spelling — even if it
+                was already merged into another name. Uncheck to fold into
+                whatever is already the canonical instead.
+              </span>
+            </label>
             <button
               onClick={mergeManual}
               disabled={manualBusy}

@@ -124,17 +124,55 @@ export type MergeReportGroup = {
 // name, a cross-script pair, a self-reference). Records an alias for EVERY
 // variant even if it isn't currently an extracted entity, so a future ingest
 // of that spelling auto-folds too. Returns how many variants were applied.
+//
+// The chosen canonical is resolved through the alias table first (Codex #120):
+// if the user typed a name that was already merged AWAY in an earlier run,
+// folding variants straight into it would rewrite rows to a dead alias and
+// resurrect a duplicate. So by default the variants fold into that name's REAL
+// canonical. `opts.makeCanonical` flips it instead: the typed name is promoted
+// to THE canonical and the existing canonical (with its whole alias cluster)
+// is folded into it — the "I want THIS spelling to win" override.
 export function mergeEntitiesManually(
   kind: Kind,
   canonicalName: string,
-  variantNames: string[]
+  variantNames: string[],
+  opts?: { makeCanonical?: boolean }
 ): { merged: number; rewritten: number; canonical: string; applied: string[] } {
-  const canonical = (canonicalName || "").trim();
-  const canonicalNorm = normaliseEntityName(canonical);
-  if (!canonicalNorm) {
-    return { merged: 0, rewritten: 0, canonical, applied: [] };
+  const typedDisplay = (canonicalName || "").trim();
+  const typedNorm = normaliseEntityName(typedDisplay);
+  if (!typedNorm) {
+    return { merged: 0, rewritten: 0, canonical: typedDisplay, applied: [] };
   }
+
   let rewritten = 0;
+  const resolved = applyEntityAlias(kind, typedNorm, typedDisplay);
+  const typedIsAlias = resolved.norm !== typedNorm;
+
+  // Decide the effective canonical (norm + display) the variants fold into.
+  let canonicalNorm = typedNorm;
+  let canonical = typedDisplay;
+  if (typedIsAlias && !opts?.makeCanonical) {
+    // Safe default: fold into the existing canonical, never into an alias.
+    canonicalNorm = resolved.norm;
+    canonical = resolved.name;
+  } else if (typedIsAlias && opts?.makeCanonical) {
+    // Promote the typed name: fold the existing canonical (E) INTO it.
+    // mergeEntity's chain-repoint pulls E's whole alias cluster along, so one
+    // call re-homes everything; then drop the typed name's own (now stale,
+    // self-referential) alias row so it stands as the canonical.
+    try {
+      rewritten += mergeEntity(kind, resolved.norm, resolved.name, typedNorm, typedDisplay);
+      db()
+        .prepare(`DELETE FROM entity_aliases WHERE kind = ? AND alias_norm = ?`)
+        .run(kind, typedNorm);
+    } catch (e) {
+      console.warn(
+        `[entityMerge] recanonicalize ${resolved.name}→${typedDisplay} failed:`,
+        (e as Error).message
+      );
+    }
+  }
+
   const applied: string[] = [];
   const seen = new Set<string>([canonicalNorm]);
   for (const raw of variantNames) {

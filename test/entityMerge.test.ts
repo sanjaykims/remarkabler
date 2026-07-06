@@ -166,6 +166,44 @@ describe("mergeEntity", () => {
     expect(mergeMod.applyEntityAlias("person", "미오팡", "미오팡").norm).toBe("야오팡");
   });
 
+  it("folds into the REAL canonical when the typed name is already an alias (Codex #120)", () => {
+    nb("nb1");
+    page("p1", "nb1", 0);
+    page("p2", "nb1", 1);
+    page("p3", "nb1", 2);
+    entity("p1", "person", "야오팡");
+    entity("p2", "person", "Yaofang");
+    entity("p3", "person", "마오핑");
+    // Earlier run made Yaofang the canonical (야오팡 → yaofang).
+    mergeMod.mergeEntity("person", "야오팡", "야오팡", "yaofang", "Yaofang");
+
+    // Manually merging 마오핑 → 야오팡 (default, no override) must NOT resurrect
+    // 야오팡 — it folds into the real canonical, yaofang.
+    const res = mergeMod.mergeEntitiesManually("person", "야오팡", ["마오핑"]);
+    expect(res.canonical).toBe("Yaofang");
+    expect(norms("person")).toEqual(["yaofang"]);
+    expect(mergeMod.applyEntityAlias("person", "마오핑", "마오핑").norm).toBe("yaofang");
+  });
+
+  it("promotes the typed name to canonical when makeCanonical is set", () => {
+    nb("nb1");
+    page("p1", "nb1", 0);
+    page("p2", "nb1", 1);
+    entity("p1", "person", "야오팡");
+    entity("p2", "person", "Yaofang");
+    mergeMod.mergeEntity("person", "야오팡", "야오팡", "yaofang", "Yaofang");
+
+    // Override: make 야오팡 the winning spelling.
+    const res = mergeMod.mergeEntitiesManually("person", "야오팡", [], {
+      makeCanonical: true,
+    });
+    expect(res.canonical).toBe("야오팡");
+    expect(norms("person")).toEqual(["야오팡"]);
+    // Yaofang is now an alias of 야오팡; 야오팡 itself is canonical.
+    expect(mergeMod.applyEntityAlias("person", "yaofang", "Yaofang").norm).toBe("야오팡");
+    expect(mergeMod.applyEntityAlias("person", "야오팡", "야오팡").norm).toBe("야오팡");
+  });
+
   it("records the alias display name so its stub can be found later (PR #109)", () => {
     nb("nb1");
     page("p1", "nb1", 0);
