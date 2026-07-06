@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-06 (edit transcription — correct OCR errors in the app)
+
+Added an "Edit text" affordance on each transcribed page in `/notebooks`
+(textarea + Save), backed by `PATCH /api/notebooks/[id]/pages` ({ pageId,
+text }). It updates the stored `ocr_text`, drops the page's cached
+`entry_analysis` so themes/mood/summary/entities re-derive on the next sweep,
+and re-exports the affected day file so the fix reaches Obsidian/Dropbox. Raw
+text (page view, day file, chat's date/keyword lookups) reflects the fix
+immediately. For OCR slips like 정중→절충 that the model occasionally makes.
+
 ## 2026-07-06 (codebase-review batch: attachment-cleanup race + doc/naming/a11y)
 
 Addresses a full-codebase review. (P1) The orphan chat-attachment cleanup
