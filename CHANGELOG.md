@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-06 (codebase-review batch: attachment-cleanup race + doc/naming/a11y)
+
+Addresses a full-codebase review. (P1) The orphan chat-attachment cleanup
+deleted ANY unreferenced file, but the chat route writes the file before
+inserting its row (with runMaintenanceSweep running between), so a
+just-uploaded attachment could be reaped before its row landed. Pass 2 now
+skips files newer than a 30-minute grace window, and the misleading invariant
+comment is corrected (+3 tests). (P2 docs) `SKILL.md` chat default corrected
+to `claude-sonnet-5` and the maintenance-sweep list gains `maybeSyncRemarkable`
++ `maybeRefreshEntityWiki`; `AGENTS.md` drops the stale hard-coded test count.
+(P3) `remarkableSync.ts:quiesced()` renamed to `isWithinQuiesceWindow` (it
+returns true when too-fresh, not settled); nav active links now set
+`aria-current="page"`. Deferred: per-session inactivity timeout (marginal for
+a single-user app). Suite 379.
+
 ## 2026-07-06 (manual merge: enable standalone canonical promotion; Codex #121)
 
 Two fixes so the "make this the canonical name" override works on its own.

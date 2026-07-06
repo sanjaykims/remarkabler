@@ -5,6 +5,13 @@ import { parseSqliteUtc } from "./format";
 
 const ATTACHMENT_DIR = path.join(DATA_DIR, "chat-attachments");
 const DAY_MS = 24 * 60 * 60 * 1000;
+// The chat route writes the attachment file BEFORE inserting its
+// chat_attachments row (the row needs the message id, created later in the
+// same request, after the Claude call), and runMaintenanceSweep() runs
+// mid-request between the two. So the unreferenced-file pass must NOT delete a
+// file that's newer than this window, or it could remove a just-uploaded
+// attachment before its row lands and leave a broken link in chat history.
+const ATTACHMENT_GRACE_MS = 30 * 60 * 1000;
 
 let cleaningUpAttachments = false;
 
@@ -18,9 +25,10 @@ let cleaningUpAttachments = false;
  *      all. These can show up after a partial restore from backup, or if a
  *      previous deploy crashed between writing the file and inserting the row.
  *
- * Idempotent and safe to run alongside live writes — a brand-new attachment
- * is referenced by its row before the file is even written, so the
- * unreferenced-file sweep can't race against a fresh upload.
+ * Idempotent and safe to run alongside live writes. The chat route writes an
+ * attachment file before its row exists (the row is inserted later in the same
+ * request), so the unreferenced-file pass skips any file newer than
+ * ATTACHMENT_GRACE_MS to avoid deleting a just-uploaded attachment mid-request.
  *
  * Returns counts so a future status surface can show what was freed.
  */
@@ -68,12 +76,16 @@ export function cleanupOrphanChatAttachments(): {
           }>
         ).map((r) => r.path)
       );
+      const now = Date.now();
       for (const name of fs.readdirSync(ATTACHMENT_DIR)) {
         if (referenced.has(name)) continue;
         const fullPath = path.join(ATTACHMENT_DIR, name);
         try {
           const stat = fs.statSync(fullPath);
           if (!stat.isFile()) continue;
+          // Don't delete a file whose row may still be in flight (written this
+          // request, row not yet inserted). Only reap genuinely stale orphans.
+          if (now - stat.mtimeMs < ATTACHMENT_GRACE_MS) continue;
           bytesFreed += stat.size;
           fs.unlinkSync(fullPath);
           strayFiles++;
