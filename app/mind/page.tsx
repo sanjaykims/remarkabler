@@ -251,15 +251,21 @@ export default function MindPage() {
       .split(/[\n,]/)
       .map((s) => s.trim())
       .filter(Boolean);
-    if (!canonical || variants.length === 0) {
-      setAnalyzeMsg("Enter a canonical name and at least one variant to merge.");
+    if (!canonical) {
+      setAnalyzeMsg("Enter a canonical name.");
       return;
     }
-    if (
-      !confirm(
-        `Merge ${variants.join(", ")} → "${canonical}" (as ${manualKind})? This rewrites them everywhere and remembers it for future entries.`
-      )
-    ) {
+    // With no variants, this is only meaningful as a canonical-only promotion
+    // (checkbox on) — otherwise there's nothing to do.
+    if (variants.length === 0 && !manualMakeCanonical) {
+      setAnalyzeMsg("Add at least one variant to merge, or check “make canonical”.");
+      return;
+    }
+    const confirmMsg =
+      variants.length === 0
+        ? `Promote "${canonical}" to the canonical ${manualKind} name (folding in whatever it was previously merged into)?`
+        : `Merge ${variants.join(", ")} → "${canonical}" (as ${manualKind})? This rewrites them everywhere and remembers it for future entries.`;
+    if (!confirm(confirmMsg)) {
       return;
     }
     setManualBusy(true);
