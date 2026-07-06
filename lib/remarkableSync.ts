@@ -245,7 +245,11 @@ type PageRow = {
   remarkable_page_hash: string | null;
 };
 
-function quiesced(nb: RemarkableNotebook, now: number): boolean {
+// True when the notebook was edited too recently to sync yet — i.e. it's
+// still inside the quiesce window (probably mid-writing), so the caller should
+// wait and retry on a later sweep. (Named for what it returns: "within the
+// quiesce window", not "has quiesced/settled".)
+function isWithinQuiesceWindow(nb: RemarkableNotebook, now: number): boolean {
   if (!nb.lastModified) return false;
   const t = Date.parse(nb.lastModified);
   return Number.isFinite(t) && now - t < QUIESCE_MS;
@@ -372,7 +376,7 @@ export async function maybeSyncRemarkable(
         allSettled = false;
         break;
       }
-      if (quiesced(nb, Date.now())) {
+      if (isWithinQuiesceWindow(nb, Date.now())) {
         // Probably mid-writing — retry on a later sweep.
         allSettled = false;
         continue;

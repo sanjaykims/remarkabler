@@ -156,13 +156,15 @@ them all.
 9. `maybeRunWeeklyBackup()` — once a week, tar.gz `/data` to GitHub.
 10. `maybeIngestDropbox()` — Dropbox watcher (own interval gate).
 11. `maybeCompressChatSessions()` — chat-memory extractor for any pending batches.
+12. `maybeSyncRemarkable()` — reMarkable-cloud zero-tap sync (own interval/backoff/quiesce gates).
+13. `maybeRefreshEntityWiki()` — regenerate stale entity "life-wiki" profiles (once opted in; a few/tick).
 
 ## Models
 
 | Role | Setting key | Env var | Default |
 |---|---|---|---|
 | OCR / profile build/update / insights / daily summary / book | `model_main` | `CLAUDE_MODEL` | `claude-opus-4-7` |
-| Chat | `model_chat` | `CHAT_MODEL` | `claude-sonnet-4-6` |
+| Chat | `model_chat` | `CHAT_MODEL` | `claude-sonnet-5` |
 | Chat fallback (when chat model overloads mid-turn) | `model_chat_fallback` | `CHAT_FALLBACK_MODEL` | `claude-sonnet-4-6` |
 | Chat memory extraction | `model_chat_memory` | `CHAT_MEMORY_MODEL` | inherits `model_chat` (Sonnet) |
 | Per-entry analysis for `/mind` | n/a | n/a (`CHAT_MODEL`) | Sonnet |

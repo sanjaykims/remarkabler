@@ -24,6 +24,7 @@ export default function Nav() {
     <nav className="mx-auto max-w-5xl px-4 py-3 flex items-center gap-x-3 text-xs whitespace-nowrap overflow-x-auto">
       <Link
         href="/"
+        aria-current={pathname === "/" ? "page" : undefined}
         className={cn(
           "text-base font-semibold tracking-tight border-b-2 mr-1",
           pathname === "/"
@@ -39,6 +40,7 @@ export default function Nav() {
           <Link
             key={link.href}
             href={link.href}
+            aria-current={active ? "page" : undefined}
             className={cn(
               "border-b-2 pb-0.5 transition-opacity",
               active

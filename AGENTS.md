@@ -91,9 +91,8 @@ and an accumulating record of "insights" about them. It's a long-horizon
 ## 3. How to work here
 
 - **Build must pass:** `npm run build`. `npm test` runs Vitest over
-  `test/*.test.ts` — 154 tests as of writing (pure-logic units +
-  DB-backed integration tests with throwaway SQLite). Lint:
-  `npm run lint`. The build, the tests, and a careful read are the
+  `test/*.test.ts` — pure-logic units + DB-backed integration tests with
+  throwaway SQLite. Lint: `npm run lint`. The build, the tests, and a careful read are the
   safety net for changes that don't need real Claude/Voyage credentials.
 - **Branch / commit / PR discipline (required):**
   - Never commit straight to `main`. Branch first (`claude/<short-topic>`).
