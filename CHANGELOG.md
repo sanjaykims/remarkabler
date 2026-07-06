@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-06 (manual merge: enable standalone canonical promotion; Codex #121)
+
+Two fixes so the "make this the canonical name" override works on its own.
+(1) The `/mind` form rejected an empty variant list before checking the box,
+so a canonical-only promotion (just promote an already-merged spelling back to
+canonical, no new variants) couldn't be submitted — now allowed when the
+checkbox is on. (2) A canonical-only promotion rewrites entity rows but
+returns `merged: 0` (that counts variant aliases), so the export refresh —
+gated on `merged > 0` — was skipped, leaving Obsidian stale; the route now
+refreshes when `rewritten > 0` too. +test assertions (suite 376).
+
 ## 2026-07-06 (manual merge: resolve canonical through aliases + a "make canonical" override; Codex #120)
 
 Fixed a bug in the manual merge: if the canonical name the user typed was

@@ -193,11 +193,15 @@ describe("mergeEntity", () => {
     entity("p2", "person", "Yaofang");
     mergeMod.mergeEntity("person", "야오팡", "야오팡", "yaofang", "Yaofang");
 
-    // Override: make 야오팡 the winning spelling.
+    // Override: make 야오팡 the winning spelling — with NO new variants (a
+    // canonical-only promotion). It rewrites rows but merges 0 variants, so
+    // the route must key its export refresh on rewritten, not merged (#121).
     const res = mergeMod.mergeEntitiesManually("person", "야오팡", [], {
       makeCanonical: true,
     });
     expect(res.canonical).toBe("야오팡");
+    expect(res.merged).toBe(0); // no variant aliases applied
+    expect(res.rewritten).toBeGreaterThan(0); // but rows WERE rewritten
     expect(norms("person")).toEqual(["야오팡"]);
     // Yaofang is now an alias of 야오팡; 야오팡 itself is canonical.
     expect(mergeMod.applyEntityAlias("person", "yaofang", "Yaofang").norm).toBe("야오팡");

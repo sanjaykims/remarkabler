@@ -17,8 +17,8 @@ type Kind = (typeof KINDS)[number];
 // After a merge, clean up Dropbox/Obsidian: DELETE the stub notes of EVERY
 // recorded alias (the full export overwrites but never deletes, so a stale
 // stub survives as an orphaned graph node), then refresh the export when
-// something actually merged. Best-effort — never fails the merge.
-async function postMergeDropbox(mergedCount: number) {
+// anything actually changed. Best-effort — never fails the merge.
+async function postMergeDropbox(changed: boolean) {
   try {
     const dropbox = (await import("@/lib/dropbox")) as {
       deleteDiaryExportFiles: (n: string[]) => Promise<unknown>;
@@ -28,7 +28,7 @@ async function postMergeDropbox(mergedCount: number) {
       entityStubRelPathForName(a.kind, a.alias_name)
     );
     if (stalePaths.length > 0) await dropbox.deleteDiaryExportFiles(stalePaths);
-    if (mergedCount > 0) void dropbox.maybeExportDiaryToDropbox();
+    if (changed) void dropbox.maybeExportDiaryToDropbox();
   } catch {
     // best-effort
   }
@@ -72,12 +72,14 @@ export async function POST(req: NextRequest) {
       const result = mergeEntitiesManually(kind, canonical, variants, {
         makeCanonical: body.manual.makeCanonical === true,
       });
-      await postMergeDropbox(result.merged);
+      // A canonical-only promotion rewrites rows but merges 0 variants, so
+      // refresh when EITHER changed (rewritten>0), not just merged (Codex #121).
+      await postMergeDropbox(result.merged > 0 || result.rewritten > 0);
       return NextResponse.json(result);
     }
 
     const result = await dedupeAllEntities();
-    await postMergeDropbox(result.merged);
+    await postMergeDropbox(result.merged > 0);
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json(
