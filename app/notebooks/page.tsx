@@ -44,7 +44,53 @@ export default function NotebooksPage() {
   // is expanded so the list view stays cheap.
   const [pagesById, setPagesById] = useState<Record<string, Page[] | "loading" | "error">>({});
   const [duplicates, setDuplicates] = useState<DuplicateCandidate[]>([]);
+  const [editingPageId, setEditingPageId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  function startEdit(p: Page) {
+    setEditingPageId(p.id);
+    setEditText(p.ocr_text || "");
+  }
+
+  // Correct a page's transcription (an OCR fix). Optimistically updates the
+  // shown text on success; the server also re-analyses the page and
+  // re-exports the day file to Obsidian in the background.
+  async function savePageEdit(notebookId: string, pageId: string) {
+    if (savingEdit) return;
+    setSavingEdit(true);
+    setError(null);
+    try {
+      const r = await fetch(
+        `/api/notebooks/${encodeURIComponent(notebookId)}/pages`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pageId, text: editText }),
+        }
+      );
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.error || `Save failed (${r.status})`);
+      }
+      setPagesById((s) => {
+        const cur = s[notebookId];
+        if (!Array.isArray(cur)) return s;
+        return {
+          ...s,
+          [notebookId]: cur.map((pg) =>
+            pg.id === pageId ? { ...pg, ocr_text: editText } : pg
+          ),
+        };
+      });
+      setEditingPageId(null);
+    } catch (e) {
+      setError((e as Error).message || "Couldn't save the correction.");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   async function loadPages(id: string) {
     if (pagesById[id] && pagesById[id] !== "error") return; // already loaded / loading
@@ -361,9 +407,44 @@ export default function NotebooksPage() {
                                 ? ` · ${p.entry_date}`
                                 : ""}
                             </p>
-                            <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                              {p.ocr_text || "(blank)"}
-                            </pre>
+                            {editingPageId === p.id ? (
+                              <div className="space-y-2">
+                                <textarea
+                                  value={editText}
+                                  onChange={(e) => setEditText(e.target.value)}
+                                  spellCheck={false}
+                                  className="w-full min-h-[10rem] rounded border border-stone-300 dark:border-stone-700 bg-transparent p-2 text-sm leading-relaxed whitespace-pre-wrap"
+                                />
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => savePageEdit(n.id, p.id)}
+                                    disabled={savingEdit}
+                                    className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1 text-xs disabled:opacity-50"
+                                  >
+                                    {savingEdit ? "Saving…" : "Save correction"}
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingPageId(null)}
+                                    disabled={savingEdit}
+                                    className="text-xs opacity-60 hover:opacity-100"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                                  {p.ocr_text || "(blank)"}
+                                </pre>
+                                <button
+                                  onClick={() => startEdit(p)}
+                                  className="text-[11px] opacity-50 hover:opacity-100 underline"
+                                >
+                                  Edit text
+                                </button>
+                              </>
+                            )}
                           </div>
                         ))}
                     </div>
