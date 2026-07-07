@@ -182,6 +182,9 @@ export function deleteNotebook(id: string): void {
  *   - reparse `entry_date` ONLY if the corrected text has a real header (never
  *     clobber a carried-forward date on a continuation page),
  *   - invalidate the affected day's cached `daily_summaries` row.
+ * If the correction CHANGES a dated header (day A → day B), it also re-runs
+ * the notebook carry-forward parse so continuation pages that inherited day A
+ * follow to day B, and invalidates BOTH days' summaries (review #125).
  * Returns false if the page isn't in that notebook. Caller re-exports to
  * Dropbox/Obsidian afterward.
  */
@@ -190,16 +193,22 @@ export function correctPageText(
   pageId: string,
   text: string
 ): boolean {
-  const nb = db()
+  const cur = db()
     .prepare(
-      `SELECT n.name AS notebook_name
+      `SELECT n.name AS notebook_name, p.entry_date AS entry_date
          FROM pages p JOIN notebooks n ON n.id = p.notebook_id
         WHERE p.id = ? AND p.notebook_id = ?`
     )
-    .get(pageId, notebookId) as { notebook_name: string } | undefined;
-  if (!nb) return false;
+    .get(pageId, notebookId) as
+    | { notebook_name: string; entry_date: string | null }
+    | undefined;
+  if (!cur) return false;
 
+  const oldDate = cur.entry_date;
   const headerDate = extractEntryDate(text); // null when there's no header
+  // The effective date for this page after the edit: the new header if any,
+  // else whatever it already carried.
+  const effectiveDate = headerDate ?? (oldDate && oldDate !== "none" ? oldDate : null);
 
   db().transaction(() => {
     db()
@@ -215,26 +224,28 @@ export function correctPageText(
           `INSERT INTO pages_fts(ocr_text, notebook_name, page_id, notebook_id)
            VALUES(?, ?, ?, ?)`
         )
-        .run(text, nb.notebook_name, pageId, notebookId);
+        .run(text, cur.notebook_name, pageId, notebookId);
     }
 
     db().prepare(`DELETE FROM entry_analysis WHERE page_id = ?`).run(pageId);
 
-    let effectiveDate: string | null = null;
     if (headerDate) {
       db().prepare(`UPDATE pages SET entry_date = ? WHERE id = ?`).run(headerDate, pageId);
-      effectiveDate = headerDate;
-    } else {
-      const row = db()
-        .prepare(`SELECT entry_date FROM pages WHERE id = ?`)
-        .get(pageId) as { entry_date: string | null } | undefined;
-      effectiveDate =
-        row?.entry_date && row.entry_date !== "none" ? row.entry_date : null;
     }
     if (effectiveDate) {
       db().prepare(`DELETE FROM daily_summaries WHERE date = ?`).run(effectiveDate);
     }
   })();
+
+  // A dated header actually changed → continuation pages carrying the OLD date
+  // must follow the new one. Re-run the (idempotent) carry-forward parse and
+  // invalidate the OLD day's cached summary too (it lost those pages).
+  if (headerDate && headerDate !== oldDate) {
+    reparseAllEntryDates();
+    if (oldDate && oldDate !== "none") {
+      db().prepare(`DELETE FROM daily_summaries WHERE date = ?`).run(oldDate);
+    }
+  }
 
   return true;
 }
