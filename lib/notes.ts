@@ -171,6 +171,75 @@ export function deleteNotebook(id: string): void {
 }
 
 /**
+ * Apply a manual OCR correction to one page, mirroring the derived state the
+ * ingest/re-OCR path sets so the fix propagates everywhere — not just
+ * `ocr_text`. In ONE transaction:
+ *   - update `ocr_text` and clear `embedding` (→ the backfill re-embeds),
+ *   - rebuild the page's `pages_fts` row (it's a manual FTS table, so search
+ *     would otherwise keep matching the old word),
+ *   - drop `entry_analysis` so the sweep re-derives themes/mood/summary and
+ *     replaces `entry_entities` (kept until then, so the graph doesn't blink),
+ *   - reparse `entry_date` ONLY if the corrected text has a real header (never
+ *     clobber a carried-forward date on a continuation page),
+ *   - invalidate the affected day's cached `daily_summaries` row.
+ * Returns false if the page isn't in that notebook. Caller re-exports to
+ * Dropbox/Obsidian afterward.
+ */
+export function correctPageText(
+  notebookId: string,
+  pageId: string,
+  text: string
+): boolean {
+  const nb = db()
+    .prepare(
+      `SELECT n.name AS notebook_name
+         FROM pages p JOIN notebooks n ON n.id = p.notebook_id
+        WHERE p.id = ? AND p.notebook_id = ?`
+    )
+    .get(pageId, notebookId) as { notebook_name: string } | undefined;
+  if (!nb) return false;
+
+  const headerDate = extractEntryDate(text); // null when there's no header
+
+  db().transaction(() => {
+    db()
+      .prepare(
+        `UPDATE pages SET ocr_text = ?, embedding = NULL WHERE id = ? AND notebook_id = ?`
+      )
+      .run(text, pageId, notebookId);
+
+    db().prepare(`DELETE FROM pages_fts WHERE page_id = ?`).run(pageId);
+    if (text) {
+      db()
+        .prepare(
+          `INSERT INTO pages_fts(ocr_text, notebook_name, page_id, notebook_id)
+           VALUES(?, ?, ?, ?)`
+        )
+        .run(text, nb.notebook_name, pageId, notebookId);
+    }
+
+    db().prepare(`DELETE FROM entry_analysis WHERE page_id = ?`).run(pageId);
+
+    let effectiveDate: string | null = null;
+    if (headerDate) {
+      db().prepare(`UPDATE pages SET entry_date = ? WHERE id = ?`).run(headerDate, pageId);
+      effectiveDate = headerDate;
+    } else {
+      const row = db()
+        .prepare(`SELECT entry_date FROM pages WHERE id = ?`)
+        .get(pageId) as { entry_date: string | null } | undefined;
+      effectiveDate =
+        row?.entry_date && row.entry_date !== "none" ? row.entry_date : null;
+    }
+    if (effectiveDate) {
+      db().prepare(`DELETE FROM daily_summaries WHERE date = ?`).run(effectiveDate);
+    }
+  })();
+
+  return true;
+}
+
+/**
  * Concatenate every OCR'd page into one big context block. Used by the
  * insights generator, the book composer, and the memory rebuild — places
  * that want the full corpus, not just retrieved excerpts. Chat does NOT

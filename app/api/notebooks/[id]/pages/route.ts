@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
+import { correctPageText } from "@/lib/notes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,21 +68,13 @@ export async function PATCH(
   }
   const text = body.text;
 
-  const res = db()
-    .prepare(`UPDATE pages SET ocr_text = ? WHERE id = ? AND notebook_id = ?`)
-    .run(text, pageId, id);
-  if (res.changes === 0) {
+  // Update ocr_text AND all the derived indexes (FTS, embedding, analysis,
+  // entry_date, daily summary) in one transaction so search / semantic recall
+  // / date tools / entities / day files all reflect the correction, not just
+  // the raw text (review #124).
+  const ok = correctPageText(id, pageId, text);
+  if (!ok) {
     return NextResponse.json({ error: "Page not found" }, { status: 404 });
-  }
-
-  // Re-derive themes/mood/summary/entities for the corrected page: dropping
-  // its entry_analysis row makes it "pending" so the maintenance sweep
-  // re-analyses it. Raw text (app view, Obsidian day file, chat's
-  // date/keyword lookups) reflects the fix immediately — those read ocr_text.
-  try {
-    db().prepare(`DELETE FROM entry_analysis WHERE page_id = ?`).run(pageId);
-  } catch {
-    // best-effort — the text is already corrected
   }
 
   // Push the corrected day file to the Obsidian/Dropbox export (best-effort,
