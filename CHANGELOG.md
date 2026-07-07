@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-06 (edit transcription: refresh all derived indexes; review #124)
+
+The OCR-correction edit previously updated only `pages.ocr_text`, leaving the
+separately-maintained indexes stale — so a corrected word wasn't findable in
+search. New `correctPageText()` in `lib/notes.ts` mirrors the ingest path in
+one transaction: rebuilds the page's `pages_fts` row (FTS is manual, so
+`search_diary`/`count_entries_mentioning`/`/diary?q=` now match the fix),
+clears `embedding` (→ re-embed for semantic recall) and `entry_analysis`
+(→ re-derive themes/entities), reparses `entry_date` ONLY when the corrected
+text has a real header (never clobbers a carried-forward date), and
+invalidates the affected day's cached summary. The PATCH route calls it. +4
+tests (suite 383).
+
 ## 2026-07-06 (edit transcription — correct OCR errors in the app)
 
 Added an "Edit text" affordance on each transcribed page in `/notebooks`
