@@ -117,6 +117,42 @@ describe("correctPageText", () => {
     expect(page.entry_date).toBe("2026-07-07"); // preserved
   });
 
+  it("moves carried-forward continuation pages when a header's date changes (review #125)", () => {
+    const d = dbMod.db();
+    d.prepare(
+      `INSERT INTO notebooks(id, name, synced_at, status) VALUES('nb1','Diary','2026-07-07 00:00:00','done')`
+    ).run();
+    // Page 0 has the dated header; page 1 is a continuation that inherited it.
+    d.prepare(
+      `INSERT INTO pages(id, notebook_id, page_index, ocr_text, entry_date)
+       VALUES('nb1:0','nb1',0,'2026-07-07-08-02-KST\n아침','2026-07-07')`
+    ).run();
+    d.prepare(
+      `INSERT INTO pages(id, notebook_id, page_index, ocr_text, entry_date)
+       VALUES('nb1:1','nb1',1,'계속 이어서 씀','2026-07-07')`
+    ).run();
+    d.prepare(
+      `INSERT INTO pages_fts(ocr_text, notebook_name, page_id, notebook_id)
+       VALUES('2026-07-07-08-02-KST 아침','Diary','nb1:0','nb1')`
+    ).run();
+    d.prepare(
+      `INSERT INTO daily_summaries(date, summary) VALUES('2026-07-07','old day summary')`
+    ).run();
+
+    // Fix the header's date: 07-07 → 07-08.
+    notesMod.correctPageText("nb1", "nb1:0", "2026-07-08-08-02-KST\n아침");
+
+    const dates = d
+      .prepare(`SELECT id, entry_date FROM pages WHERE notebook_id='nb1' ORDER BY page_index`)
+      .all() as Array<{ id: string; entry_date: string }>;
+    // Both the header page AND the continuation follow to the new date.
+    expect(dates.map((r) => r.entry_date)).toEqual(["2026-07-08", "2026-07-08"]);
+    // The old day's cached summary is invalidated (it lost its pages).
+    expect(
+      d.prepare(`SELECT COUNT(*) c FROM daily_summaries WHERE date='2026-07-07'`).get()
+    ).toMatchObject({ c: 0 });
+  });
+
   it("returns false when the page isn't in that notebook", () => {
     seed("text", "2026-07-07");
     expect(notesMod.correctPageText("nbX", "nb1:0", "hi")).toBe(false);

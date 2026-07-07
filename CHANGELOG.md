@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-06 (edit transcription: reparse carry-forward on header change; review #125)
+
+When an OCR correction CHANGES a page's dated header (day A → day B),
+`correctPageText` now re-runs the notebook carry-forward parse so continuation
+pages that inherited day A follow to day B (they'd otherwise split one entry
+across two dates), and invalidates BOTH days' cached summaries. Guarded to the
+header-actually-changed case, so a plain word fix is unaffected. +1 test
+(suite 384).
+
 ## 2026-07-06 (edit transcription: refresh all derived indexes; review #124)
 
 The OCR-correction edit previously updated only `pages.ocr_text`, leaving the
