@@ -97,11 +97,13 @@ export default function UsagePage() {
     selected && dayData && dayData.date === selected ? dayData.total : null;
   const selectedInView = !!selected && selected.startsWith(monthStr);
   const selectedStale = selected ? costByDay.get(selected)?.cost ?? 0 : 0;
-  const monthTotal =
-    (monthData?.total ?? 0) +
-    (selectedFresh !== null && selectedInView
-      ? selectedFresh - selectedStale
-      : 0);
+  // The fresh day fetch may include usage the month/all-time snapshot missed.
+  // Apply that delta to BOTH totals — bumping only "This month" while "All
+  // time" stays stale could show the impossible pairing This month > All time.
+  const freshDelta =
+    selectedFresh !== null && selectedInView ? selectedFresh - selectedStale : 0;
+  const monthTotal = (monthData?.total ?? 0) + freshDelta;
+  const allTimeTotal = (monthData?.allTime ?? 0) + freshDelta;
 
   const firstWeekday = new Date(view.year, view.month, 1).getDay();
   const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
@@ -126,7 +128,7 @@ export default function UsagePage() {
 
       <section className="grid grid-cols-2 gap-3">
         <Stat label="This month" value={money(monthTotal)} />
-        <Stat label="All time" value={money(monthData?.allTime ?? 0)} />
+        <Stat label="All time" value={money(allTimeTotal)} />
       </section>
 
       <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
