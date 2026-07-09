@@ -99,7 +99,9 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   the Obsidian stub; see `lib/entityWiki.ts`), `locations`,
   `location_points`, `route_stops`, `geocode_cache`, `chat_archive_batches`
   + `chat_memories` (durable chat-memory layer; one batch per Clear,
-  soft-deleted items don't resurrect). Some durable state also lives in
+  soft-deleted items don't resurrect), `dropbox_ingest_tombstones` (deleted
+  Dropbox file ids the watcher must not re-ingest — see the "do not regress"
+  rule below). Some durable state also lives in
   `settings` rows, e.g.
   `mind_pca_axes` (persisted PCA mean + PC vectors + axis labels) and the
   `backup_last_*` markers.
@@ -187,9 +189,10 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   (`maybeRunWeeklyBackup`, with a failure backoff so a broken backup doesn't
   retry every sweep; manual `runBackup` via `/api/backup` ignores the backoff).
 - `lib/dropbox.ts` — Dropbox auto-ingest: OAuth (refresh-token flow),
-  read-only folder polling, dedupe by `notebooks.dropbox_file_id`. Watcher
-  is fired from `runMaintenanceSweep` so it runs alongside the other
-  background jobs. Also the **opt-in per-day diary auto-export**
+  read-only folder polling, dedupe by `notebooks.dropbox_file_id` **plus
+  `dropbox_ingest_tombstones`** (the "already seen" set is `ingestSkipFileIds()`
+  = both). Watcher is fired from `runMaintenanceSweep` so it runs alongside
+  the other background jobs. Also the **opt-in per-day diary auto-export**
   (`maybeExportDiaryToDropbox`, fired from `processNotebook` with the
   notebook id): writes ONE Markdown file per day into `dropboxExportFolder`
   after each ingest, re-uploading only the day files that notebook touched
@@ -290,6 +293,12 @@ features need the deployed instance to fully verify.
 
 ## Hard-won rules — do not regress these
 
+- **Deleting a Dropbox notebook must tombstone its file id.** The watcher
+  dedupes on `notebooks.dropbox_file_id`, which the DELETE removes — so
+  `deleteNotebook` writes a `dropbox_ingest_tombstones` row and the watcher's
+  seen-set is `ingestSkipFileIds()` (notebooks ∪ tombstones). Without this a
+  deleted Dropbox notebook re-ingests on the very next poll. Do NOT revert the
+  watcher to reading only `notebooks.dropbox_file_id`.
 - **Clear is a real boundary.** The chat POST history query filters
   `archived_at IS NULL` — cleared messages no longer feed Claude as raw
   history. Continuity is carried forward by extracted `chat_memories`

@@ -407,6 +407,17 @@ CREATE TABLE IF NOT EXISTS notebooks (
   synced_at TEXT
 );
 
+-- Dropbox files the user has deleted from the app. Deleting a notebook
+-- removes its dropbox_file_id dedup marker, so without this tombstone the
+-- watcher would treat the source PDF as new and re-ingest it on the next
+-- poll — a deleted Dropbox notebook kept reappearing. The watcher unions
+-- these ids into its "already seen" set so a deletion sticks.
+CREATE TABLE IF NOT EXISTS dropbox_ingest_tombstones (
+  file_id TEXT PRIMARY KEY,
+  name TEXT,
+  deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS pages (
   id TEXT PRIMARY KEY,
   notebook_id TEXT NOT NULL,

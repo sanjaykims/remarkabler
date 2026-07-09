@@ -912,6 +912,31 @@ let ingestInFlight = false;
  *   * Dedup on the Dropbox file `id` (a stable, rename-survivable handle),
  *     stored on the notebook row.
  */
+/**
+ * The set of Dropbox file ids the watcher must NOT ingest: files already
+ * ingested (stamped on a notebook via `dropbox_file_id`) plus files the user
+ * has since deleted (`dropbox_ingest_tombstones`). Unioning the tombstones is
+ * what keeps a deleted Dropbox notebook from reappearing on the next poll —
+ * deleting the notebook drops its `dropbox_file_id` marker, so without the
+ * tombstone the same PDF would look brand-new.
+ */
+export function ingestSkipFileIds(): Set<string> {
+  const seen = new Set<string>();
+  for (const r of db()
+    .prepare(
+      `SELECT dropbox_file_id FROM notebooks WHERE dropbox_file_id IS NOT NULL`
+    )
+    .all() as Array<{ dropbox_file_id: string }>) {
+    seen.add(r.dropbox_file_id);
+  }
+  for (const r of db()
+    .prepare(`SELECT file_id FROM dropbox_ingest_tombstones`)
+    .all() as Array<{ file_id: string }>) {
+    seen.add(r.file_id);
+  }
+  return seen;
+}
+
 export async function maybeIngestDropbox(): Promise<{
   attempted: boolean;
   ingested?: number;
@@ -971,13 +996,7 @@ export async function maybeIngestDropbox(): Promise<{
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    const seenIds = new Set(
-      (
-        db()
-          .prepare(`SELECT dropbox_file_id FROM notebooks WHERE dropbox_file_id IS NOT NULL`)
-          .all() as Array<{ dropbox_file_id: string }>
-      ).map((r) => r.dropbox_file_id)
-    );
+    const seenIds = ingestSkipFileIds();
 
     const ocrCap = ocrConcurrencyLimit();
     let ingested = 0;

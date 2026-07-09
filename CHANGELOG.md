@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-07-09 (duplicate notebook kept reappearing after delete; cost snapshot mismatch)
+
+Two fixes:
+
+- **Deleted Dropbox notebooks no longer come back.** Deleting a notebook
+  removed its `dropbox_file_id` dedup marker, so the Dropbox watcher saw the
+  same source PDF as new and re-ingested it on the next poll — a deleted
+  duplicate kept reappearing. `deleteNotebook` now writes a tombstone
+  (`dropbox_ingest_tombstones`) for any Dropbox-ingested notebook, and the
+  watcher's "already seen" set (new `ingestSkipFileIds()`) unions those
+  tombstones in, so a deletion sticks. Manual uploads (no `dropbox_file_id`)
+  aren't tombstoned. +3 tests.
+- **Cost tab: calendar cell now matches its breakdown.** The month calendar is
+  one snapshot (fetched on month load); the per-day breakdown is fetched fresh
+  on tap. Background jobs add usage in between, so the tapped cell could read
+  stale (e.g. $0.08) while its breakdown read current (e.g. $0.12) — same data,
+  two fetch times. `/usage` now reconciles the selected day's cell and the
+  "This month" total to the fresher per-day fetch, so the two numbers always
+  agree. (The two `monthlyUsage`/`dailyUsage` queries were already
+  mathematically identical for the same rows — verified — so this was purely a
+  freshness mismatch, not a query bug.)
+
 ## 2026-07-06 (edit transcription: reparse carry-forward on header change; review #125)
 
 When an OCR correction CHANGES a page's dated header (day A → day B),
