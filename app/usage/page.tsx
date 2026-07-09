@@ -86,6 +86,25 @@ export default function UsagePage() {
   const costByDay = new Map<string, DayCost>();
   (monthData?.days || []).forEach((d) => costByDay.set(d.day, d));
 
+  // The month calendar is one snapshot (fetched when the month loads); the
+  // per-day breakdown is fetched fresh each time a day is tapped. Background
+  // jobs (memory, entity wiki, analysis) keep adding usage, so the two can
+  // disagree — the tapped cell would read stale while its breakdown reads
+  // current. Reconcile: treat the fresh day fetch as truth for the selected
+  // day, so the calendar cell and the breakdown below it always match, and
+  // nudge the month total by the same delta.
+  const selectedFresh =
+    selected && dayData && dayData.date === selected ? dayData.total : null;
+  const selectedInView = !!selected && selected.startsWith(monthStr);
+  const selectedStale = selected ? costByDay.get(selected)?.cost ?? 0 : 0;
+  // The fresh day fetch may include usage the month/all-time snapshot missed.
+  // Apply that delta to BOTH totals — bumping only "This month" while "All
+  // time" stays stale could show the impossible pairing This month > All time.
+  const freshDelta =
+    selectedFresh !== null && selectedInView ? selectedFresh - selectedStale : 0;
+  const monthTotal = (monthData?.total ?? 0) + freshDelta;
+  const allTimeTotal = (monthData?.allTime ?? 0) + freshDelta;
+
   const firstWeekday = new Date(view.year, view.month, 1).getDay();
   const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
   const cells: (number | null)[] = [];
@@ -108,8 +127,8 @@ export default function UsagePage() {
       </section>
 
       <section className="grid grid-cols-2 gap-3">
-        <Stat label="This month" value={money(monthData?.total ?? 0)} />
-        <Stat label="All time" value={money(monthData?.allTime ?? 0)} />
+        <Stat label="This month" value={money(monthTotal)} />
+        <Stat label="All time" value={money(allTimeTotal)} />
       </section>
 
       <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
@@ -143,6 +162,10 @@ export default function UsagePage() {
             const dc = costByDay.get(key);
             const isToday = key === todayKey;
             const isSel = key === selected;
+            // Show the fresh per-day figure for the tapped cell so it agrees
+            // with the breakdown panel below.
+            const cellCost =
+              isSel && selectedFresh !== null ? selectedFresh : dc?.cost ?? 0;
             return (
               <button
                 key={i}
@@ -156,9 +179,9 @@ export default function UsagePage() {
                 }
               >
                 <span>{d}</span>
-                {dc && dc.cost > 0 && (
+                {cellCost > 0 && (
                   <span className="text-[9px] mt-0.5 opacity-80">
-                    {money(dc.cost)}
+                    {money(cellCost)}
                   </span>
                 )}
               </button>
