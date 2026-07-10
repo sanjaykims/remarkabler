@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-07-10 (agent-sweep follow-ups: reMarkable delete tombstone + duplicate-panel hardening)
+
+A 20-agent adversarially-verified audit of "can a deleted notebook come
+back?" (run after the Dropbox tombstone fix) confirmed four follow-ups, all
+fixed here:
+
+- **reMarkable channel had the same delete-doesn't-stick bug.** The Phase-2
+  zero-tap sweep derives its subscription set from live `remarkable_doc_id`
+  rows, so deleting a cloud-synced notebook made the sweep see it as "new in
+  an enabled folder" and silently re-import + re-OCR it. `deleteNotebook`
+  now also writes a `remarkable_ingest_tombstones` row, the sweep's
+  auto-import branch skips tombstoned doc ids
+  (`remarkableTombstonedDocIds()`), and an explicit Import clears the
+  tombstone (deliberate re-add). +4 tests.
+- **Duplicates panel could overstate coverage for undated pages.** A
+  transcribed page before the first dated header contributes no date, so a
+  notebook could classify "FULL — all dates covered" while that page's
+  content existed nowhere else. `DuplicateCandidate` now carries
+  `hasUndated`; the card and the delete confirm warn explicitly. +2 tests.
+- **Two UI ghost fixes on /notebooks.** Monotonic fetch counters so a slow
+  stale response can't repaint a just-deleted notebook over the fresh list,
+  and delete now optimistically drops the notebook from both the list and
+  the duplicates panel so a failed follow-up refresh can't leave a ghost
+  card.
+
+Suite 393. The refuted findings (import crash-window, dedup-query
+resurrection) are recorded in the session log, not acted on.
+
 ## 2026-07-09 (duplicate notebook kept reappearing after delete; cost snapshot mismatch)
 
 Two fixes:

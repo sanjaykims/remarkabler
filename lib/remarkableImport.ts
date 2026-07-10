@@ -185,6 +185,12 @@ async function importRemarkableNotebookInner(
     )
     .run(id, currentHash, nb.id);
   if (existing) deleteNotebook(existing.id);
+  // An explicit Import is a deliberate re-add: clear any deletion tombstone
+  // for this doc (a past user delete, or the one the replace-path
+  // deleteNotebook above just wrote) so the zero-tap sweep follows it again.
+  db()
+    .prepare(`DELETE FROM remarkable_ingest_tombstones WHERE doc_id = ?`)
+    .run(id);
   // Fire-and-forget OCR — same contract as manual upload / Dropbox ingest.
   void processNotebook(nb.id).catch(() => {});
 

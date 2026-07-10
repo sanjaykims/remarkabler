@@ -54,12 +54,24 @@ export type DuplicateCandidate = {
   classification: "full" | "partial";
   coveringNotebooks: Array<{ id: string; name: string }>;
   uncoveredDates: string[]; // empty for "full"; the at-risk dates for "partial"
+  // True when the notebook has transcribed pages with NO effective date (an
+  // undated page before the first dated one). Those pages contribute nothing
+  // to `dates`, so date coverage says nothing about their content — a "full"
+  // verdict must NOT read as "safe to delete" for them. The UI surfaces a
+  // warning instead of silently overstating coverage.
+  hasUndated: boolean;
 };
 
 // Returns null when the old notebook has no meaningful overlap with any
 // cloud notebook (classification "none") — not a candidate at all.
 export function buildCandidate(
-  old: { id: string; name: string; pageCount: number; dates: string[] },
+  old: {
+    id: string;
+    name: string;
+    pageCount: number;
+    dates: string[];
+    hasUndated?: boolean;
+  },
   coverage: CloudCoverage
 ): DuplicateCandidate | null {
   const classification = classifyDuplicate(old.dates, coverage.coveredDates);
@@ -87,5 +99,6 @@ export function buildCandidate(
     classification,
     coveringNotebooks,
     uncoveredDates,
+    hasUndated: old.hasUndated ?? false,
   };
 }
