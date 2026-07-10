@@ -77,6 +77,21 @@ describe("findDuplicateCandidates", () => {
     expect(candidates).toEqual([]);
   });
 
+  it("sets hasUndated when a transcribed page precedes the first dated page", () => {
+    addNotebook("old1", "Old Diary", { dropboxFileId: "f1" });
+    addPage("old1", 0, "undated musings", "none"); // before any dated header
+    addPage("old1", 1, "dated entry", "2026-06-19");
+    addNotebook("cloud1", "Cloud Diary", { remarkableDocId: "doc1" });
+    addPage("cloud1", 0, "cloud entry", "2026-06-19");
+
+    const candidates = dedupMod.findDuplicateCandidates();
+    expect(candidates).toHaveLength(1);
+    // All DATED content is covered, but the leading undated page's content
+    // is not verifiable — the flag must reach the UI so delete can warn.
+    expect(candidates[0].classification).toBe("full");
+    expect(candidates[0].hasUndated).toBe(true);
+  });
+
   it("ignores blank/NULL ocr_text pages on either side", () => {
     addNotebook("old1", "Old Diary", { dropboxFileId: "f1" });
     addPage("old1", 0, "real old entry", "2026-06-19");

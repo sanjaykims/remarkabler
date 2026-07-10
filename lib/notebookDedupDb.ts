@@ -53,13 +53,29 @@ export function findDuplicateCandidates(): DuplicateCandidate[] {
   }
 
   const cloudNotebooks: Array<{ id: string; name: string; dates: string[] }> = [];
-  const oldNotebooks: Array<{ id: string; name: string; pageCount: number; dates: string[] }> = [];
+  const oldNotebooks: Array<{
+    id: string;
+    name: string;
+    pageCount: number;
+    dates: string[];
+    hasUndated: boolean;
+  }> = [];
   for (const [id, bucket] of byNotebook) {
-    const { dates } = effectiveDateKeys(bucket.rows);
+    // hasUndated is load-bearing for the delete flow: an undated page (no
+    // effective date) contributes nothing to `dates`, so a "full" coverage
+    // verdict says nothing about its content — the candidate must carry the
+    // flag so the UI can warn instead of implying "safe to delete".
+    const { dates, hasUndated } = effectiveDateKeys(bucket.rows);
     if (bucket.isCloud) {
       cloudNotebooks.push({ id, name: bucket.name, dates });
     } else {
-      oldNotebooks.push({ id, name: bucket.name, pageCount: bucket.rows.length, dates });
+      oldNotebooks.push({
+        id,
+        name: bucket.name,
+        pageCount: bucket.rows.length,
+        dates,
+        hasUndated,
+      });
     }
   }
 

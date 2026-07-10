@@ -30,6 +30,7 @@ type DuplicateCandidate = {
   classification: "full" | "partial";
   coveringNotebooks: Array<{ id: string; name: string }>;
   uncoveredDates: string[];
+  hasUndated: boolean;
 };
 
 export default function NotebooksPage() {
@@ -48,6 +49,11 @@ export default function NotebooksPage() {
   const [editText, setEditText] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Monotonic fetch counters so only the LATEST response of each list wins.
+  // Without them, a slow in-flight fetch issued before a delete can resolve
+  // after the post-delete refresh and repaint the just-deleted notebook.
+  const loadSeq = useRef(0);
+  const dupSeq = useRef(0);
 
   function startEdit(p: Page) {
     setEditingPageId(p.id);
@@ -106,24 +112,28 @@ export default function NotebooksPage() {
   }
 
   async function load() {
+    const seq = ++loadSeq.current;
     try {
       const r = await fetch("/api/notebooks");
       if (!r.ok) throw new Error(`Couldn't load notebooks (${r.status})`);
       const d = await r.json();
-      setNotebooks(d.notebooks || []);
+      if (seq === loadSeq.current) setNotebooks(d.notebooks || []);
     } catch (e) {
-      setError((e as Error).message || "Couldn't load notebooks.");
+      if (seq === loadSeq.current) {
+        setError((e as Error).message || "Couldn't load notebooks.");
+      }
     } finally {
       setLoading(false);
     }
   }
 
   async function loadDuplicates() {
+    const seq = ++dupSeq.current;
     try {
       const r = await fetch("/api/notebooks/duplicates");
       if (!r.ok) return; // best-effort — doesn't block the main list
       const d = await r.json();
-      setDuplicates(d.candidates || []);
+      if (seq === dupSeq.current) setDuplicates(d.candidates || []);
     } catch {
       // best-effort
     }
@@ -205,6 +215,12 @@ export default function NotebooksPage() {
         throw new Error(d.error || `Delete failed (${r.status})`);
       }
       track("notebook_deleted");
+      // The server delete is committed — drop the notebook from local state
+      // immediately so it can never linger as a ghost card if the follow-up
+      // refresh fails (network blip, lock re-engaging). The refreshes below
+      // are then just re-syncs, not the only thing removing it from view.
+      setNotebooks((ns) => ns.filter((n) => n.id !== id));
+      setDuplicates((ds) => ds.filter((c) => c.id !== id));
       await load();
       await loadDuplicates();
     } catch (e) {
@@ -216,10 +232,16 @@ export default function NotebooksPage() {
 
   function removeDuplicate(c: DuplicateCandidate) {
     const coveredBy = c.coveringNotebooks.map((n) => n.name).join(", ");
+    // Undated pages contribute no dates, so date coverage says nothing about
+    // their content — never let a "full" verdict read as "safe to delete"
+    // when some pages couldn't be dated.
+    const undatedWarning = c.hasUndated
+      ? " WARNING: it also has page(s) with no readable date — their content may exist nowhere else and would be lost permanently."
+      : "";
     const confirmText =
       c.classification === "full"
-        ? `Delete "${c.name}"? All ${c.dates.length} of its dates are already covered by: ${coveredBy}.`
-        : `Delete "${c.name}"? ${c.uncoveredDates.length} date(s) (${c.uncoveredDates.join(", ")}) are NOT covered by any other notebook and will be lost permanently.`;
+        ? `Delete "${c.name}"? All ${c.dates.length} of its dates are already covered by: ${coveredBy}.${undatedWarning}`
+        : `Delete "${c.name}"? ${c.uncoveredDates.length} date(s) (${c.uncoveredDates.join(", ")}) are NOT covered by any other notebook and will be lost permanently.${undatedWarning}`;
     void remove(c.id, c.name, confirmText);
   }
 
@@ -312,6 +334,12 @@ export default function NotebooksPage() {
                   <p className="text-xs text-amber-700 dark:text-amber-400">
                     {c.uncoveredDates.length} date(s) not covered elsewhere:{" "}
                     {c.uncoveredDates.join(", ")}
+                  </p>
+                )}
+                {c.hasUndated && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Has page(s) with no readable date — their content may not
+                    be covered by the notebooks above.
                   </p>
                 )}
                 <button

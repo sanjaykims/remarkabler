@@ -418,6 +418,17 @@ CREATE TABLE IF NOT EXISTS dropbox_ingest_tombstones (
   deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Same idea for the reMarkable-cloud channel: deleting a cloud-synced
+-- notebook removes its remarkable_doc_id subscription row, and without a
+-- tombstone the Phase-2 sweep would see the doc as "new in an enabled
+-- folder" and silently re-import + re-OCR it. An explicit user Import
+-- clears the tombstone (deliberate re-add overrides a past deletion).
+CREATE TABLE IF NOT EXISTS remarkable_ingest_tombstones (
+  doc_id TEXT PRIMARY KEY,
+  name TEXT,
+  deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS pages (
   id TEXT PRIMARY KEY,
   notebook_id TEXT NOT NULL,

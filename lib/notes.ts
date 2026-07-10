@@ -163,14 +163,25 @@ export async function processNotebook(id: string): Promise<void> {
 }
 
 export function deleteNotebook(id: string): void {
-  // If this notebook was auto-ingested from Dropbox, tombstone its source file
-  // id before deleting the row. The DELETE removes the dropbox_file_id dedup
-  // marker, so the next Dropbox poll would otherwise see the same PDF as "new"
-  // and re-ingest it — a deleted Dropbox notebook kept coming back. The
-  // tombstone makes the deletion stick (the watcher skips tombstoned ids).
+  // If this notebook came from an auto-ingesting source, tombstone its source
+  // id before deleting the row. The DELETE removes the dedup marker
+  // (dropbox_file_id / remarkable_doc_id), so the source's next poll would
+  // otherwise see the same document as "new" and re-ingest it — a deleted
+  // notebook kept coming back. The tombstone makes the deletion stick: the
+  // Dropbox watcher skips tombstoned file ids, and the reMarkable sweep skips
+  // tombstoned doc ids (an explicit Import clears that tombstone — deliberate
+  // re-add overrides a past deletion).
   const row = db()
-    .prepare(`SELECT dropbox_file_id, name FROM notebooks WHERE id = ?`)
-    .get(id) as { dropbox_file_id: string | null; name: string } | undefined;
+    .prepare(
+      `SELECT dropbox_file_id, remarkable_doc_id, name FROM notebooks WHERE id = ?`
+    )
+    .get(id) as
+    | {
+        dropbox_file_id: string | null;
+        remarkable_doc_id: string | null;
+        name: string;
+      }
+    | undefined;
   if (row?.dropbox_file_id) {
     db()
       .prepare(
@@ -178,6 +189,14 @@ export function deleteNotebook(id: string): void {
          VALUES(?, ?)`
       )
       .run(row.dropbox_file_id, row.name);
+  }
+  if (row?.remarkable_doc_id) {
+    db()
+      .prepare(
+        `INSERT OR IGNORE INTO remarkable_ingest_tombstones(doc_id, name)
+         VALUES(?, ?)`
+      )
+      .run(row.remarkable_doc_id, row.name);
   }
   db().prepare(`DELETE FROM pages_fts WHERE notebook_id = ?`).run(id);
   db().prepare(`DELETE FROM pages WHERE notebook_id = ?`).run(id);

@@ -97,6 +97,27 @@ describe("buildCandidate", () => {
     );
     expect(candidate?.classification).toBe("full");
     expect(candidate?.uncoveredDates).toEqual([]);
+    expect(candidate?.hasUndated).toBe(false); // defaults false when omitted
+  });
+
+  it("carries hasUndated through so a 'full' verdict can still warn", () => {
+    const coverage = buildCloudCoverage([
+      { id: "c1", name: "Diary", dates: ["2026-06-19"] },
+    ]);
+    const candidate = buildCandidate(
+      {
+        id: "o1",
+        name: "Old",
+        pageCount: 2, // one dated page + one undated page
+        dates: ["2026-06-19"],
+        hasUndated: true,
+      },
+      coverage
+    );
+    // Date coverage is still "full", but the flag survives for the UI warning
+    // — undated pages contribute no dates, so coverage says nothing about them.
+    expect(candidate?.classification).toBe("full");
+    expect(candidate?.hasUndated).toBe(true);
   });
 
   it("lists exactly the non-overlapping dates for a 'partial' match", () => {

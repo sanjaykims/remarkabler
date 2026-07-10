@@ -155,6 +155,23 @@ export function syncFolders(): string[] {
   return Object.keys(syncFolderMap());
 }
 
+/**
+ * Cloud doc ids the user has deleted from the app (deleteNotebook writes
+ * them). The auto-import branch must skip these or a deleted cloud-synced
+ * notebook silently reappears — and re-bills OCR — on the next sweep, the
+ * same "delete doesn't stick" bug the Dropbox tombstone fixed in the other
+ * channel. An explicit user Import clears the tombstone.
+ */
+export function remarkableTombstonedDocIds(): Set<string> {
+  return new Set(
+    (
+      db()
+        .prepare(`SELECT doc_id FROM remarkable_ingest_tombstones`)
+        .all() as Array<{ doc_id: string }>
+    ).map((r) => r.doc_id)
+  );
+}
+
 export function setSyncFolder(parent: string, enabled: boolean): string[] {
   const map = syncFolderMap();
   if (enabled && !map[parent]) map[parent] = new Date().toISOString();
@@ -364,6 +381,7 @@ export async function maybeSyncRemarkable(
     }
 
     const byDocId = new Map(subscribed.map((r) => [r.remarkable_doc_id, r]));
+    const tombstoned = remarkableTombstonedDocIds();
     const candidates = list.notebooks.filter(
       (nb) => byDocId.has(nb.id) || folders.includes(nb.parent)
     );
@@ -384,6 +402,10 @@ export async function maybeSyncRemarkable(
       let row = byDocId.get(nb.id);
       try {
         if (!row) {
+          // The user deleted this notebook from the app — the deletion must
+          // stick. Only an explicit Import tap (which clears the tombstone)
+          // brings it back; the zero-tap sweep never resurrects it.
+          if (tombstoned.has(nb.id)) continue;
           // Not-yet-imported notebook in an auto-synced folder: only pick it
           // up if it was edited after (or within a day before) the folder
           // was enabled — "from now on" plus today's active notebook, never
