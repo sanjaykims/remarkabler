@@ -19,9 +19,15 @@ deferred as a known follow-up.
 - reMarkable sync could silently and permanently destroy a page's diary text:
   a changed page that re-OCR'd to blank (render glitch / transient empty
   response) overwrote the prior good text with `''`, advanced the page/doc
-  hash, and was never retried. Now an empty re-OCR of a page that already had
-  text is treated as a failure — old text kept, hashes not advanced, retried
-  next sweep (`lib/remarkableSync.ts`).
+  hash, and was never retried. Now a blank re-OCR of a page that already had
+  text is **confirmed across sweeps** before it's accepted (`lib/remarkableSync.ts`,
+  new pure `classifyReocr` + a `pages.blank_ocr_hash` marker): the first blank
+  keeps the old text and records the page's `.rm` hash (assumed a transient
+  glitch); only if the *same* hash re-OCRs blank again on a later sweep is the
+  blank accepted as a genuine tablet erase. This fixes the original silent
+  data loss without the opposite failure a first pass introduced — a truly
+  erased page looping re-OCR forever while showing stale text (caught in
+  review). +tests.
 
 **Correctness / efficiency (minor):**
 - Chat `search_diary` / `count_entries_mentioning` reported `page: null` for

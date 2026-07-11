@@ -68,6 +68,14 @@ export function db(): Database.Database {
     "remarkable_page_id TEXT",
     "remarkable_page_hash TEXT",
     "profile_fold_pending INTEGER",
+    // The .rm content hash of a re-OCR that came back BLANK for a page that
+    // already had text. Set the first time this happens (the blank is treated
+    // as a probable render/OCR glitch, old text kept); if the very same hash
+    // re-OCRs blank AGAIN on a later sweep, the blank is confirmed stable (a
+    // genuine tablet erase) and accepted. Cleared on any non-blank/accepted
+    // write. Distinguishes a transient blank from an intentional clear so we
+    // neither lose text to a glitch nor re-OCR a truly-erased page forever.
+    "blank_ocr_hash TEXT",
   ]) {
     try {
       _db.exec(`ALTER TABLE pages ADD COLUMN ${col}`);
