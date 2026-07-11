@@ -7,6 +7,9 @@ import {
   isLockEnabled,
   sessionCookieOptions,
   challengeCookieOptions,
+  passcodeLockRemainingMs,
+  recordFailedPasscodeAttempt,
+  recordSuccessfulAuth,
 } from "@/lib/auth";
 import {
   hasCredentials,
@@ -44,10 +47,25 @@ export async function POST(req: NextRequest) {
   const action = String(body.action || "");
   const { rpID, origin } = relyingParty(req);
 
+  // The passcode is the one credential here that's actually guessable (a
+  // WebAuthn assertion isn't practically forgeable, so login-verify isn't
+  // gated). Block repeated guesses before touching checkPasscode at all.
+  if (action === "register-options" || action === "passcode") {
+    const lockedMs = passcodeLockRemainingMs();
+    if (lockedMs !== null) {
+      return NextResponse.json(
+        { error: "Too many wrong passcodes. Try again in a few minutes." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(lockedMs / 1000)) } }
+      );
+    }
+  }
+
   if (action === "register-options") {
     if (!checkPasscode(String(body.passcode || ""))) {
+      recordFailedPasscodeAttempt();
       return NextResponse.json({ error: "Wrong passcode." }, { status: 401 });
     }
+    recordSuccessfulAuth();
     const options = await buildRegistrationOptions(rpID);
     const res = NextResponse.json(options);
     res.cookies.set(CHALLENGE_COOKIE, options.challenge, challengeCookieOptions);
@@ -125,8 +143,10 @@ export async function POST(req: NextRequest) {
 
   if (action === "passcode") {
     if (!checkPasscode(String(body.passcode || ""))) {
+      recordFailedPasscodeAttempt();
       return NextResponse.json({ error: "Wrong passcode." }, { status: 401 });
     }
+    recordSuccessfulAuth();
     const res = NextResponse.json({ ok: true });
     res.cookies.set(SESSION_COOKIE, createSessionToken(), sessionCookieOptions);
     return res;

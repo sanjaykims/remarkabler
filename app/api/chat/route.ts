@@ -391,10 +391,15 @@ export async function DELETE(req: NextRequest) {
   if (batchId !== null) {
     // Fire-and-forget extraction. The maintenance sweep will catch any batch
     // this misses (process restart, transient failure).
+    // .catch() (not just the outer try/catch, which only guards the
+    // synchronous import() call) is what keeps an async failure here from
+    // becoming an unhandled rejection.
     try {
-      void import("@/lib/chatMemory").then((m) =>
-        m.maybeCompressChatSessions()
-      );
+      void import("@/lib/chatMemory")
+        .then((m) => m.maybeCompressChatSessions())
+        .catch((e) =>
+          console.warn("[chat] memory compression failed:", (e as Error).message)
+        );
     } catch {
       // best-effort
     }

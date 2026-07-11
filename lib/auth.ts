@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
-import { getSetting, setSetting } from "@/lib/db";
+import { getSetting, setSetting, clearSetting } from "@/lib/db";
 
 export const SESSION_COOKIE = "fc_session";
 export const CHALLENGE_COOKIE = "fc_challenge";
@@ -115,6 +115,61 @@ export function checkPasscode(input: string): boolean {
   const b = Buffer.from(expected);
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
+}
+
+// ── Brute-force lockout on the guessable secret (the passcode) ─────────────
+//
+// The passcode is the one credential in this app that's actually guessable
+// (unlike a WebAuthn assertion, which isn't practically forgeable, so it
+// isn't gated here). Without a limiter an internet-facing instance could be
+// brute-forced by automated attempts. Persisted in `settings` (not just
+// in-memory) so it survives a Railway cold restart mid-attack, mirroring the
+// failure-backoff pattern already used for the Dropbox/reMarkable watchers.
+// A single 15-minute window serves both roles: up to AUTH_FAIL_MAX attempts
+// are allowed inside it, and once tripped the lock lasts until that same
+// window (measured from the FIRST failure in it) elapses — at which point
+// the very next attempt starts a fresh window. One constant, one meaning.
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_FAIL_MAX = 8;
+const AUTH_FAIL_KEY = "auth_fail_state";
+
+type AuthFailState = { count: number; windowStart: number };
+
+function getAuthFailState(): AuthFailState {
+  const raw = getSetting(AUTH_FAIL_KEY);
+  if (!raw) return { count: 0, windowStart: 0 };
+  try {
+    const v = JSON.parse(raw);
+    return {
+      count: Number(v.count) || 0,
+      windowStart: Number(v.windowStart) || 0,
+    };
+  } catch {
+    return { count: 0, windowStart: 0 };
+  }
+}
+
+/** Milliseconds remaining before another passcode attempt is allowed, or null if not locked. */
+export function passcodeLockRemainingMs(): number | null {
+  const { count, windowStart } = getAuthFailState();
+  if (count < AUTH_FAIL_MAX) return null;
+  const elapsed = Date.now() - windowStart;
+  if (elapsed >= AUTH_WINDOW_MS) return null; // window has expired
+  return AUTH_WINDOW_MS - elapsed;
+}
+
+export function recordFailedPasscodeAttempt(): void {
+  const now = Date.now();
+  const { count, windowStart } = getAuthFailState();
+  const expired = windowStart === 0 || now - windowStart > AUTH_WINDOW_MS;
+  const next: AuthFailState = expired
+    ? { count: 1, windowStart: now }
+    : { count: count + 1, windowStart };
+  setSetting(AUTH_FAIL_KEY, JSON.stringify(next));
+}
+
+export function recordSuccessfulAuth(): void {
+  clearSetting(AUTH_FAIL_KEY);
 }
 
 const secureCookie = process.env.NODE_ENV === "production";
