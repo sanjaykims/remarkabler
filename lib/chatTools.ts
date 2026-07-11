@@ -401,18 +401,23 @@ async function searchDiary(input: {
     page: number;
     text: string;
     source: "fts" | "semantic" | "both";
+    page_id: string;
   };
   const merged: Hit[] = [];
   // Semantic results come first (re-ranked by meaning), then FTS catches
-  // literal matches the embedding might have missed.
+  // literal matches the embedding might have missed. Page number is resolved
+  // authoritatively below — NOT by parsing page_id, whose shape varies
+  // (`${nb}:${index}` for manual/Dropbox vs `${nb}:rm:${uuid}` for cloud-sync,
+  // where "rm" would parse to NaN → null).
   for (const r of sem) {
     if (seen.has(r.page_id)) continue;
     seen.add(r.page_id);
     merged.push({
       notebook: r.notebook_name,
-      page: Number((r.page_id || "").split(":")[1] || 0) + 1,
+      page: 0,
       text: trim(r.text),
       source: "semantic",
+      page_id: r.page_id,
     });
   }
   for (const r of fts) {
@@ -420,13 +425,34 @@ async function searchDiary(input: {
     seen.add(r.page_id);
     merged.push({
       notebook: r.notebook_name,
-      page: Number((r.page_id || "").split(":")[1] || 0) + 1,
+      page: 0,
       text: trim(r.text),
       source: "fts",
+      page_id: r.page_id,
     });
   }
+  const top = merged.slice(0, limit);
+  // Resolve the real 1-based page number from the pages table (authoritative
+  // for every page_id shape) in one query, instead of parsing the id.
+  const pageIndexById = new Map<string, number>();
+  if (top.length > 0) {
+    const placeholders = top.map(() => "?").join(",");
+    const idxRows = db()
+      .prepare(
+        `SELECT id, page_index FROM pages WHERE id IN (${placeholders})`
+      )
+      .all(...top.map((h) => h.page_id)) as Array<{
+      id: string;
+      page_index: number;
+    }>;
+    for (const r of idxRows) pageIndexById.set(r.id, r.page_index);
+  }
+  const excerpts = top.map(({ page_id, ...h }) => ({
+    ...h,
+    page: (pageIndexById.get(page_id) ?? 0) + 1,
+  }));
   return {
-    excerpts: merged.slice(0, limit),
+    excerpts,
     note:
       sem.length === 0 && embeddingsEnabled()
         ? "Semantic search returned nothing (embeddings may still be backfilling). FTS results only."
@@ -456,14 +482,23 @@ function getEntriesByDate(input: { date?: string }): unknown {
   const seen = new Set<string>();
   try {
     for (const pattern of patterns) {
+      // Match the date three ways: the literal date string in the page text,
+      // the notebook name, AND the page's attributed entry_date. The last one
+      // is what catches continuation pages of a multi-page day — the user
+      // writes the date header only on page 1, so pages 2..n carry no date
+      // text but inherit the day via carry-forward into entry_date. Without
+      // it, "what did I write on May 28?" returned only the header page.
       const rows = db()
         .prepare(
           `SELECT n.name AS notebook_name, p.page_index, p.ocr_text AS text, p.id AS page_id
            FROM pages p JOIN notebooks n ON n.id = p.notebook_id
-           WHERE (p.ocr_text LIKE ? OR n.name LIKE ?) AND p.notebook_id != ?
+           WHERE (p.ocr_text LIKE ? OR n.name LIKE ?
+                  OR (p.entry_date IS NOT NULL AND p.entry_date != 'none'
+                      AND p.entry_date LIKE ?))
+             AND p.notebook_id != ?
            ORDER BY n.synced_at DESC, p.page_index`
         )
-        .all(`%${pattern}%`, `%${pattern}%`, excludeId) as Array<{
+        .all(`%${pattern}%`, `%${pattern}%`, `%${pattern}%`, excludeId) as Array<{
           notebook_name: string;
           page_index: number;
           text: string;
@@ -928,28 +963,32 @@ function relatedEntities(input: {
       dayByPage.set(r.id, isDatedEntry(r.entry_date) ? r.entry_date : carry);
     }
 
-    // 2. One canonical display name per (kind, name_norm) — MIN(name), the
-    //    same convention getTopEntities / the diary export use.
-    const canonRows = db()
-      .prepare(
-        `SELECT e.kind, e.name_norm AS norm, MIN(e.name) AS name
-         FROM entry_entities e JOIN pages p ON p.id = e.page_id
-         WHERE p.notebook_id != ?
-         GROUP BY e.kind, e.name_norm`
-      )
-      .all(excludeId) as Array<{ kind: string; norm: string; name: string }>;
-    const canon = new Map<string, string>();
-    for (const c of canonRows) canon.set(`${c.kind} ${c.norm}`, c.name);
-
-    // 3. Build (day, entity) memberships; drop undated pages (a null day) so
-    //    they can't spuriously link every entity together.
+    // 2+3. One single scan of entry_entities serves both the canonical
+    //    display-name map AND the (day, entity) memberships. (Previously this
+    //    scanned the table twice — a GROUP BY for MIN(name) plus a row scan —
+    //    redundantly re-deriving the same data on every tool call.) The
+    //    canonical name is MIN(name) per (kind, name_norm) — the lexicographically
+    //    smallest, the same convention getTopEntities / the diary export use —
+    //    reproduced in JS below. Undated pages (a null day) are dropped so they
+    //    can't spuriously link every entity together.
     const entRows = db()
       .prepare(
-        `SELECT e.page_id, e.kind, e.name_norm AS norm
+        `SELECT e.page_id, e.kind, e.name_norm AS norm, e.name
          FROM entry_entities e JOIN pages p ON p.id = e.page_id
          WHERE p.notebook_id != ?`
       )
-      .all(excludeId) as Array<{ page_id: string; kind: string; norm: string }>;
+      .all(excludeId) as Array<{
+      page_id: string;
+      kind: string;
+      norm: string;
+      name: string;
+    }>;
+    const canon = new Map<string, string>();
+    for (const e of entRows) {
+      const key = `${e.kind} ${e.norm}`;
+      const cur = canon.get(key);
+      if (cur === undefined || e.name < cur) canon.set(key, e.name);
+    }
     const memberships: DayMembership[] = [];
     for (const e of entRows) {
       if (e.kind !== "person" && e.kind !== "place" && e.kind !== "project")
@@ -1015,11 +1054,26 @@ function countEntriesMentioning(input: { term?: string }): unknown {
          ORDER BY rank`
       )
       .all(q, excludeId) as Array<{ notebook_name: string; page_id: string }>;
+    const top = rows.slice(0, 20);
+    // Resolve the real page number from the pages table (authoritative for
+    // every page_id shape) rather than parsing the id — a `:rm:` cloud-sync id
+    // would otherwise parse to NaN → null.
+    const pageIndexById = new Map<string, number>();
+    if (top.length > 0) {
+      const placeholders = top.map(() => "?").join(",");
+      const idxRows = db()
+        .prepare(`SELECT id, page_index FROM pages WHERE id IN (${placeholders})`)
+        .all(...top.map((r) => r.page_id)) as Array<{
+        id: string;
+        page_index: number;
+      }>;
+      for (const r of idxRows) pageIndexById.set(r.id, r.page_index);
+    }
     return {
       count: rows.length,
-      pages: rows.slice(0, 20).map((r) => ({
+      pages: top.map((r) => ({
         notebook: r.notebook_name,
-        page: Number((r.page_id || "").split(":")[1] || 0) + 1,
+        page: (pageIndexById.get(r.page_id) ?? 0) + 1,
       })),
     };
   } catch {

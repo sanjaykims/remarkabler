@@ -190,25 +190,29 @@ export async function refreshEntityWiki(
   const limit = Math.max(1, Math.min(400, opts?.limit ?? 40));
   if (refreshInFlight)
     return { generated: 0, failed: 0, remaining: 0, entities: [], skipped: "in-flight" };
-  refreshInFlight = true;
-  // Tapping "build" opts this diary into ongoing auto-refresh in the sweep.
-  setSetting(AUTO_SETTING, "1");
 
-  const upsert = db().prepare(
-    `INSERT INTO entity_wiki(kind, name_norm, name, summary, source_hash, model, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(kind, name_norm) DO UPDATE SET
-       name = excluded.name, summary = excluded.summary,
-       source_hash = excluded.source_hash, model = excluded.model,
-       updated_at = excluded.updated_at`
-  );
   const model = process.env.CHAT_MODEL || "claude-sonnet-5";
-
   let generated = 0;
   let failed = 0;
   let remaining = 0;
   const entities: Array<{ kind: Kind; name: string }> = [];
+  // Set the in-flight flag as the LAST thing before the try, so a throw in
+  // the setup below (setSetting / db().prepare — synchronous DB writes that
+  // can raise SQLITE_BUSY etc.) can't leave the flag stuck true and silently
+  // disable every future refresh until the process restarts.
+  refreshInFlight = true;
   try {
+    // Tapping "build" opts this diary into ongoing auto-refresh in the sweep.
+    setSetting(AUTO_SETTING, "1");
+
+    const upsert = db().prepare(
+      `INSERT INTO entity_wiki(kind, name_norm, name, summary, source_hash, model, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(kind, name_norm) DO UPDATE SET
+         name = excluded.name, summary = excluded.summary,
+         source_hash = excluded.source_hash, model = excluded.model,
+         updated_at = excluded.updated_at`
+    );
     for (const kind of KINDS) {
       for (const c of candidates(kind)) {
         const rows = mentions(kind, c.norm); // whole history, chronological

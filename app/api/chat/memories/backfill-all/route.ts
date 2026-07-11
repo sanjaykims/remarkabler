@@ -60,8 +60,13 @@ export async function POST(req: NextRequest) {
     return ids;
   })();
 
+  // The .catch() is load-bearing: the outer try/catch only guards the
+  // synchronous call setup, so an async rejection would otherwise be an
+  // unhandled rejection (CLAUDE.md's fire-and-forget rule).
   try {
-    void maybeCompressChatSessions(Math.max(created.length, 5));
+    void maybeCompressChatSessions(Math.max(created.length, 5)).catch((e) =>
+      console.warn("[chat] memory compression failed:", (e as Error).message)
+    );
   } catch {
     // best-effort
   }

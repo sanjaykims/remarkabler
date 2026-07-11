@@ -260,6 +260,7 @@ type PageRow = {
   id: string;
   remarkable_page_id: string | null;
   remarkable_page_hash: string | null;
+  ocr_text: string | null;
 };
 
 // True when the notebook was edited too recently to sync yet — i.e. it's
@@ -581,12 +582,26 @@ async function incrementalSyncNotebook(
 
     const pageRows = db()
       .prepare(
-        `SELECT id, remarkable_page_id, remarkable_page_hash FROM pages
+        `SELECT id, remarkable_page_id, remarkable_page_hash, ocr_text FROM pages
          WHERE notebook_id = ? ORDER BY page_index`
       )
       .all(row.id) as PageRow[];
     const mapped = pageRows.filter((p) => p.remarkable_page_id);
     const legacy = mapped.length === 0 && pageRows.length > 0;
+
+    // Which already-ingested pages currently hold real transcribed text? Used
+    // below to refuse overwriting good text with an empty re-OCR (data-loss
+    // guard) — a blank OCR result of a page that already had text is treated
+    // as a failure, not a valid empty page.
+    const existingTextByPageId = new Map<string, boolean>();
+    for (const p of mapped) {
+      if (p.remarkable_page_id) {
+        existingTextByPageId.set(
+          p.remarkable_page_id,
+          !!(p.ocr_text && p.ocr_text.trim())
+        );
+      }
+    }
 
     const existing: PageHash[] = mapped.map((p) => ({
       pageId: p.remarkable_page_id as string,
@@ -643,6 +658,21 @@ async function incrementalSyncNotebook(
           .filter(Boolean)
           .join("\n\n")
           .trim();
+        // Data-loss guard: ocrNotebookPdf returns "" (not an error) for a page
+        // Claude judges blank — a render glitch or a transient empty response
+        // can therefore blank out a page that previously held real diary text.
+        // If this page already had non-empty text, refuse the empty result:
+        // route it to `failed` so the old text is KEPT, the page/doc hash is
+        // NOT advanced, and the next sweep re-diffs and retries it. (A page
+        // that was genuinely always blank has no existing text to protect and
+        // still flows through normally.)
+        if (!text && existingTextByPageId.get(pageId)) {
+          failed.push(pageId);
+          console.warn(
+            `[remarkableSync] page ${pageId} of "${nbName}" re-OCR'd to blank but had text — keeping the old transcription, will retry`
+          );
+          continue;
+        }
         results.push({ pageId, pageRowId: `${row.id}:rm:${pageId}`, text });
       } catch (e) {
         failed.push(pageId);
