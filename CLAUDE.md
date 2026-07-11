@@ -250,7 +250,21 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - `lib/location.ts` + `lib/owntracks.ts` — OwnTracks ingestion, stay
   clustering, reverse-geocoding; `lib/github.ts` — discipline repo fetch;
   `lib/cleanup.ts`, `lib/upload.ts`, `lib/extractText.ts`, `lib/format.ts` —
-  support utilities; `lib/auth.ts` + `lib/webauthn.ts` — passkey/passcode lock.
+  support utilities; `lib/auth.ts` + `lib/webauthn.ts` — passkey/passcode lock
+  (`lib/auth.ts` also gates the passcode itself with a brute-force lockout —
+  `passcodeLockRemainingMs`/`recordFailedPasscodeAttempt`/
+  `recordSuccessfulAuth`, DB-persisted so it survives a cold restart mid-attack).
+- `instrumentation.ts` — process-level `unhandledRejection`/`uncaughtException`
+  safety net (log, don't crash). Needed because the app fires a lot of
+  never-awaited background work (`runMaintenanceSweep` in `lib/notes.ts` and
+  friends); an unguarded async failure anywhere in that chain would otherwise
+  be a fatal unhandled rejection under modern Node and take the whole server
+  down for the one person using it. Requires `experimental.instrumentationHook:
+  true` in `next.config.mjs` on Next 14.2 (default-on from Next 15 — remove
+  the flag on that upgrade, don't remove the file). Every fire-and-forget
+  call site in `lib/notes.ts`/`lib/entityWiki.ts`/`app/api/chat/route.ts`
+  still has its own `.catch()` too — this is defense in depth, not a
+  replacement for handling errors at the call site.
 - API routes (`app/api/*`): `auth`, `notebooks`, `chat`, `insights`, `usage`,
   `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
   `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities`,
@@ -294,6 +308,25 @@ features need the deployed instance to fully verify.
 
 ## Hard-won rules — do not regress these
 
+- **Fire-and-forget background calls need `.catch()`, not just an outer
+  `try/catch`.** A `try { void asyncFn(); } catch {}` block only catches a
+  *synchronous* throw — once `asyncFn()` returns a promise, that block has
+  already exited by the time it rejects, so the rejection goes unhandled.
+  Under modern Node an unhandled rejection is fatal by default and kills the
+  whole process (`instrumentation.ts` logs-and-survives it as a last resort,
+  but the real fix is not needing that safety net). Every fire-and-forget
+  call (`runMaintenanceSweep`'s jobs, the Dropbox/entity-wiki/chat-memory
+  triggers) must end its own promise chain with `.catch(e => console.warn(...))`.
+  When adding a new one, copy that pattern — don't rely on the outer
+  try/catch alone.
+- **The passcode has a brute-force lockout — don't bypass it.** `lib/auth.ts`
+  tracks failures in the `auth_fail_state` setting; 8 wrong passcodes within
+  a rolling 15-minute window lock further passcode attempts (`action:
+  "register-options"` and `"passcode"`) for the rest of that window, checked
+  before `checkPasscode` even runs. WebAuthn `login-verify` is deliberately
+  NOT gated — a forged assertion isn't practically guessable, so limiting it
+  would only add self-lockout risk with no security benefit. A correct
+  passcode clears the counter immediately.
 - **Deleting an auto-ingested notebook must tombstone its source id — BOTH
   channels.** The Dropbox watcher dedupes on `notebooks.dropbox_file_id` and
   the reMarkable sweep's subscription set is `notebooks.remarkable_doc_id`;

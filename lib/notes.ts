@@ -1101,8 +1101,13 @@ export function runMaintenanceSweep(): void {
   // Dropbox auto-ingest. Lazy-imported (same reason as the backup module —
   // avoids a startup-time import cycle through lib/db). Fire-and-forget; the
   // function has its own in-flight guard, interval gate, and failure backoff.
+  // The outer try/catch only guards the synchronous getMaybeIngestDropbox()
+  // lazy-require — .catch() below is what guards the returned promise, so
+  // an async failure here can't become an unhandled rejection.
   try {
-    void getMaybeIngestDropbox()();
+    void getMaybeIngestDropbox()().catch((e) =>
+      console.warn("[sweep] dropbox ingest failed:", (e as Error).message)
+    );
   } catch {
     // best-effort
   }
@@ -1110,7 +1115,9 @@ export function runMaintenanceSweep(): void {
   // fire-and-forget missed (process restart, transient failure, retry of
   // a permanently-skipped batch reset via the /memory UI).
   try {
-    void getMaybeCompressChatSessions()();
+    void getMaybeCompressChatSessions()().catch((e) =>
+      console.warn("[sweep] chat memory compression failed:", (e as Error).message)
+    );
   } catch {
     // best-effort
   }
@@ -1118,7 +1125,9 @@ export function runMaintenanceSweep(): void {
   // watcher; internally guarded (paired? renderer? interval, backoff,
   // quiesce, rootHash fast-path) so this is a no-op almost always.
   try {
-    void getMaybeSyncRemarkable()();
+    void getMaybeSyncRemarkable()().catch((e) =>
+      console.warn("[sweep] remarkable sync failed:", (e as Error).message)
+    );
   } catch {
     // best-effort
   }
@@ -1126,7 +1135,11 @@ export function runMaintenanceSweep(): void {
   // (entityWiki pulls in notes for DISCIPLINE_ID). No-op unless the user has
   // built the wiki at least once; bounded to a few Claude calls per sweep.
   try {
-    void import("./entityWiki").then((m) => m.maybeRefreshEntityWiki());
+    void import("./entityWiki")
+      .then((m) => m.maybeRefreshEntityWiki())
+      .catch((e) =>
+        console.warn("[sweep] entity wiki refresh failed:", (e as Error).message)
+      );
   } catch {
     // best-effort
   }

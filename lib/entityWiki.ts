@@ -273,7 +273,13 @@ export async function maybeRefreshEntityWiki(): Promise<void> {
       const stubPaths = res.entities.map((e) =>
         entityStubRelPathForName(e.kind, e.name)
       );
-      void maybeExportDiaryToDropbox({ onlyEntityStubs: stubPaths });
+      // .catch() is load-bearing, not decoration: a bare `void promise` with
+      // no handler becomes an unhandled rejection if this ever throws past
+      // its own internal fail-open guards, which (depending on Node's
+      // unhandled-rejection policy) can crash the whole server process.
+      void maybeExportDiaryToDropbox({ onlyEntityStubs: stubPaths }).catch(
+        (e) => console.warn("[entityWiki] stub export failed:", (e as Error).message)
+      );
     }
   } catch (e) {
     console.warn("[entityWiki] sweep refresh failed:", (e as Error).message);

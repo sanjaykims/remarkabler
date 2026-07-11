@@ -1,5 +1,48 @@
 # Changelog
 
+## 2026-07-11 (security + reliability hardening)
+
+Requested as "more solid operation" + "strengthened security." A direct
+audit of the real attack surface and failure points (not a framework/library
+swap — see session notes if that's confusing):
+
+**Security:**
+- **Passcode brute-force lockout.** `lib/auth.ts` now blocks further passcode
+  attempts (both `action: "passcode"` and `"register-options"`) after 8 wrong
+  guesses within a rolling 15-minute window, persisted in `settings` so it
+  survives a Railway restart mid-attack. A correct passcode clears it
+  immediately. WebAuthn `login-verify` is deliberately not gated (not
+  practically guessable). +5 tests.
+- **Baseline security headers** (`next.config.mjs`): `X-Frame-Options: DENY`,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+  strict-origin-when-cross-origin`, a `Permissions-Policy` that allows only
+  the geolocation (Memory page) and microphone (chat voice input) the app
+  actually uses. No CSP added — this app has no `next/image` and no
+  middleware, so exposure to the open Next.js image-optimizer/middleware CVEs
+  is low, and a hand-rolled CSP risks silently breaking the UI for a
+  non-technical, phone-only user; that deserves its own tested pass.
+- **Dependency fix**: `npm audit fix` (non-breaking) resolved the protobufjs
+  high-severity advisory (transitive, via PostHog's OpenTelemetry exporter).
+  The remaining Next.js CVEs all require the Next 16 major upgrade — a
+  separate, deliberately-not-done-unprompted decision; Next is already on the
+  latest 14.2.x patch (14.2.35).
+
+**Reliability:**
+- **Global crash safety net.** New `instrumentation.ts` installs
+  `process.on('unhandledRejection'/'uncaughtException')` handlers that log
+  instead of letting Node kill the whole server — this app fires a lot of
+  never-awaited background work, and one unguarded failure taking down the
+  process for the app's one user is worse than a logged, recoverable miss.
+- **Fixed 6 fire-and-forget call sites with no `.catch()`** (the Dropbox
+  ingest, chat-memory compression, and reMarkable sync triggers in
+  `lib/notes.ts`'s maintenance sweep; the entity-wiki export in
+  `lib/entityWiki.ts`; the chat-memory trigger in `app/api/chat/route.ts`).
+  Their surrounding `try/catch` only guarded the synchronous call setup, not
+  the returned promise — a real gap, since Node treats an unhandled
+  rejection as fatal by default.
+
+Suite 398. Build clean.
+
 ## 2026-07-10 (agent-sweep follow-ups: reMarkable delete tombstone + duplicate-panel hardening)
 
 A 20-agent adversarially-verified audit of "can a deleted notebook come
