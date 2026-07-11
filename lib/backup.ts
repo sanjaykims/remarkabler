@@ -25,6 +25,16 @@ const SENSITIVE_SETTING_KEYS = [
   // reMarkable cloud device token — a long-lived credential to the user's
   // tablet account. Redact it from off-site backups, same as Dropbox's.
   "remarkable_device_token",
+  // The HMAC key that signs session cookies (lib/auth.ts). There is NO
+  // server-side session store, so isAuthenticated() trusts any cookie whose
+  // HMAC verifies against this key — meaning knowledge of session_secret
+  // alone lets an attacker forge a valid session and bypass the whole
+  // passcode/passkey lock. It's strictly more powerful than the Dropbox token
+  // above (defeats the app lock, not one integration), so it must never ship
+  // in an off-site backup. On restore, sessionSecret() regenerates a fresh
+  // key on first use — the only effect is that pre-existing sessions are
+  // invalidated, which is the correct behavior for a restored instance.
+  "session_secret",
 ];
 
 export function redactSensitiveSettings(stagedDbPath: string): void {

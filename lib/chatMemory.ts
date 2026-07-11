@@ -131,10 +131,18 @@ export type DuplicateCheck = {
   reason?: "exact" | "cosine";
 };
 
-export function isDuplicateMemory(candidate: {
-  text: string;
-  embedding: Float32Array | null;
-}): DuplicateCheck {
+// A preloaded, already-decoded set of active memory embeddings. Callers that
+// dedup many candidates in a row (compressBatch) build this ONCE and pass it
+// in, so the full embedding table isn't re-queried and re-decoded per item.
+export type PreloadedEmbeddings = Array<{ id: number; vec: Float32Array }>;
+
+export function isDuplicateMemory(
+  candidate: {
+    text: string;
+    embedding: Float32Array | null;
+  },
+  preloaded?: PreloadedEmbeddings
+): DuplicateCheck {
   const norm = normaliseMemoryText(candidate.text);
   if (!norm) return { duplicate: false };
 
@@ -150,6 +158,18 @@ export function isDuplicateMemory(candidate: {
   }
 
   if (!candidate.embedding) return { duplicate: false };
+
+  // When the caller supplied a preloaded set, compare against that (already
+  // decoded) instead of re-querying + re-decoding every embedding per call.
+  if (preloaded) {
+    for (const p of preloaded) {
+      const sim = cosineSimilarity(candidate.embedding, p.vec);
+      if (sim >= DEDUP_COSINE_THRESHOLD) {
+        return { duplicate: true, matchedId: p.id, reason: "cosine" };
+      }
+    }
+    return { duplicate: false };
+  }
 
   const rows = db()
     .prepare(
@@ -169,6 +189,23 @@ export function isDuplicateMemory(candidate: {
   }
 
   return { duplicate: false };
+}
+
+// Load + decode the active memory embeddings once (for compressBatch's loop).
+export function loadActiveMemoryEmbeddings(): PreloadedEmbeddings {
+  const rows = db()
+    .prepare(
+      `SELECT id, embedding FROM chat_memories
+       WHERE deleted_at IS NULL AND embedding IS NOT NULL`
+    )
+    .all() as Array<{ id: number; embedding: Buffer | null }>;
+  const out: PreloadedEmbeddings = [];
+  for (const r of rows) {
+    if (!r.embedding) continue;
+    const vec = decodeEmbedding(r.embedding);
+    if (vec) out.push({ id: r.id, vec });
+  }
+  return out;
 }
 
 type BatchRow = {
@@ -279,13 +316,13 @@ export async function compressBatch(
     return recordBatchFailure(batch, (e as Error).message || "Claude call failed");
   }
 
-  if (extraction.parseError || extraction.items.length === 0 && extraction.raw) {
-    // raw was returned but JSON parsing failed → real parse failure.
-    // Empty items with no parse error means "Claude legitimately had
-    // nothing durable" — that's a success, not a retry case.
-    if (extraction.parseError) {
-      return recordBatchFailure(batch, extraction.parseError);
-    }
+  // A parse error is the ONLY retry trigger. Empty items with no parse error
+  // means "Claude legitimately had nothing durable" — a success, not a retry.
+  // (The previous condition also tested `items.length === 0 && raw`, but that
+  // operand was dead: with no parseError the branch did nothing and fell
+  // through to the success path either way.)
+  if (extraction.parseError) {
+    return recordBatchFailure(batch, extraction.parseError);
   }
 
   const items = extraction.items.slice(0, MAX_ITEMS_PER_BATCH);
@@ -329,13 +366,22 @@ export async function compressBatch(
     }
   }
 
+  // Preload + decode the active memory embeddings ONCE, then dedup every
+  // draft against this in-memory set (instead of re-querying + re-decoding the
+  // whole table per draft). Items inserted earlier in this same loop are
+  // appended below so intra-batch cosine duplicates are still caught. (The
+  // exact text_norm check inside isDuplicateMemory still hits the DB, which
+  // also sees this loop's already-committed inserts, so exact intra-batch
+  // dupes are covered too.)
+  const activeEmbeddings = loadActiveMemoryEmbeddings();
+
   let inserted = 0;
   let duplicatesSkipped = 0;
   for (let i = 0; i < prepared.length; i++) {
     const { draft, trimmedText, norm } = prepared[i];
     const embedding = embeddings[i];
 
-    const dup = isDuplicateMemory({ text: trimmedText, embedding });
+    const dup = isDuplicateMemory({ text: trimmedText, embedding }, activeEmbeddings);
     if (dup.duplicate) {
       duplicatesSkipped++;
       continue;
@@ -348,7 +394,7 @@ export async function compressBatch(
     const category = normaliseChatMemoryCategory(draft.category);
     const categoryRaw = (draft.category || "").trim().slice(0, 60) || null;
 
-    insertStmt.run(
+    const info = insertStmt.run(
       batch.id,
       batch.conversation_id,
       batch.message_start_id,
@@ -362,6 +408,10 @@ export async function compressBatch(
       model
     );
     inserted++;
+    // So later drafts in this batch dedup against what we just inserted.
+    if (embedding) {
+      activeEmbeddings.push({ id: Number(info.lastInsertRowid), vec: embedding });
+    }
   }
 
   db()

@@ -23,9 +23,14 @@ export async function POST(
   if (!ok) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  // Fire-and-forget — same path the Clear handler uses.
+  // Fire-and-forget — same path the Clear handler uses. The .catch() is
+  // load-bearing: the outer try/catch only guards the synchronous call setup,
+  // so an async rejection (a DB error inside compressBatch) would otherwise be
+  // an unhandled rejection (CLAUDE.md's fire-and-forget rule).
   try {
-    void maybeCompressChatSessions();
+    void maybeCompressChatSessions().catch((e) =>
+      console.warn("[chat] memory compression failed:", (e as Error).message)
+    );
   } catch {
     // best-effort
   }

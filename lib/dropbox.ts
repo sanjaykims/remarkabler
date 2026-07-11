@@ -960,15 +960,20 @@ export async function maybeIngestDropbox(): Promise<{
     return { attempted: false, skipped: "backoff" };
   }
 
-  ingestInFlight = true;
-  setSetting("dropbox_last_attempt_at", new Date().toISOString());
   // Bookkeeping for the visible "what got skipped" summary. Bounded to a few
   // names so this can't grow unbounded in the settings table.
   const skips: string[] = [];
   const noteSkip = (name: string, reason: string) => {
     if (skips.length < 8) skips.push(`${name}: ${reason}`);
   };
+  // Set the in-flight flag as the LAST thing before the try, and do the
+  // attempt-timestamp write INSIDE it, so a throw in setSetting (a synchronous
+  // DB write that can raise SQLITE_BUSY / SQLITE_FULL) can't leave the flag
+  // stuck true and silently disable the primary Dropbox auto-ingest path until
+  // the process restarts.
+  ingestInFlight = true;
   try {
+    setSetting("dropbox_last_attempt_at", new Date().toISOString());
     const folder = ingestFolder();
     // listFolder throws DropboxApiError on any failure — auth, rate-limit,
     // transient, anything. That throw propagates to the outer catch where it

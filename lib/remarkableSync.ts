@@ -235,6 +235,29 @@ export function diffRmPages(
 }
 
 /**
+ * Decide what to do with a page's re-OCR result. Pure so it can be unit-tested
+ * without the render/OCR pipeline.
+ *   - "normal": write the result as-is (real text, or a blank page that had no
+ *      prior text to protect).
+ *   - "protect": the result is blank but the page HAD text and this exact .rm
+ *      hash hasn't been seen blank before — assume a transient render/OCR
+ *      glitch: keep the old text, remember the hash, re-check next sweep.
+ *   - "accept": blank again for a hash already recorded blank on a prior sweep
+ *      — the erase is confirmed stable, accept the blank.
+ */
+export type ReocrDecision = "normal" | "protect" | "accept";
+export function classifyReocr(
+  text: string,
+  existing: { hasText: boolean; blankHash: string | null } | undefined,
+  newHash: string
+): ReocrDecision {
+  if (text) return "normal";
+  if (!existing?.hasText) return "normal";
+  if (existing.blankHash && existing.blankHash === newHash) return "accept";
+  return "protect";
+}
+
+/**
  * Final page order: the cloud's live order first, then pages deleted on the
  * tablet (kept — the diary is append-only) in their previous relative order.
  */
@@ -260,6 +283,8 @@ type PageRow = {
   id: string;
   remarkable_page_id: string | null;
   remarkable_page_hash: string | null;
+  ocr_text: string | null;
+  blank_ocr_hash: string | null;
 };
 
 // True when the notebook was edited too recently to sync yet — i.e. it's
@@ -581,12 +606,32 @@ async function incrementalSyncNotebook(
 
     const pageRows = db()
       .prepare(
-        `SELECT id, remarkable_page_id, remarkable_page_hash FROM pages
-         WHERE notebook_id = ? ORDER BY page_index`
+        `SELECT id, remarkable_page_id, remarkable_page_hash, ocr_text, blank_ocr_hash
+         FROM pages WHERE notebook_id = ? ORDER BY page_index`
       )
       .all(row.id) as PageRow[];
     const mapped = pageRows.filter((p) => p.remarkable_page_id);
     const legacy = mapped.length === 0 && pageRows.length > 0;
+
+    // Per-page state for the blank-re-OCR guard below: the row id, whether the
+    // page currently holds real text (worth protecting), and the .rm hash (if
+    // any) that previously re-OCR'd blank for it (pending confirmation).
+    const existingByPageId = new Map<
+      string,
+      { rowId: string; hasText: boolean; blankHash: string | null }
+    >();
+    for (const p of mapped) {
+      if (p.remarkable_page_id) {
+        existingByPageId.set(p.remarkable_page_id, {
+          rowId: p.id,
+          hasText: !!(p.ocr_text && p.ocr_text.trim()),
+          blankHash: p.blank_ocr_hash ?? null,
+        });
+      }
+    }
+    const markBlankPending = db().prepare(
+      `UPDATE pages SET blank_ocr_hash = ? WHERE id = ?`
+    );
 
     const existing: PageHash[] = mapped.map((p) => ({
       pageId: p.remarkable_page_id as string,
@@ -643,6 +688,38 @@ async function incrementalSyncNotebook(
           .filter(Boolean)
           .join("\n\n")
           .trim();
+        // ocrNotebookPdf returns "" (not an error) for a page Claude judges
+        // blank. That happens two ways: a render/OCR GLITCH on a page that
+        // still has ink (transient — must not clobber the text), or a genuine
+        // tablet ERASE (the page really is blank now — must be accepted, or
+        // we'd show stale text and re-OCR it forever). We can't tell them
+        // apart from one sample, so we confirm across sweeps: the first blank
+        // for a given .rm hash is assumed a glitch (keep old text, remember
+        // the hash); if the SAME hash re-OCRs blank again on a later sweep,
+        // the blank is stable → accept it. A page with no existing text to
+        // protect flows through normally.
+        const existing = existingByPageId.get(pageId);
+        const newHash = hashById.get(pageId) || "";
+        const decision = classifyReocr(text, existing, newHash);
+        if (decision === "protect") {
+          // First blank for this content → assume a glitch. Keep the old text,
+          // record the hash NOW (persisted immediately so it survives even if
+          // the pass throws below), and let the next sweep re-check.
+          markBlankPending.run(newHash, existing!.rowId);
+          failed.push(pageId);
+          console.warn(
+            `[remarkableSync] page ${pageId} of "${nbName}" re-OCR'd blank but had text — keeping it this sweep, will re-check next sweep`
+          );
+          continue;
+        }
+        if (decision === "accept") {
+          // The same content re-OCR'd blank on a prior sweep too → a real
+          // erase. Accept the blank (the upsert clears blank_ocr_hash) and
+          // advance the hash so we stop re-OCR'ing it.
+          console.warn(
+            `[remarkableSync] page ${pageId} of "${nbName}" confirmed blank across sweeps — accepting the erase`
+          );
+        }
         results.push({ pageId, pageRowId: `${row.id}:rm:${pageId}`, text });
       } catch (e) {
         failed.push(pageId);
@@ -706,6 +783,10 @@ async function incrementalSyncNotebook(
          entry_date = excluded.entry_date,
          remarkable_page_hash = excluded.remarkable_page_hash,
          profile_fold_pending = excluded.profile_fold_pending,
+         -- Any definitive OCR outcome (real text, or an accepted blank)
+         -- clears the pending-blank marker: a recovered glitch or a confirmed
+         -- erase both resolve it.
+         blank_ocr_hash = NULL,
          embedding = NULL`
     );
     const delFts = db().prepare(`DELETE FROM pages_fts WHERE page_id = ?`);

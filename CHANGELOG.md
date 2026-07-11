@@ -1,5 +1,69 @@
 # Changelog
 
+## 2026-07-11 (deep multi-agent review: 11 verified fixes)
+
+A 6-dimension specialized codebase review (correctness / security / efficiency
+/ reliability / data-integrity / quality), each finding adversarially verified
+against the real code. 12 findings confirmed (0 refuted); 11 fixed here, 1
+deferred as a known follow-up.
+
+**Security (major):**
+- `session_secret` — the HMAC key that signs session cookies — was NOT redacted
+  from the off-site GitHub backup, even though there is no server-side session
+  store, so that key alone lets an attacker forge a valid session and bypass
+  the whole passcode/passkey lock. Added it to `SENSITIVE_SETTING_KEYS`
+  (`lib/backup.ts`); on restore, a fresh key regenerates (safely invalidating
+  stale sessions). +1 test.
+
+**Data integrity (major):**
+- reMarkable sync could silently and permanently destroy a page's diary text:
+  a changed page that re-OCR'd to blank (render glitch / transient empty
+  response) overwrote the prior good text with `''`, advanced the page/doc
+  hash, and was never retried. Now a blank re-OCR of a page that already had
+  text is **confirmed across sweeps** before it's accepted (`lib/remarkableSync.ts`,
+  new pure `classifyReocr` + a `pages.blank_ocr_hash` marker): the first blank
+  keeps the old text and records the page's `.rm` hash (assumed a transient
+  glitch); only if the *same* hash re-OCRs blank again on a later sweep is the
+  blank accepted as a genuine tablet erase. This fixes the original silent
+  data loss without the opposite failure a first pass introduced — a truly
+  erased page looping re-OCR forever while showing stale text (caught in
+  review). +tests.
+
+**Correctness / efficiency (minor):**
+- Chat `search_diary` / `count_entries_mentioning` reported `page: null` for
+  every reMarkable-synced excerpt (they parsed the page number out of the
+  page_id, whose shape differs for `:rm:` ids). Now resolved from the
+  authoritative `pages.page_index` (`lib/chatTools.ts`).
+- `get_entries_by_date` matched only the literal date string, dropping the
+  continuation pages of a multi-page day (only page 1 carries the date
+  header). Now also matches the attributed `entry_date` (`lib/chatTools.ts`).
+- `related_entities` scanned `entry_entities` twice per call; merged into one
+  scan, deriving the canonical-name map in JS. `isDuplicateMemory` reloaded +
+  decoded the whole embedding table once per extracted item; `compressBatch`
+  now preloads once and dedups against the in-memory set (intra-batch dedup
+  preserved).
+
+**Reliability (minor):**
+- Added the missing `.catch()` to the fire-and-forget `maybeCompressChatSessions()`
+  in the memory retry + backfill-all routes (matching CLAUDE.md's own rule).
+- Two in-flight guards (`lib/entityWiki.ts`, `lib/dropbox.ts`) set their flag
+  before a DB write that could throw, which would leave the flag stuck true and
+  silently disable that background job until restart. Flag is now set as the
+  last step before the `try`.
+
+**Quality (minor):**
+- `buildNotesContext` re-inlined the discipline-exclude ternary the centralized
+  helper exists to prevent — now calls `disciplineExcludeIdForChat()`.
+- Removed a dead operand in `compressBatch`'s parse-failure guard.
+
+**Deferred (known limitation):** the one-time legacy whole-PDF→per-page
+restructure in `lib/remarkableSync.ts` can drop a page that was deleted on the
+tablet between a Phase-1b import and the first auto-sync (legacy rows have no
+page-id to preserve). Narrow trigger; a naive fix risks duplicating diary
+content, so it needs a dedicated design + test rather than a rushed patch.
+
+Suite 398.
+
 ## 2026-07-11 (security + reliability hardening)
 
 Requested as "more solid operation" + "strengthened security." A direct

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { diffRmPages, orderPagesKeepStale } from "@/lib/remarkableSync";
+import {
+  diffRmPages,
+  orderPagesKeepStale,
+  classifyReocr,
+} from "@/lib/remarkableSync";
 
 // Pure logic behind the Phase 2 zero-tap sync: which pages to (re-)OCR when
 // a notebook's cloud hash changes, and how to order pages afterwards. This
@@ -65,6 +69,47 @@ describe("orderPagesKeepStale", () => {
 
   it("everything deleted → previous order preserved", () => {
     expect(orderPagesKeepStale([], ["a", "b"])).toEqual(["a", "b"]);
+  });
+});
+
+// Blank re-OCR handling: a page that comes back blank must not clobber real
+// diary text on a transient glitch, but a genuinely erased page must NOT loop
+// re-OCR forever. The decision is confirmed across sweeps via a per-page
+// blank-hash marker. This shipped once as a one-sided guard (never accept
+// blank) that caused an infinite re-OCR loop for truly-erased pages (review).
+describe("classifyReocr", () => {
+  it("writes real text normally", () => {
+    expect(classifyReocr("hello", { hasText: true, blankHash: null }, "h1")).toBe(
+      "normal"
+    );
+  });
+
+  it("writes a blank normally when there was no text to protect", () => {
+    expect(classifyReocr("", { hasText: false, blankHash: null }, "h1")).toBe(
+      "normal"
+    );
+    // brand-new page (no existing row at all)
+    expect(classifyReocr("", undefined, "h1")).toBe("normal");
+  });
+
+  it("protects existing text on the FIRST blank for a hash (assume glitch)", () => {
+    expect(classifyReocr("", { hasText: true, blankHash: null }, "h1")).toBe(
+      "protect"
+    );
+  });
+
+  it("protects again when a DIFFERENT hash goes blank (content changed since)", () => {
+    // recorded blank for h1, but now the page content is h2 — treat as a fresh
+    // first-blank, not a confirmation.
+    expect(classifyReocr("", { hasText: true, blankHash: "h1" }, "h2")).toBe(
+      "protect"
+    );
+  });
+
+  it("accepts the erase when the SAME hash re-OCRs blank again (confirmed)", () => {
+    expect(classifyReocr("", { hasText: true, blankHash: "h1" }, "h1")).toBe(
+      "accept"
+    );
   });
 });
 

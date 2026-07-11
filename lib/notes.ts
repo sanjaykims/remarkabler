@@ -294,7 +294,11 @@ export function correctPageText(
  */
 export function buildNotesContext(opts: { maxChars?: number } = {}): string {
   const limit = opts.maxChars ?? 150_000;
-  const excludeId = isDisciplineEnabled() ? "__none__" : DISCIPLINE_ID;
+  // Use the centralized helper rather than re-inlining the ternary + the raw
+  // "__none__" sentinel — this was the one remaining site that duplicated it,
+  // and the helper exists precisely so insights/profile can't drift from the
+  // ~10 chat tools that all call it.
+  const excludeId = disciplineExcludeIdForChat();
   const rows = db()
     .prepare(
       `SELECT n.name as notebook_name, p.page_index, p.ocr_text

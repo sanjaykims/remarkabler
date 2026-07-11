@@ -38,6 +38,12 @@ beforeAll(async () => {
     `INSERT INTO settings (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run("dropbox_last_error", "Dropbox 401 (auth).");
+  // The session-signing HMAC key — forging power over the whole app lock, so
+  // it must be redacted from off-site backups (review finding).
+  conn.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run("session_secret", "SUPER_SECRET_HMAC_KEY_abc");
   // Non-sensitive setting — should survive redaction.
   conn.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?)
@@ -67,6 +73,8 @@ describe("redactSensitiveSettings", () => {
       expect(get("dropbox_oauth_state")).toBeUndefined();
       expect(get("dropbox_oauth_redirect")).toBeUndefined();
       expect(get("dropbox_last_error")).toBeUndefined();
+      // The session-forging HMAC key must not ship off-site.
+      expect(get("session_secret")).toBeUndefined();
       // Non-sensitive key still present.
       expect(get("mind_dates_reparsed_v2")).toBe("yes");
     } finally {
