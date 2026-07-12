@@ -1,5 +1,7 @@
 "use client";
 
+import { Eyebrow } from "@/components/Eyebrow";
+
 import { useEffect, useState } from "react";
 import { Stat } from "@/components/Stat";
 
@@ -119,9 +121,12 @@ export default function UsagePage() {
 
   return (
     <div className="space-y-6">
-      <section className="space-y-1">
-        <h1 className="text-2xl font-semibold">Cost</h1>
-        <p className="opacity-70 text-sm">
+      <section className="space-y-2 pt-1">
+        <Eyebrow>Claude spend</Eyebrow>
+        <h1 className="text-3xl font-semibold tracking-tight text-balance">
+          Cost
+        </h1>
+        <p className="opacity-70 text-sm leading-relaxed max-w-prose">
           Estimated Claude API spend. Tap a day for the breakdown.
         </p>
       </section>

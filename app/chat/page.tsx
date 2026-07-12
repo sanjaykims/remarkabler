@@ -1,5 +1,7 @@
 "use client";
 
+import { Eyebrow } from "@/components/Eyebrow";
+
 import { useEffect, useRef, useState } from "react";
 import { setPickingFile } from "../lockState";
 import { track } from "../analytics";
@@ -419,17 +421,20 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-[calc(100dvh-120px)]">
-      <div className="flex items-center justify-between gap-2 mb-4">
-        <h1 className="text-2xl font-semibold">Chat with your notes</h1>
-        {messages.length > 0 && (
-          <button
-            onClick={clearChat}
-            disabled={busy}
-            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm disabled:opacity-50"
-          >
-            Clear
-          </button>
-        )}
+      <div className="mb-4 space-y-1.5">
+        <Eyebrow>Ask your notes</Eyebrow>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">Chat with your notes</h1>
+          {messages.length > 0 && (
+            <button
+              onClick={clearChat}
+              disabled={busy}
+              className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm disabled:opacity-50"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto space-y-4 pb-4">
