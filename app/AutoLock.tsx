@@ -126,7 +126,7 @@ export default function AutoLock() {
 
   if (!locked) return null;
   return (
-    <div className="fixed inset-0 z-50 overflow-auto bg-stone-50 dark:bg-stone-950">
+    <div className="fixed inset-0 z-50 overflow-auto bg-slate-50 dark:bg-slate-950">
       <LockScreen />
     </div>
   );

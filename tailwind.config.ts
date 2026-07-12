@@ -23,9 +23,11 @@ const config: Config = {
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       colors: {
-        // Semantic alias for amber. Use `accent-*` when intent is "decorative
-        // warmth"; use `amber-*` directly when intent is the specific shade.
-        accent: colors.amber,
+        // Semantic alias for the accent hue. Use `accent-*` when intent is
+        // "decorative accent"; use `sky-*` directly when intent is the specific
+        // shade. The palette is Fresh Summer Sky (see DESIGN.md): sky-blue
+        // accent + one sunny `amber-400` CTA.
+        accent: colors.sky,
       },
     },
   },

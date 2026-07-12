@@ -16,7 +16,7 @@ export function Section({
         <h2 className="text-lg font-medium">{title}</h2>
         {subtitle && <p className="text-xs opacity-60">{subtitle}</p>}
       </header>
-      <div className="rounded border border-stone-200 dark:border-stone-800 p-3">
+      <div className="rounded border border-slate-200 dark:border-slate-800 p-3">
         {children}
       </div>
     </section>

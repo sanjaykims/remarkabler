@@ -9,9 +9,9 @@ The one-page token reference for Remarkabler. Read this before any UI change.
 ## Identity in one line
 
 A calm, mobile-first **personal journal** that happens to be powered by
-Claude. Quiet, paper-feeling. A single, highly-legible humanist sans
-across the whole app. Decorative warmth from amber accents. Not a SaaS
-landing page.
+Claude. Quiet, airy, fresh. A single, highly-legible humanist sans
+across the whole app. **Fresh Summer Sky** palette: airy sky-blue accents
+with one sunny-yellow call-to-action. Not a SaaS landing page.
 
 ## Typography — single font
 
@@ -72,26 +72,35 @@ UI chrome stays at default density (no `leading-relaxed`).
 
 ## Color
 
+**Fresh Summer Sky** — cool neutrals (`slate-*`), a sky-blue accent
+(`sky-*`), and **one** sunny-yellow CTA (`amber-400`). Designed with the
+`ui-ux-pro-max` skill and WCAG-AA verified.
+
 | Surface | Light | Dark |
 | --- | --- | --- |
-| Body background | `#fafaf9` (stone-50, warm paper) | `#000000` (AMOLED true black) |
-| Body text | `text-stone-900` | `text-stone-100` |
-| Card border | `border-stone-200` | `border-stone-800` |
-| Muted text | `opacity-70`/`opacity-60` | same |
-| Accent (decorative) | `amber-600` `#d97706` | `amber-500` `#f59e0b` |
-| Accent text on light | `amber-700` `#b45309` (≥4.5:1) | `amber-400` `#fbbf24` (>7:1) |
+| Body background | `#f0f9ff` (sky-50, airy) + faint sky wash | `#000000` (AMOLED true black) |
+| Body text | `text-sky-950` | `text-slate-100` |
+| Card border | `border-slate-200` | `border-slate-800` |
+| Muted text | `opacity-70`/`opacity-60`, or `slate-500` | same / `slate-400` |
+| Accent (decorative) | `sky-500` `#0ea5e9` / `sky-600` `#0284c7` | `sky-400` `#38bdf8` |
+| Accent text on light | `sky-700` `#0369a1` (≥4.5:1) | `sky-300`/`sky-400` (>7:1) |
+| Primary CTA (the one warm pop) | `bg-amber-400` `#fbbf24`, text `sky-950` | same |
 
 **Dark mode is media-based** (`prefers-color-scheme`). Do **not** switch
 to class-based — every existing `dark:` variant would silently break.
 
-**Contrast rule:** `amber-600` on stone-50 is only ~3.4:1, so it's
-**decorative only** on light (underlines, focus rings, chart strokes,
-borders). For amber **text** on light use `amber-700`. Dark mode is fine
-either way.
+**Contrast rule:** `sky-500`/`sky-600` on sky-50 is decorative-strength, so
+use it **decoratively** on light (underlines, focus rings, chart strokes,
+borders, the active-tab rule). For sky **text** on light use `sky-700`
+(≥4.5:1). Dark mode is fine either way.
 
-The cost calendar's amber heat ramp is already this scale. The shared
-`colors.accent` alias in `tailwind.config.ts` is a greppable name for
-the same color; pick whichever reads better in context.
+**The yellow is sacred — one place only.** `amber-400` is reserved for the
+single primary CTA (`Button` `primary`). Everything else is sky-blue or
+slate. Adding yellow elsewhere dilutes the one summer pop and reads cheap.
+
+The cost calendar's sky heat ramp uses the `sky-*` scale. The shared
+`colors.accent` alias in `tailwind.config.ts` now points at `colors.sky` —
+a greppable name for the accent; pick whichever reads better in context.
 
 ## Spacing & radius
 
@@ -104,7 +113,7 @@ the same color; pick whichever reads better in context.
 
 ## Interactivity
 
-- **Focus rings:** keyboard-only via `:focus-visible`, amber. Mouse-click
+- **Focus rings:** keyboard-only via `:focus-visible`, sky-blue. Mouse-click
   doesn't trigger them, so they don't clutter forms.
 - **Tap targets:** 44px floor on touch devices (`(hover: none) and
   (pointer: coarse)`), applied **only** to `button`/`[role=button]`/
@@ -119,7 +128,7 @@ Server-safe, hook-free, in `components/`:
 
 - `cn` — class-concatenation helper (6 lines, no deps).
 - `Button` (`primary` / `secondary` / `ghost` × `sm` / `md`).
-- `Card` — `rounded border border-stone-200 dark:border-stone-800 p-…`
+- `Card` — `rounded border border-slate-200 dark:border-slate-800 p-…`
   with an `as` prop.
 - `Section` — H2 + optional subtitle + bordered body (lifted from the
   Mind page).
@@ -129,8 +138,10 @@ Server-safe, hook-free, in `components/`:
 
 `IconButton`, an icon library, and any animation library are explicitly
 **out of scope** for this refresh — inline SVGs and Tailwind transitions
-are enough. `app/mind/Map3D.tsx` is **not** touched (its amber literals
-already match).
+are enough. `app/mind/Map3D.tsx` still uses **amber hex literals** for its
+3D sentiment points (the class reskin only touched Tailwind utilities, not
+hex) — a known follow-up: recolor those to the sky ramp in a later pass so
+the 3D map matches the palette.
 
 ## Do not regress
 
@@ -142,8 +153,9 @@ already match).
 - `.font-semibold { font-weight: 500 }` remap stays. Don't add a real 600
   face unless Clear Sans starts shipping one.
 - Dark mode stays **media-based**.
-- Amber is **decorative-only on light** for non-text; amber-700 for text.
+- Sky-blue is **decorative-only on light** for non-text; `sky-700` for text.
+- **The yellow (`amber-400`) is the ONE primary CTA** — never elsewhere.
 - Safe-area utilities preserved.
 - `app/layout.tsx` stays a **server component** (it calls
   `isAuthenticated()` at request time).
-- Map3D is untouched.
+- Map3D's 3D-point colors are a known follow-up (still amber; recolor to sky).
