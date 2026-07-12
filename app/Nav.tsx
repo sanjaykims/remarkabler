@@ -1,13 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/components/cn";
+import TransitionLink from "@/components/TransitionLink";
 
 // Routes are listed in nav order. The first entry is the wordmark
-// (slightly larger + bold); the rest are nav links with an amber
+// (slightly larger + bold); the rest are nav links with a sky-blue
 // underline on active. A transparent border on inactive items keeps the
-// row from shifting when active changes.
+// row from shifting when active changes. Links use TransitionLink so
+// navigating between pages cross-fades (View Transitions) instead of
+// snapping.
 const LINKS = [
   { href: "/notebooks", label: "Notebooks" },
   { href: "/chat", label: "Chat" },
@@ -22,7 +24,7 @@ export default function Nav() {
 
   return (
     <nav className="mx-auto max-w-5xl px-4 py-3 flex items-center gap-x-3 text-xs whitespace-nowrap overflow-x-auto">
-      <Link
+      <TransitionLink
         href="/"
         aria-current={pathname === "/" ? "page" : undefined}
         className={cn(
@@ -33,11 +35,11 @@ export default function Nav() {
         )}
       >
         Remarkabler
-      </Link>
+      </TransitionLink>
       {LINKS.map((link) => {
         const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
         return (
-          <Link
+          <TransitionLink
             key={link.href}
             href={link.href}
             aria-current={active ? "page" : undefined}
@@ -49,7 +51,7 @@ export default function Nav() {
             )}
           >
             {link.label}
-          </Link>
+          </TransitionLink>
         );
       })}
     </nav>

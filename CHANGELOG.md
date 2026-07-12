@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-07-12 (redesign phase 2 — motion: seamless navigation + count-up)
+
+Second redesign phase: motion, with reMarkable's calm "never bouncy" pacing.
+
+- **Seamless page transitions.** New `components/TransitionLink.tsx` runs client
+  navigations inside `document.startViewTransition()`, and `globals.css` styles
+  the root as a gentle cross-fade + upward drift (`::view-transition-old/new`).
+  `Nav` uses it, so moving between pages glides instead of snapping. Degrades
+  cleanly: reduced-motion and browsers without the View Transitions API (and
+  modified/new-tab clicks) just navigate instantly — no regression.
+- **Count-up stats.** `Stat` is now a client component that animates numeric
+  values from 0 on first view (ease-out, IntersectionObserver-triggered). Pure
+  enhancement — the server renders the final number, so no-JS / reduced-motion /
+  pre-hydration all show the real value; string values (Cost's money) are
+  untouched.
+- **Calm-timing tokens** (`--ease-calm`, `--dur-calm`) added to `globals.css`.
+
+Still to come: the transcription micro-loop, the sliding active-tab underline
+(shared-element transition), per-page layout elevation, and the Map3D recolor.
+
+Suite 403; build clean.
+
 ## 2026-07-12 (redesign phase 1 — Fresh Summer Sky palette)
 
 First phase of the app redesign: a new **Fresh Summer Sky** palette, designed

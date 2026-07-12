@@ -69,6 +69,45 @@ body {
     scroll-behavior: auto;
   }
 }
+
+/*
+ * Motion system (redesign phase 2). "Calm tech" pacing borrowed from
+ * reMarkable: slow, gently decelerating, never bouncy.
+ */
+:root {
+  --ease-calm: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-calm: 520ms;
+}
+
+/*
+ * Seamless page transitions. Client navigations are wrapped in
+ * document.startViewTransition() (components/TransitionLink.tsx); this styles
+ * the resulting root cross-fade + a gentle upward drift so pages glide into
+ * one another instead of snapping. Browsers without the API just navigate
+ * normally (the wrapper falls back), and reduced-motion users get an instant
+ * swap.
+ */
+@keyframes vt-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes vt-fade-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-6px); }
+}
+::view-transition-old(root) {
+  animation: vt-fade-out var(--dur-calm) var(--ease-calm) both;
+}
+::view-transition-new(root) {
+  animation: vt-fade-in var(--dur-calm) var(--ease-calm) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
 body,
 button,
 a,
