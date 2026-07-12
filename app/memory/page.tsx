@@ -1136,7 +1136,7 @@ export default function MemoryPage() {
             independent of connection state, so the user knows the token
             may still be live at Dropbox and can revoke it manually. */}
         {dropbox?.lastRevokeWarning && (
-          <p className="text-xs text-sky-600 dark:text-sky-400 break-words">
+          <p className="text-xs text-sky-700 dark:text-sky-400 break-words">
             Heads up: {dropbox.lastRevokeWarning}
           </p>
         )}
@@ -1198,7 +1198,7 @@ export default function MemoryPage() {
               </p>
             )}
             {dropbox.lastSkipped && (
-              <p className="text-xs text-sky-600 dark:text-sky-400 break-words">
+              <p className="text-xs text-sky-700 dark:text-sky-400 break-words">
                 Skipped: {dropbox.lastSkipped}
               </p>
             )}
@@ -1355,7 +1355,7 @@ export default function MemoryPage() {
               </p>
             )}
             {remarkable.sync?.lastError && (
-              <p className="text-xs text-sky-600 dark:text-sky-400 break-words">
+              <p className="text-xs text-sky-700 dark:text-sky-400 break-words">
                 Sync: {remarkable.sync.lastError}
               </p>
             )}
@@ -2028,7 +2028,7 @@ function ChatMemorySection() {
               <div className="flex items-center justify-between gap-2 text-[11px] opacity-60">
                 <span>{formatLocalTime(m.created_at)}</span>
                 {m.missing_embedding === 1 && (
-                  <span className="text-sky-600 dark:text-sky-400">
+                  <span className="text-sky-700 dark:text-sky-400">
                     no embedding (won&rsquo;t auto-recall)
                   </span>
                 )}

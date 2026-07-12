@@ -483,7 +483,7 @@ export default function MindPage() {
                   labelDebug.labels?.[k] ? (
                     <p key={k}>
                       <span className="font-mono opacity-50">{["X", "Y", "Z"][i]}</span>{" "}
-                      <span className="text-sky-600 dark:text-sky-400">
+                      <span className="text-sky-700 dark:text-sky-400">
                         {labelDebug.labels[k].positive}
                       </span>{" "}
                       ↔{" "}
