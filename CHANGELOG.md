@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-07-12 (redesign phase 3 — Home hero + Eyebrow motif)
+
+Third redesign phase: elevate the Home page (the first impression) and add a
+reusable header motif.
+
+- **`Eyebrow` component** (`components/Eyebrow.tsx`) — a small uppercase label
+  preceded by a short sky-blue tick, the "margin rule marks where you are"
+  motif scaled down to a section label. Server-safe, hook-free, reused across
+  pages in later phases.
+- **Home hero** — the plain `Remarkabler` H1 (redundant with the nav wordmark)
+  becomes an eyebrow + a larger, balanced headline ("Everything you write,
+  understood.") + calmer spacing (`space-y-8`, `leading-relaxed`, `max-w-prose`).
+  Pairs with the count-up stats from phase 2.
+
+Still to come: the transcription micro-loop, the sliding active-tab underline,
+the remaining pages (Notebooks/Chat/Mind/Insights/Memory/Cost), and Map3D.
+
+Suite 403; build clean.
+
 ## 2026-07-12 (redesign phase 2 — motion: seamless navigation + count-up)
 
 Second redesign phase: motion, with reMarkable's calm "never bouncy" pacing.
