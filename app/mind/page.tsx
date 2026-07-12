@@ -1,5 +1,7 @@
 "use client";
 
+import { Eyebrow } from "@/components/Eyebrow";
+
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { EntityRank } from "@/lib/mind";
@@ -336,9 +338,12 @@ export default function MindPage() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Your mind</h1>
-        <p className="opacity-70 text-sm">
+      <header className="space-y-2 pt-1">
+        <Eyebrow>Patterns &amp; themes</Eyebrow>
+        <h1 className="text-3xl font-semibold tracking-tight text-balance">
+          Your mind
+        </h1>
+        <p className="opacity-70 text-sm leading-relaxed max-w-prose">
           Patterns surfaced from your diary: when you write, what you write
           about, how you feel, and how your entries cluster by meaning.
         </p>

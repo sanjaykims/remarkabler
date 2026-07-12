@@ -1,5 +1,7 @@
 "use client";
 
+import { Eyebrow } from "@/components/Eyebrow";
+
 import { useEffect, useRef, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
 import { setPickingFile } from "../lockState";
@@ -247,7 +249,12 @@ export default function NotebooksPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Notebooks</h1>
+      <section className="space-y-2 pt-1">
+        <Eyebrow>Your notebooks</Eyebrow>
+        <h1 className="text-3xl font-semibold tracking-tight text-balance">
+          Notebooks
+        </h1>
+      </section>
 
       <form
         onSubmit={upload}

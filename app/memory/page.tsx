@@ -1,5 +1,7 @@
 "use client";
 
+import { Eyebrow } from "@/components/Eyebrow";
+
 import { useEffect, useRef, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
 
@@ -778,9 +780,12 @@ export default function MemoryPage() {
 
   return (
     <div className="space-y-4">
-      <section className="space-y-1">
-        <h1 className="text-2xl font-semibold">Memory</h1>
-        <p className="opacity-70 text-sm">
+      <section className="space-y-2 pt-1">
+        <Eyebrow>What Claude remembers</Eyebrow>
+        <h1 className="text-3xl font-semibold tracking-tight text-balance">
+          Memory
+        </h1>
+        <p className="opacity-70 text-sm leading-relaxed max-w-prose">
           What Remarkabler understands about you, built from your diary. It
           updates on its own as you feed new entries — edit here to correct it.
         </p>

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-07-12 (redesign phase 4 — consistent page headers)
+
+Fourth redesign phase: every page's header brought up to the Home standard, so
+the app reads as one cohesive surface.
+
+- All six pages (Notebooks, Chat, Mind, Insights, Memory, Cost) now open with
+  the `Eyebrow` sky-tick label + a larger, balanced (`text-3xl`,
+  `tracking-tight`, `text-balance`) headline and calmer spacing — matching the
+  Home hero. Chat keeps a compact header (it's height-constrained) but gains
+  the eyebrow. Subtitles get `leading-relaxed max-w-prose`.
+- Header-only, layout-safe change; no behavior touched.
+
+Still to come: the transcription micro-loop, the sliding active-tab underline,
+deeper per-page layout/component polish, and the Map3D recolor.
+
+Suite 403; build clean.
+
 ## 2026-07-12 (redesign phase 3 — Home hero + Eyebrow motif)
 
 Third redesign phase: elevate the Home page (the first impression) and add a

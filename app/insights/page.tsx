@@ -1,5 +1,7 @@
 "use client";
 
+import { Eyebrow } from "@/components/Eyebrow";
+
 import { useEffect, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
 import { track } from "../analytics";
@@ -113,8 +115,10 @@ export default function InsightsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h1 className="text-2xl font-semibold">Insights</h1>
+      <div className="space-y-2 pt-1">
+        <Eyebrow>What Claude sees</Eyebrow>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h1 className="text-3xl font-semibold tracking-tight text-balance">Insights</h1>
         <div className="flex gap-2">
           {insights.length > 0 && (
             <>
@@ -139,6 +143,7 @@ export default function InsightsPage() {
           >
             {generating ? "Reflecting…" : "Generate insights"}
           </button>
+          </div>
         </div>
       </div>
 
