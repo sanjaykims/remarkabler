@@ -5,6 +5,7 @@ import { runMaintenanceSweep } from "@/lib/notes";
 import { Card } from "@/components/Card";
 import { LinkButton } from "@/components/Button";
 import { Stat } from "@/components/Stat";
+import { Eyebrow } from "@/components/Eyebrow";
 
 export const dynamic = "force-dynamic";
 
@@ -61,10 +62,13 @@ export default function Home() {
     .get() as LatestInsight | undefined;
 
   return (
-    <div className="space-y-6">
-      <section className="space-y-1">
-        <h1 className="text-2xl font-semibold">Remarkabler</h1>
-        <p className="opacity-70 text-sm">
+    <div className="space-y-8">
+      <section className="space-y-3 pt-1">
+        <Eyebrow>Your journal</Eyebrow>
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-balance">
+          Everything you write, understood.
+        </h1>
+        <p className="opacity-70 text-sm leading-relaxed max-w-prose">
           Your reMarkable notebooks, transcribed and understood by Claude.
         </p>
       </section>
