@@ -13,10 +13,12 @@ type Variant = "primary" | "secondary" | "ghost";
 type Size = "sm" | "md";
 
 const VARIANT_CLASSES: Record<Variant, string> = {
+  // Primary is the one sunny-yellow CTA — the single warm pop in the otherwise
+  // sky-blue Fresh Summer palette (see DESIGN.md). Deep-sky text for AA.
   primary:
-    "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900",
+    "bg-amber-400 text-sky-950 transition-colors hover:bg-amber-300",
   secondary:
-    "border border-stone-300 dark:border-stone-700 bg-transparent",
+    "border border-slate-300 dark:border-slate-700 bg-transparent transition-colors hover:border-sky-400",
   ghost: "bg-transparent",
 };
 

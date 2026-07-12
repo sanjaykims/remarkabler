@@ -425,7 +425,7 @@ export default function ChatPage() {
           <button
             onClick={clearChat}
             disabled={busy}
-            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-sm disabled:opacity-50"
+            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm disabled:opacity-50"
           >
             Clear
           </button>
@@ -451,8 +451,8 @@ export default function ChatPage() {
               key={i}
               className={
                 m.role === "user"
-                  ? "ml-auto max-w-[80%] rounded-2xl bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 whitespace-pre-wrap break-words"
-                  : "mr-auto max-w-[80%] rounded-2xl bg-stone-100 dark:bg-stone-900 px-4 py-2 whitespace-pre-wrap break-words leading-relaxed"
+                  ? "ml-auto max-w-[80%] rounded-2xl bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 whitespace-pre-wrap break-words"
+                  : "mr-auto max-w-[80%] rounded-2xl bg-slate-100 dark:bg-slate-900 px-4 py-2 whitespace-pre-wrap break-words leading-relaxed"
               }
             >
               {m.attachments?.map((a) =>
@@ -491,7 +491,7 @@ export default function ChatPage() {
       {speaking && (
         <button
           onClick={stopSpeaking}
-          className="self-start mb-2 text-xs rounded border border-stone-300 dark:border-stone-700 px-2 py-1"
+          className="self-start mb-2 text-xs rounded border border-slate-300 dark:border-slate-700 px-2 py-1"
         >
           Stop voice
         </button>
@@ -499,7 +499,7 @@ export default function ChatPage() {
 
       <form
         onSubmit={send}
-        className="rounded-2xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 px-3 py-2.5 space-y-2 focus-within:ring-1 focus-within:ring-stone-400 dark:focus-within:ring-stone-500"
+        className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 space-y-2 focus-within:ring-1 focus-within:ring-slate-400 dark:focus-within:ring-slate-500"
       >
         {error && <p className="text-xs text-red-600 px-1">{error}</p>}
         {file && (
@@ -544,7 +544,7 @@ export default function ChatPage() {
             onClick={openFilePicker}
             disabled={busy}
             aria-label="Attach a photo or PDF"
-            className="w-10 h-10 rounded-full border border-stone-300 dark:border-stone-700 flex items-center justify-center disabled:opacity-50"
+            className="w-10 h-10 rounded-full border border-slate-300 dark:border-slate-700 flex items-center justify-center disabled:opacity-50"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M12 5v14M5 12h14" />
@@ -561,7 +561,7 @@ export default function ChatPage() {
                   "w-10 h-10 rounded-full flex items-center justify-center " +
                   (listening
                     ? "bg-red-600 text-white"
-                    : "border border-stone-300 dark:border-stone-700 disabled:opacity-50")
+                    : "border border-slate-300 dark:border-slate-700 disabled:opacity-50")
                 }
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -574,7 +574,7 @@ export default function ChatPage() {
               type="submit"
               disabled={busy || (!input.trim() && !file)}
               aria-label="Send"
-              className="w-10 h-10 rounded-full bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 flex items-center justify-center disabled:opacity-40"
+              className="w-10 h-10 rounded-full bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 flex items-center justify-center disabled:opacity-40"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 19V5M5 12l7-7 7 7" />

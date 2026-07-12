@@ -120,13 +120,13 @@ export default function InsightsPage() {
             <>
               <button
                 onClick={copy}
-                className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-sm"
+                className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm"
               >
                 {copied ? "Copied" : "Copy"}
               </button>
               <button
                 onClick={download}
-                className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-sm"
+                className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm"
               >
                 Export
               </button>
@@ -135,7 +135,7 @@ export default function InsightsPage() {
           <button
             onClick={generate}
             disabled={generating}
-            className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-sm disabled:opacity-50"
+            className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-sm disabled:opacity-50"
           >
             {generating ? "Reflecting…" : "Generate insights"}
           </button>
@@ -156,8 +156,8 @@ export default function InsightsPage() {
             disabled={togglingWeekly}
             className={`shrink-0 rounded border px-2.5 py-1.5 text-xs disabled:opacity-50 ${
               weeklyEnabled
-                ? "border-stone-900 bg-stone-900 text-stone-50 dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900"
-                : "border-stone-300 dark:border-stone-700"
+                ? "border-slate-900 bg-slate-900 text-slate-50 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+                : "border-slate-300 dark:border-slate-700"
             }`}
           >
             {weeklyEnabled ? "Weekly auto-insight: ON" : "Weekly auto-insight: OFF"}
@@ -189,7 +189,7 @@ export default function InsightsPage() {
           {insights.map((it, i) => (
             <details
               key={it.id}
-              className="rounded border border-stone-200 dark:border-stone-800"
+              className="rounded border border-slate-200 dark:border-slate-800"
             >
               <summary className="cursor-pointer px-3 py-2 list-none flex flex-col gap-0.5">
                 <span className="text-[11px] opacity-60">
@@ -200,7 +200,7 @@ export default function InsightsPage() {
                   {it.title || summarize(it.content)}
                 </span>
               </summary>
-              <div className="px-3 pb-3 text-sm whitespace-pre-wrap border-t border-stone-200 dark:border-stone-800 pt-2 leading-relaxed">
+              <div className="px-3 pb-3 text-sm whitespace-pre-wrap border-t border-slate-200 dark:border-slate-800 pt-2 leading-relaxed">
                 {it.content}
               </div>
             </details>

@@ -9,11 +9,19 @@
 /*
  * AMOLED-friendly dark mode: pure black (#000) so the screen physically
  * turns those pixels OFF, saving battery and giving infinite contrast.
- * Light mode stays warm-stone for paper feel.
+ * Light mode is an airy sky-white (Fresh Summer Sky palette — see DESIGN.md).
  */
 body {
-  @apply text-stone-900 dark:text-stone-100;
-  background: #fafaf9; /* stone-50 */
+  @apply text-sky-950 dark:text-slate-100;
+  background-color: #f0f9ff; /* sky-50 */
+  /* Barely-there sky wash for fresh-air depth without a shadow (light only). */
+  background-image: radial-gradient(
+    1100px 520px at 50% -8%,
+    rgba(56, 189, 248, 0.1),
+    rgba(56, 189, 248, 0) 62%
+  );
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", Roboto, sans-serif;
 }
@@ -72,18 +80,18 @@ select,
 }
 
 /*
- * Keyboard-only focus ring in amber. :focus-visible means mouse clicks
+ * Keyboard-only focus ring in sky-blue. :focus-visible means mouse clicks
  * don't trigger the ring, so it never clutters forms or buttons during
  * normal pointer use.
  */
 :focus-visible {
-  outline: 2px solid #d97706; /* amber-600 */
+  outline: 2px solid #0284c7; /* sky-600 */
   outline-offset: 2px;
   border-radius: 3px;
 }
 @media (prefers-color-scheme: dark) {
   :focus-visible {
-    outline-color: #f59e0b; /* amber-500 */
+    outline-color: #38bdf8; /* sky-400 */
   }
 }
 

@@ -28,7 +28,7 @@ export default function Nav() {
         className={cn(
           "text-base font-semibold tracking-tight border-b-2 mr-1",
           pathname === "/"
-            ? "border-amber-600 dark:border-amber-500"
+            ? "border-sky-600 dark:border-sky-500"
             : "border-transparent"
         )}
       >
@@ -44,7 +44,7 @@ export default function Nav() {
             className={cn(
               "border-b-2 pb-0.5 transition-opacity",
               active
-                ? "opacity-100 border-amber-600 dark:border-amber-500"
+                ? "opacity-100 border-sky-600 dark:border-sky-500"
                 : "opacity-70 hover:opacity-100 border-transparent"
             )}
           >

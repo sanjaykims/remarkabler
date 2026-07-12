@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-07-12 (redesign phase 1 — Fresh Summer Sky palette)
+
+First phase of the app redesign: a new **Fresh Summer Sky** palette, designed
+with the `ui-ux-pro-max` skill and WCAG-AA verified, replacing warm amber+stone.
+
+- **Neutrals** warm stone → cool `slate-*`; **accent** amber → sky-blue `sky-*`
+  (a scripted, class-only reskin across `app/` + `components/` — 350 slate + 48
+  sky classes, 0 amber/stone left).
+- **One sunny-yellow CTA**: `Button` `primary` is now `bg-amber-400` /
+  `text-sky-950` — the single warm pop in an otherwise sky-blue system.
+- **Airy sky-50 background** (`#f0f9ff`) with a barely-there sky wash for depth
+  without a shadow (light only); dark mode stays pure AMOLED black.
+- Focus ring, `theme-color` meta, and the `colors.accent` Tailwind alias all
+  moved to sky-blue.
+- `DESIGN.md` updated to the new palette + rules ("the yellow is the ONE CTA").
+
+Known follow-up: `app/mind/Map3D.tsx` still uses amber hex literals for its 3D
+sentiment points (the class reskin doesn't touch hex) — to be recolored to the
+sky ramp in a later phase. Motion (transcription loop, ink-draw margin rule,
+count-up, view-transition navigation), component polish, and per-page layout
+elevation are also later phases.
+
+Suite 403; build clean. Visual verification needs the deployed Railway instance.
+
 ## 2026-07-11 (deep multi-agent review: 11 verified fixes)
 
 A 6-dimension specialized codebase review (correctness / security / efficiency

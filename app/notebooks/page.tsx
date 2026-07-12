@@ -251,7 +251,7 @@ export default function NotebooksPage() {
 
       <form
         onSubmit={upload}
-        className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3"
+        className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-3"
       >
         <p className="text-sm opacity-80">
           Export a notebook as PDF on your reMarkable, then upload it here.
@@ -276,7 +276,7 @@ export default function NotebooksPage() {
             type="button"
             onClick={openFilePicker}
             disabled={uploading}
-            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-sm disabled:opacity-50"
+            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm disabled:opacity-50"
           >
             Choose file
           </button>
@@ -286,7 +286,7 @@ export default function NotebooksPage() {
           <button
             type="submit"
             disabled={uploading}
-            className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-1.5 text-sm disabled:opacity-50"
+            className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-1.5 text-sm disabled:opacity-50"
           >
             {uploading ? "Uploading…" : "Upload"}
           </button>
@@ -296,7 +296,7 @@ export default function NotebooksPage() {
       </form>
 
       {duplicates.length > 0 && (
-        <div className="rounded border border-amber-300 dark:border-amber-800 p-4 space-y-3">
+        <div className="rounded border border-sky-300 dark:border-sky-800 p-4 space-y-3">
           <h2 className="text-sm font-semibold">Possible duplicates</h2>
           <p className="text-xs opacity-70">
             These notebooks look like they cover the same dates as content
@@ -307,7 +307,7 @@ export default function NotebooksPage() {
             {duplicates.map((c) => (
               <div
                 key={c.id}
-                className="rounded border border-stone-200 dark:border-stone-800 px-3 py-2 space-y-1"
+                className="rounded border border-slate-200 dark:border-slate-800 px-3 py-2 space-y-1"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm">{c.name}</span>
@@ -316,7 +316,7 @@ export default function NotebooksPage() {
                       "text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 " +
                       (c.classification === "full"
                         ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200"
-                        : "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200")
+                        : "bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200")
                     }
                   >
                     {c.classification}
@@ -331,13 +331,13 @@ export default function NotebooksPage() {
                   Covered by: {c.coveringNotebooks.map((n) => n.name).join(", ")}
                 </p>
                 {c.classification === "partial" && (
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                  <p className="text-xs text-sky-700 dark:text-sky-400">
                     {c.uncoveredDates.length} date(s) not covered elsewhere:{" "}
                     {c.uncoveredDates.join(", ")}
                   </p>
                 )}
                 {c.hasUndated && (
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                  <p className="text-xs text-sky-700 dark:text-sky-400">
                     Has page(s) with no readable date — their content may not
                     be covered by the notebooks above.
                   </p>
@@ -362,7 +362,7 @@ export default function NotebooksPage() {
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="h-12 rounded border border-stone-200 dark:border-stone-800 animate-pulse opacity-30"
+              className="h-12 rounded border border-slate-200 dark:border-slate-800 animate-pulse opacity-30"
             />
           ))}
         </div>
@@ -385,7 +385,7 @@ export default function NotebooksPage() {
                     void loadPages(n.id);
                   }
                 }}
-                className="rounded border border-stone-200 dark:border-stone-800"
+                className="rounded border border-slate-200 dark:border-slate-800"
               >
                 <summary className="cursor-pointer px-3 py-2 list-none flex flex-col gap-0.5">
                   <span className="text-[11px] opacity-60">
@@ -398,7 +398,7 @@ export default function NotebooksPage() {
                   </span>
                   <span className="text-xs opacity-80">{n.name}</span>
                 </summary>
-                <div className="px-3 pb-3 border-t border-stone-200 dark:border-stone-800 pt-2 space-y-3">
+                <div className="px-3 pb-3 border-t border-slate-200 dark:border-slate-800 pt-2 space-y-3">
                   {n.status === "error" && n.error && (
                     <p className="text-xs text-red-600">{n.error}</p>
                   )}
@@ -406,7 +406,7 @@ export default function NotebooksPage() {
                     Uploaded {formatLocalTime(n.synced_at)}
                   </p>
                   {n.status === "done" && (
-                    <div className="space-y-2 pt-1 border-t border-stone-100 dark:border-stone-900">
+                    <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-900">
                       {pages === "loading" && (
                         <p className="text-xs opacity-60 pt-2">Loading pages…</p>
                       )}
@@ -441,13 +441,13 @@ export default function NotebooksPage() {
                                   value={editText}
                                   onChange={(e) => setEditText(e.target.value)}
                                   spellCheck={false}
-                                  className="w-full min-h-[10rem] rounded border border-stone-300 dark:border-stone-700 bg-transparent p-2 text-sm leading-relaxed whitespace-pre-wrap"
+                                  className="w-full min-h-[10rem] rounded border border-slate-300 dark:border-slate-700 bg-transparent p-2 text-sm leading-relaxed whitespace-pre-wrap"
                                 />
                                 <div className="flex items-center gap-3">
                                   <button
                                     onClick={() => savePageEdit(n.id, p.id)}
                                     disabled={savingEdit}
-                                    className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1 text-xs disabled:opacity-50"
+                                    className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1 text-xs disabled:opacity-50"
                                   >
                                     {savingEdit ? "Saving…" : "Save correction"}
                                   </button>

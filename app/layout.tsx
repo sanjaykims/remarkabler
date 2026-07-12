@@ -39,7 +39,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fafaf9" },
+    { media: "(prefers-color-scheme: light)", color: "#f0f9ff" },
     { media: "(prefers-color-scheme: dark)", color: "#000000" },
   ],
 };
@@ -57,7 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <PostHogProvider>
           {authed ? (
             <>
-              <header className="border-b border-stone-200 dark:border-stone-800 pt-safe pl-safe pr-safe">
+              <header className="border-b border-slate-200 dark:border-slate-800 pt-safe pl-safe pr-safe">
                 <Nav />
               </header>
               <main className="mx-auto max-w-5xl px-4 sm:px-6 py-6 sm:py-8 pl-safe pr-safe pb-safe">

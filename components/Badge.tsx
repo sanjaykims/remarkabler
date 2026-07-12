@@ -10,9 +10,9 @@ type BadgeProps = {
 
 const TONE_CLASSES = {
   neutral:
-    "bg-stone-100 text-stone-700 dark:bg-stone-900 dark:text-stone-300",
+    "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300",
   accent:
-    "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
+    "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400",
 } as const;
 
 export function Badge({ tone = "neutral", className, children }: BadgeProps) {

@@ -9,7 +9,7 @@ export function Stat({
   value: number | string;
 }) {
   return (
-    <div className="rounded border border-stone-200 dark:border-stone-800 p-3 text-center">
+    <div className="rounded border border-slate-200 dark:border-slate-800 p-3 text-center">
       <div className="text-2xl font-semibold tabular-nums">{value}</div>
       <div className="text-xs opacity-70">{label}</div>
     </div>

@@ -1,6 +1,6 @@
 import { cn } from "./cn";
 
-// Bordered surface with the `rounded border border-stone-200 dark:border-stone-800`
+// Bordered surface with the `rounded border border-slate-200 dark:border-slate-800`
 // pattern repeated across pages. `as` lets callers render as <article> /
 // <section> / <li> instead of the default <div>.
 type CardProps = {
@@ -14,7 +14,7 @@ export function Card({ as = "div", className, children }: CardProps) {
   return (
     <Tag
       className={cn(
-        "rounded border border-stone-200 dark:border-stone-800 p-4",
+        "rounded border border-slate-200 dark:border-slate-800 p-4",
         className
       )}
     >

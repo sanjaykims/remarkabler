@@ -789,7 +789,7 @@ export default function MemoryPage() {
       {loading ? (
         // Skeleton matching the textarea's footprint so the page chrome
         // doesn't lurch when the profile fetch resolves a moment later.
-        <div className="h-72 rounded border border-stone-200 dark:border-stone-800 animate-pulse opacity-30" />
+        <div className="h-72 rounded border border-slate-200 dark:border-slate-800 animate-pulse opacity-30" />
       ) : (
         <>
           {content || dirty ? (
@@ -800,10 +800,10 @@ export default function MemoryPage() {
                 setDirty(true);
               }}
               rows={18}
-              className="w-full rounded border border-stone-300 dark:border-stone-700 bg-transparent p-3 text-base leading-relaxed whitespace-pre-wrap"
+              className="w-full rounded border border-slate-300 dark:border-slate-700 bg-transparent p-3 text-base leading-relaxed whitespace-pre-wrap"
             />
           ) : (
-            <p className="text-sm opacity-70 rounded border border-stone-200 dark:border-stone-800 p-4">
+            <p className="text-sm opacity-70 rounded border border-slate-200 dark:border-slate-800 p-4">
               {hasNotes
                 ? "No memory yet. Tap “Rebuild from notes” to build it now, or it builds itself the next time you feed a diary."
                 : "No notes yet — add a notebook and the memory will start building itself."}
@@ -820,14 +820,14 @@ export default function MemoryPage() {
             <button
               onClick={save}
               disabled={busy !== null || !dirty || !content.trim()}
-              className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+              className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
             >
               {busy === "save" ? "Saving…" : "Save edits"}
             </button>
             <button
               onClick={rebuild}
               disabled={busy !== null || !hasNotes}
-              className="rounded border border-stone-300 dark:border-stone-700 px-4 py-2 text-sm disabled:opacity-50"
+              className="rounded border border-slate-300 dark:border-slate-700 px-4 py-2 text-sm disabled:opacity-50"
             >
               {busy === "rebuild" ? "Rebuilding…" : "Rebuild from notes"}
             </button>
@@ -838,7 +838,7 @@ export default function MemoryPage() {
         </>
       )}
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-2">
         <h2 className="font-medium">Discipline (GitHub)</h2>
         {disc?.configured ? (
           <>
@@ -849,7 +849,7 @@ export default function MemoryPage() {
                 : " Not synced yet."}
             </p>
 
-            <div className="flex items-start justify-between gap-3 pb-2 border-b border-stone-200 dark:border-stone-800">
+            <div className="flex items-start justify-between gap-3 pb-2 border-b border-slate-200 dark:border-slate-800">
               <div className="text-xs">
                 <p className="font-medium">Share discipline notes with Remarkabler</p>
                 <p className="opacity-70">
@@ -864,8 +864,8 @@ export default function MemoryPage() {
                 className={
                   "shrink-0 rounded-full px-3 py-1 text-xs font-medium disabled:opacity-50 " +
                   (discEnabled
-                    ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900"
-                    : "border border-stone-300 dark:border-stone-700")
+                    ? "bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900"
+                    : "border border-slate-300 dark:border-slate-700")
                 }
               >
                 {discEnabled === null ? "…" : discEnabled ? "On" : "Off"}
@@ -875,7 +875,7 @@ export default function MemoryPage() {
             <button
               onClick={syncDiscipline}
               disabled={discBusy || discEnabled === false}
-              className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+              className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
             >
               {discBusy ? "Syncing…" : "Sync now"}
             </button>
@@ -902,10 +902,10 @@ export default function MemoryPage() {
         {discMsg && <p className="text-sm opacity-70">{discMsg}</p>}
       </section>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-3">
         <h2 className="font-medium">Location</h2>
 
-        <div className="flex items-start justify-between gap-3 pb-2 border-b border-stone-200 dark:border-stone-800">
+        <div className="flex items-start justify-between gap-3 pb-2 border-b border-slate-200 dark:border-slate-800">
           <div className="text-xs">
             <p className="font-medium">Share location with Remarkabler</p>
             <p className="opacity-70">
@@ -920,8 +920,8 @@ export default function MemoryPage() {
             className={
               "shrink-0 rounded-full px-3 py-1 text-xs font-medium disabled:opacity-50 " +
               (locEnabled
-                ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900"
-                : "border border-stone-300 dark:border-stone-700")
+                ? "bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900"
+                : "border border-slate-300 dark:border-slate-700")
             }
           >
             {locEnabled === null ? "…" : locEnabled ? "On" : "Off"}
@@ -937,7 +937,7 @@ export default function MemoryPage() {
         <button
           onClick={logLocation}
           disabled={locBusy || locEnabled === false}
-          className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+          className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
         >
           {locBusy ? "Getting location…" : "Log my location"}
         </button>
@@ -959,10 +959,10 @@ export default function MemoryPage() {
 
       </section>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-2">
         <h2 className="font-medium">Auto route (OwnTracks)</h2>
         {locEnabled === false && (
-          <p className="text-xs text-amber-700 dark:text-amber-400">
+          <p className="text-xs text-sky-700 dark:text-sky-400">
             Location sharing is off — incoming points are rejected. Turn it on
             in the Location section above to use this.
           </p>
@@ -995,7 +995,7 @@ export default function MemoryPage() {
         )}
       </section>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-3">
         <h2 className="font-medium">Claude models</h2>
         <p className="text-xs opacity-70">
           Pick which Claude model runs each task. You only pay per call — switch
@@ -1052,7 +1052,7 @@ export default function MemoryPage() {
               return (
                 <div
                   key={slot}
-                  className="space-y-1 pt-2 border-t border-stone-100 dark:border-stone-900 first:border-t-0 first:pt-0"
+                  className="space-y-1 pt-2 border-t border-slate-100 dark:border-slate-900 first:border-t-0 first:pt-0"
                 >
                   <p className="text-sm font-medium">{label}</p>
                   <p className="text-xs opacity-70">{hint}</p>
@@ -1061,7 +1061,7 @@ export default function MemoryPage() {
                     value={info.source === "db" ? info.value : ""}
                     onChange={(e) => setModel(slot, e.target.value)}
                     disabled={modelsBusy}
-                    className="w-full rounded border border-stone-300 dark:border-stone-700 bg-transparent p-2 text-sm disabled:opacity-50"
+                    className="w-full rounded border border-slate-300 dark:border-slate-700 bg-transparent p-2 text-sm disabled:opacity-50"
                   >
                     <option value="">— Use Railway / default</option>
                     {options.map((m) => (
@@ -1079,7 +1079,7 @@ export default function MemoryPage() {
         )}
       </section>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-2">
         <h2 className="font-medium">Semantic search (Voyage)</h2>
         {embed === null ? (
           <p className="text-xs opacity-60">Loading…</p>
@@ -1105,7 +1105,7 @@ export default function MemoryPage() {
                 <button
                   onClick={runEmbedBackfill}
                   disabled={embedBusy}
-                  className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+                  className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
                 >
                   {embedBusy ? "Embedding…" : "Backfill now"}
                 </button>
@@ -1126,7 +1126,7 @@ export default function MemoryPage() {
         )}
       </section>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-3">
         <h2 className="font-medium">Auto-ingest from Dropbox</h2>
         {/* lastRevokeWarning lives outside the connected/disconnected
             branches because the most important time to see it is right
@@ -1136,7 +1136,7 @@ export default function MemoryPage() {
             independent of connection state, so the user knows the token
             may still be live at Dropbox and can revoke it manually. */}
         {dropbox?.lastRevokeWarning && (
-          <p className="text-xs text-amber-600 dark:text-amber-400 break-words">
+          <p className="text-xs text-sky-700 dark:text-sky-400 break-words">
             Heads up: {dropbox.lastRevokeWarning}
           </p>
         )}
@@ -1165,7 +1165,7 @@ export default function MemoryPage() {
             )}
             <a
               href="/api/dropbox/connect"
-              className="inline-block rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm"
+              className="inline-block rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm"
             >
               Connect Dropbox
             </a>
@@ -1198,7 +1198,7 @@ export default function MemoryPage() {
               </p>
             )}
             {dropbox.lastSkipped && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 break-words">
+              <p className="text-xs text-sky-700 dark:text-sky-400 break-words">
                 Skipped: {dropbox.lastSkipped}
               </p>
             )}
@@ -1208,7 +1208,7 @@ export default function MemoryPage() {
             {/* Auto-save the diary Markdown back to Dropbox after each
                 ingest. Opt-in: needs the files.content.write scope added to
                 the Dropbox app + a reconnect. */}
-            <div className="rounded border border-stone-200 dark:border-stone-800 p-3 space-y-2">
+            <div className="rounded border border-slate-200 dark:border-slate-800 p-3 space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">
@@ -1231,8 +1231,8 @@ export default function MemoryPage() {
                   className={
                     "shrink-0 rounded px-3 py-1.5 text-xs disabled:opacity-50 " +
                     (dropbox.exportEnabled
-                      ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900"
-                      : "border border-stone-300 dark:border-stone-700")
+                      ? "bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900"
+                      : "border border-slate-300 dark:border-slate-700")
                   }
                 >
                   {exportBusy
@@ -1254,7 +1254,7 @@ export default function MemoryPage() {
                     onChange={(e) => setFolderDraft(e.target.value)}
                     spellCheck={false}
                     autoCapitalize="none"
-                    className="min-w-0 flex-1 rounded border border-stone-300 dark:border-stone-700 bg-transparent px-2 py-1 text-xs font-mono"
+                    className="min-w-0 flex-1 rounded border border-slate-300 dark:border-slate-700 bg-transparent px-2 py-1 text-xs font-mono"
                     placeholder="/Remarkabler/diary"
                   />
                   <button
@@ -1264,7 +1264,7 @@ export default function MemoryPage() {
                       folderDraft === null ||
                       folderDraft.trim() === dropbox.exportFolder
                     }
-                    className="shrink-0 rounded border border-stone-300 dark:border-stone-700 px-3 py-1 text-xs disabled:opacity-40"
+                    className="shrink-0 rounded border border-slate-300 dark:border-slate-700 px-3 py-1 text-xs disabled:opacity-40"
                   >
                     Save
                   </button>
@@ -1280,7 +1280,7 @@ export default function MemoryPage() {
                   <button
                     onClick={runDropboxExportNow}
                     disabled={exportBusy}
-                    className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1 text-xs disabled:opacity-50"
+                    className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1 text-xs disabled:opacity-50"
                   >
                     Export now
                   </button>
@@ -1304,7 +1304,7 @@ export default function MemoryPage() {
             <button
               onClick={disconnectDropbox}
               disabled={dropboxBusy}
-              className="rounded border border-stone-300 dark:border-stone-700 px-4 py-2 text-sm disabled:opacity-50"
+              className="rounded border border-slate-300 dark:border-slate-700 px-4 py-2 text-sm disabled:opacity-50"
             >
               {dropboxBusy ? "Disconnecting…" : "Disconnect Dropbox"}
             </button>
@@ -1312,10 +1312,10 @@ export default function MemoryPage() {
         )}
       </section>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-3">
         <h2 className="font-medium">
           reMarkable cloud{" "}
-          <span className="text-[10px] uppercase tracking-wide rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 px-2 py-0.5 align-middle">
+          <span className="text-[10px] uppercase tracking-wide rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400 px-2 py-0.5 align-middle">
             beta
           </span>
         </h2>
@@ -1355,7 +1355,7 @@ export default function MemoryPage() {
               </p>
             )}
             {remarkable.sync?.lastError && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 break-words">
+              <p className="text-xs text-sky-700 dark:text-sky-400 break-words">
                 Sync: {remarkable.sync.lastError}
               </p>
             )}
@@ -1364,21 +1364,21 @@ export default function MemoryPage() {
               <button
                 onClick={syncRemarkableNow}
                 disabled={rmAutosyncBusy || rmBusy}
-                className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-xs disabled:opacity-50"
+                className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-xs disabled:opacity-50"
               >
                 {rmAutosyncBusy ? "Syncing…" : "Sync now"}
               </button>
               <button
                 onClick={refreshRemarkableCloud}
                 disabled={rmBusy}
-                className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs disabled:opacity-50"
+                className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs disabled:opacity-50"
               >
                 {rmBusy ? "Checking…" : "Check again"}
               </button>
               <button
                 onClick={disconnectRemarkableCloud}
                 disabled={rmBusy}
-                className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs disabled:opacity-50"
+                className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs disabled:opacity-50"
               >
                 Disconnect
               </button>
@@ -1413,7 +1413,7 @@ export default function MemoryPage() {
                   return (
                     <>
                       {folderPairs.length > 0 && (
-                        <div className="rounded border border-stone-200 dark:border-stone-800 p-2.5 space-y-1.5">
+                        <div className="rounded border border-slate-200 dark:border-slate-800 p-2.5 space-y-1.5">
                           <p className="text-xs font-medium">Automatic sync</p>
                           <p className="text-xs opacity-60">
                             New writing in an ON folder is picked up and
@@ -1431,8 +1431,8 @@ export default function MemoryPage() {
                                   disabled={rmAutosyncBusy}
                                   className={`rounded-full border px-2.5 py-1 text-xs disabled:opacity-50 ${
                                     on
-                                      ? "border-stone-900 bg-stone-900 text-stone-50 dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900"
-                                      : "border-stone-300 dark:border-stone-700"
+                                      ? "border-slate-900 bg-slate-900 text-slate-50 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+                                      : "border-slate-300 dark:border-slate-700"
                                   }`}
                                 >
                                   {name} {on ? "✓ ON" : "· off"}
@@ -1448,8 +1448,8 @@ export default function MemoryPage() {
                             onClick={() => setRmFolder("")}
                             className={`rounded-full border px-2.5 py-1 text-xs ${
                               rmFolder === ""
-                                ? "border-stone-900 bg-stone-900 text-stone-50 dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900"
-                                : "border-stone-300 dark:border-stone-700"
+                                ? "border-slate-900 bg-slate-900 text-slate-50 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+                                : "border-slate-300 dark:border-slate-700"
                             }`}
                           >
                             All ({remarkable.notebooks.length})
@@ -1466,8 +1466,8 @@ export default function MemoryPage() {
                                   onClick={() => setRmFolder(f)}
                                   className={`rounded-full border px-2.5 py-1 text-xs ${
                                     rmFolder === f
-                                      ? "border-stone-900 bg-stone-900 text-stone-50 dark:border-stone-100 dark:bg-stone-100 dark:text-stone-900"
-                                      : "border-stone-300 dark:border-stone-700"
+                                      ? "border-slate-900 bg-slate-900 text-slate-50 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+                                      : "border-slate-300 dark:border-slate-700"
                                   }`}
                                 >
                                   {f} ({count})
@@ -1480,7 +1480,7 @@ export default function MemoryPage() {
                         {shown.map((nb) => (
                           <li
                             key={nb.id}
-                            className="rounded border border-stone-200 dark:border-stone-800 p-2.5 space-y-1.5"
+                            className="rounded border border-slate-200 dark:border-slate-800 p-2.5 space-y-1.5"
                           >
                             <div className="flex items-start gap-2">
                               <div className="min-w-0 flex-1">
@@ -1498,7 +1498,7 @@ export default function MemoryPage() {
                                 <button
                                   onClick={() => compareRemarkableNotebook(nb)}
                                   disabled={rmComparingId !== null || rmImportingId !== null}
-                                  className="rounded border border-stone-300 dark:border-stone-700 px-2.5 py-1.5 text-xs disabled:opacity-50"
+                                  className="rounded border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-xs disabled:opacity-50"
                                   title="Compare this import's transcription to your existing entries for the same dates"
                                 >
                                   {rmComparingId === nb.id ? "Comparing…" : "Compare"}
@@ -1506,7 +1506,7 @@ export default function MemoryPage() {
                                 <button
                                   onClick={() => importRemarkableNotebook(nb)}
                                   disabled={rmImportingId !== null || rmComparingId !== null}
-                                  className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-xs disabled:opacity-50"
+                                  className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-xs disabled:opacity-50"
                                 >
                                   {rmImportingId === nb.id ? "Importing…" : "Import"}
                                 </button>
@@ -1521,7 +1521,7 @@ export default function MemoryPage() {
                               <button
                                 onClick={() => importRemarkableNotebook(nb, true)}
                                 disabled={rmImportingId !== null || rmComparingId !== null}
-                                className="rounded border border-stone-300 dark:border-stone-700 px-2.5 py-1.5 text-xs disabled:opacity-50"
+                                className="rounded border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-xs disabled:opacity-50"
                               >
                                 Re-import anyway (re-render + re-transcribe)
                               </button>
@@ -1574,12 +1574,12 @@ export default function MemoryPage() {
                 placeholder="8-char code"
                 disabled={rmBusy}
                 maxLength={8}
-                className="w-32 rounded border border-stone-300 dark:border-stone-700 px-3 py-2 bg-transparent tracking-widest"
+                className="w-32 rounded border border-slate-300 dark:border-slate-700 px-3 py-2 bg-transparent tracking-widest"
               />
               <button
                 onClick={pairRemarkableCloud}
                 disabled={rmBusy || rmCode.trim().length !== 8}
-                className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+                className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
               >
                 {rmBusy ? "Pairing…" : "Pair"}
               </button>
@@ -1589,7 +1589,7 @@ export default function MemoryPage() {
         )}
       </section>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-3">
         <h2 className="font-medium">Backup to GitHub</h2>
         {backup === null ? (
           <p className="text-xs opacity-60">Loading…</p>
@@ -1621,7 +1621,7 @@ export default function MemoryPage() {
             <button
               onClick={runManualBackup}
               disabled={backupBusy}
-              className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+              className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
             >
               {backupBusy ? "Backing up…" : "Backup now"}
             </button>
@@ -1639,7 +1639,7 @@ export default function MemoryPage() {
 
       <ChatMemorySection />
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-3">
         <h2 className="font-medium">Export</h2>
 
         <div className="space-y-1.5">
@@ -1654,13 +1654,13 @@ export default function MemoryPage() {
           <a
             href="/api/export/diary"
             download
-            className="inline-block rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm"
+            className="inline-block rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm"
           >
             Download diary (Markdown)
           </a>
         </div>
 
-        <div className="space-y-1.5 pt-3 border-t border-stone-200 dark:border-stone-800">
+        <div className="space-y-1.5 pt-3 border-t border-slate-200 dark:border-slate-800">
           <p className="text-xs opacity-70">
             <strong>Raw bundle.</strong> Everything in one Markdown file:
             profile, every diary (chronological), every chat (including
@@ -1670,13 +1670,13 @@ export default function MemoryPage() {
           <a
             href="/api/export"
             download
-            className="inline-block rounded border border-stone-300 dark:border-stone-700 px-4 py-2 text-sm"
+            className="inline-block rounded border border-slate-300 dark:border-slate-700 px-4 py-2 text-sm"
           >
             Download raw bundle
           </a>
         </div>
 
-        <div className="space-y-1.5 pt-3 border-t border-stone-200 dark:border-stone-800">
+        <div className="space-y-1.5 pt-3 border-t border-slate-200 dark:border-slate-800">
           <p className="text-xs opacity-70">
             <strong>Composed by Claude.</strong> An editor pass on Opus that
             turns the raw bundle into a real chaptered book — prologue,
@@ -1688,7 +1688,7 @@ export default function MemoryPage() {
           <button
             onClick={composeBookDraft}
             disabled={bookBusy}
-            className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-2 text-sm disabled:opacity-50"
+            className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
           >
             {bookBusy ? "Composing…" : "Compose with Claude"}
           </button>
@@ -1883,7 +1883,7 @@ function ChatMemorySection() {
         : items.filter((m) => m.category === filter);
 
   return (
-    <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+    <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-3">
       <h2 className="font-medium">Chat memory</h2>
       <p className="text-xs opacity-70">
         Small durable items Claude pulls out of cleared chats — preferences,
@@ -1909,8 +1909,8 @@ function ChatMemorySection() {
               : ""}
           </p>
           {status.pending_batches > 0 && (
-            <div className="rounded border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-2 space-y-1.5">
-              <p className="text-xs text-amber-800 dark:text-amber-300">
+            <div className="rounded border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/30 p-2 space-y-1.5">
+              <p className="text-xs text-sky-800 dark:text-sky-300">
                 {status.pending_batches} batch
                 {status.pending_batches === 1 ? "" : "es"} waiting for
                 extraction. The background sweep is throttled to once every
@@ -1940,7 +1940,7 @@ function ChatMemorySection() {
               <button
                 onClick={processPending}
                 disabled={processBusy}
-                className="rounded border border-amber-400 dark:border-amber-700 px-3 py-1 text-xs text-amber-800 dark:text-amber-300 disabled:opacity-50"
+                className="rounded border border-sky-400 dark:border-sky-700 px-3 py-1 text-xs text-sky-800 dark:text-sky-300 disabled:opacity-50"
               >
                 {processBusy ? "Processing…" : "Process pending now"}
               </button>
@@ -1974,7 +1974,7 @@ function ChatMemorySection() {
             <button
               onClick={backfillAll}
               disabled={backfillBusy}
-              className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs disabled:opacity-50"
+              className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs disabled:opacity-50"
             >
               {backfillBusy
                 ? "Processing…"
@@ -1996,8 +1996,8 @@ function ChatMemorySection() {
               className={
                 "rounded-full px-2.5 py-1 text-[11px] " +
                 (filter === f.value
-                  ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900"
-                  : "border border-stone-300 dark:border-stone-700 opacity-80")
+                  ? "bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900"
+                  : "border border-slate-300 dark:border-slate-700 opacity-80")
               }
             >
               {f.label}
@@ -2017,10 +2017,10 @@ function ChatMemorySection() {
           {filtered.map((m) => (
             <li
               key={m.id}
-              className="rounded border border-stone-200 dark:border-stone-800 p-2.5 space-y-1.5"
+              className="rounded border border-slate-200 dark:border-slate-800 p-2.5 space-y-1.5"
             >
               <div className="flex items-start gap-2">
-                <span className="shrink-0 rounded-full bg-stone-100 dark:bg-stone-800 px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-80">
+                <span className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-80">
                   {m.category}
                 </span>
                 <p className="text-sm leading-snug flex-1 min-w-0 break-words">{m.text}</p>
@@ -2028,7 +2028,7 @@ function ChatMemorySection() {
               <div className="flex items-center justify-between gap-2 text-[11px] opacity-60">
                 <span>{formatLocalTime(m.created_at)}</span>
                 {m.missing_embedding === 1 && (
-                  <span className="text-amber-600 dark:text-amber-400">
+                  <span className="text-sky-700 dark:text-sky-400">
                     no embedding (won&rsquo;t auto-recall)
                   </span>
                 )}
@@ -2112,7 +2112,7 @@ function OwnTracksDiagnoseButton() {
       <button
         onClick={run}
         disabled={busy}
-        className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+        className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
       >
         {busy ? "Diagnosing…" : "Diagnose location pipeline"}
       </button>
@@ -2152,12 +2152,12 @@ function OwnTracksDiagnoseButton() {
           <div className="space-y-1 pt-2">
             <button
               onClick={copy}
-              className="rounded border border-stone-300 dark:border-stone-700 px-2 py-1 text-[11px]"
+              className="rounded border border-slate-300 dark:border-slate-700 px-2 py-1 text-[11px]"
             >
               Copy raw JSON
             </button>
             {copyMsg && <span className="text-[11px] opacity-70 ml-2">{copyMsg}</span>}
-            <pre className="text-[10px] leading-relaxed whitespace-pre-wrap break-words bg-stone-100 dark:bg-stone-900 rounded p-2 max-h-96 overflow-auto">
+            <pre className="text-[10px] leading-relaxed whitespace-pre-wrap break-words bg-slate-100 dark:bg-slate-900 rounded p-2 max-h-96 overflow-auto">
               {JSON.stringify(data, null, 2)}
             </pre>
           </div>

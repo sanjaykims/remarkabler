@@ -131,12 +131,12 @@ export default function UsagePage() {
         <Stat label="All time" value={money(allTimeTotal)} />
       </section>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-3">
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <button
             onClick={() => shiftMonth(-1)}
             aria-label="Previous month"
-            className="w-8 h-8 rounded border border-stone-300 dark:border-stone-700 flex items-center justify-center"
+            className="w-8 h-8 rounded border border-slate-300 dark:border-slate-700 flex items-center justify-center"
           >
             ‹
           </button>
@@ -144,7 +144,7 @@ export default function UsagePage() {
           <button
             onClick={() => shiftMonth(1)}
             aria-label="Next month"
-            className="w-8 h-8 rounded border border-stone-300 dark:border-stone-700 flex items-center justify-center"
+            className="w-8 h-8 rounded border border-slate-300 dark:border-slate-700 flex items-center justify-center"
           >
             ›
           </button>
@@ -173,9 +173,9 @@ export default function UsagePage() {
                 className={
                   "rounded p-1 min-h-[46px] flex flex-col items-center justify-start text-xs " +
                   (isSel
-                    ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 "
-                    : "hover:bg-stone-100 dark:hover:bg-stone-900 ") +
-                  (isToday && !isSel ? "ring-1 ring-stone-400 " : "")
+                    ? "bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 "
+                    : "hover:bg-slate-100 dark:hover:bg-slate-900 ") +
+                  (isToday && !isSel ? "ring-1 ring-slate-400 " : "")
                 }
               >
                 <span>{d}</span>
@@ -191,7 +191,7 @@ export default function UsagePage() {
       </section>
 
       {selected && (
-        <section className="rounded border border-stone-200 dark:border-stone-800 p-4 space-y-2">
+        <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-medium">{selected}</h2>
             <span className="text-sm">{money(dayData?.total ?? 0)}</span>

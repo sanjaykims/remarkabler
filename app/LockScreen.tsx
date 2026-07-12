@@ -346,7 +346,7 @@ export default function LockScreen() {
             <button
               onClick={() => unlockBiometric(false)}
               disabled={busy}
-              className="w-full rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-3 text-sm font-medium disabled:opacity-50"
+              className="w-full rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-3 text-sm font-medium disabled:opacity-50"
             >
               {busy ? "Please wait…" : "Unlock with fingerprint / Face ID"}
             </button>
@@ -359,7 +359,7 @@ export default function LockScreen() {
               <button
                 onClick={() => setShowPasscode((v) => !v)}
                 disabled={busy}
-                className="w-full rounded border border-stone-300 dark:border-stone-700 px-4 py-2 text-sm disabled:opacity-50"
+                className="w-full rounded border border-slate-300 dark:border-slate-700 px-4 py-2 text-sm disabled:opacity-50"
               >
                 Set up this phone
               </button>
@@ -384,19 +384,19 @@ export default function LockScreen() {
               onChange={(e) => setPasscode(e.target.value)}
               placeholder="Backup passcode"
               disabled={busy}
-              className="w-full rounded border border-stone-300 dark:border-stone-700 px-3 py-2 bg-transparent text-center"
+              className="w-full rounded border border-slate-300 dark:border-slate-700 px-3 py-2 bg-transparent text-center"
             />
             <button
               onClick={registerDevice}
               disabled={busy || !passcode}
-              className="w-full rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-4 py-3 text-sm font-medium disabled:opacity-50"
+              className="w-full rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-3 text-sm font-medium disabled:opacity-50"
             >
               {busy ? "Please wait…" : "Register fingerprint / Face ID"}
             </button>
             <button
               onClick={unlockPasscode}
               disabled={busy || !passcode}
-              className="w-full rounded border border-stone-300 dark:border-stone-700 px-4 py-2 text-sm disabled:opacity-50"
+              className="w-full rounded border border-slate-300 dark:border-slate-700 px-4 py-2 text-sm disabled:opacity-50"
             >
               Unlock with passcode only
             </button>

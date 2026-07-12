@@ -12,7 +12,7 @@ const Map3D = dynamic(() => import("./Map3D"), {
   ssr: false,
   loading: () => (
     <div
-      className="h-[480px] rounded border border-stone-200 dark:border-stone-800 animate-pulse opacity-30"
+      className="h-[480px] rounded border border-slate-200 dark:border-slate-800 animate-pulse opacity-30"
       role="status"
       aria-label="Loading 3D map"
     />
@@ -344,7 +344,7 @@ export default function MindPage() {
         </p>
       </header>
 
-      <section className="rounded border border-stone-200 dark:border-stone-800 p-3 space-y-2">
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-3 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs opacity-70">
             Analysed {data?.counts.analyzed ?? "…"} ·{" "}
@@ -355,7 +355,7 @@ export default function MindPage() {
               <button
                 disabled={analyzing}
                 onClick={() => analyze(Math.min(25, data.counts.pending))}
-                className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-xs disabled:opacity-50"
+                className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-xs disabled:opacity-50"
               >
                 {analyzing ? "Analysing…" : `Analyse next ${Math.min(25, data.counts.pending)}`}
               </button>
@@ -363,7 +363,7 @@ export default function MindPage() {
                 <button
                   disabled={analyzing}
                   onClick={() => analyze(Math.min(200, data.counts.pending))}
-                  className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs disabled:opacity-50"
+                  className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs disabled:opacity-50"
                 >
                   Analyse up to 200
                 </button>
@@ -377,7 +377,7 @@ export default function MindPage() {
             disabled={reparsing || analyzing}
             onClick={reparseDates}
             title="Re-runs the YYYY-MM-DD-HH-MM-KST regex over every page and carries dates forward within each notebook."
-            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
           >
             {reparsing ? "Re-parsing…" : "Re-parse dates"}
           </button>
@@ -385,7 +385,7 @@ export default function MindPage() {
             disabled={reanalyzing || analyzing}
             onClick={reanalyzeAll}
             title="Wipes the cached themes / mood / summaries and re-analyses every entry from scratch with English-only prompts. Costs roughly $0.10–0.30 in total. Runs in the background."
-            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
           >
             {reanalyzing ? "Re-analysing…" : "Re-analyse in English"}
           </button>
@@ -393,7 +393,7 @@ export default function MindPage() {
             disabled={merging || analyzing}
             onClick={mergeDuplicates}
             title="Claude finds duplicate spellings of the same person/place/project (e.g. a Korean name and its romanization) and merges them into one name everywhere — graph, chat, and this page. Remembers each merge for future entries."
-            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
           >
             {merging ? "Merging…" : "Merge duplicate names"}
           </button>
@@ -401,20 +401,20 @@ export default function MindPage() {
             disabled={buildingWiki || analyzing}
             onClick={buildWiki}
             title="Claude reads your ENTIRE diary history for each person, place, and project and writes a deep profile (who they are, the relationship, how it evolved) — a self-updating 'wiki of your life' in your Obsidian export. First build ~$3–8; then only entities touched by new/edited entries are rewritten."
-            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
           >
             {buildingWiki ? "Building…" : "Build life wiki"}
           </button>
           <button
             onClick={() => setManualOpen((v) => !v)}
             title="Manually fold specific spellings (e.g. OCR variants of one name) into a single canonical name, for cases Claude's automatic merge won't catch."
-            className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100"
+            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100"
           >
             {manualOpen ? "Close manual merge" : "Merge specific names"}
           </button>
         </div>
         {manualOpen && (
-          <div className="rounded border border-stone-200 dark:border-stone-800 p-3 space-y-2">
+          <div className="rounded border border-slate-200 dark:border-slate-800 p-3 space-y-2">
             <p className="text-xs opacity-70">
               Fold specific spellings into one canonical name — for OCR variants
               or cross-script pairs the automatic merge won&rsquo;t risk. It
@@ -426,7 +426,7 @@ export default function MindPage() {
                 onChange={(e) =>
                   setManualKind(e.target.value as "person" | "place" | "project")
                 }
-                className="rounded border border-stone-300 dark:border-stone-700 bg-transparent px-2 py-1 text-xs"
+                className="rounded border border-slate-300 dark:border-slate-700 bg-transparent px-2 py-1 text-xs"
               >
                 <option value="person">person</option>
                 <option value="place">place</option>
@@ -438,7 +438,7 @@ export default function MindPage() {
                 onChange={(e) => setManualCanonical(e.target.value)}
                 placeholder="Canonical name (e.g. 야오팡)"
                 spellCheck={false}
-                className="min-w-0 flex-1 rounded border border-stone-300 dark:border-stone-700 bg-transparent px-2 py-1 text-xs"
+                className="min-w-0 flex-1 rounded border border-slate-300 dark:border-slate-700 bg-transparent px-2 py-1 text-xs"
               />
             </div>
             <input
@@ -447,7 +447,7 @@ export default function MindPage() {
               onChange={(e) => setManualVariants(e.target.value)}
               placeholder="Variants to merge in, comma-separated (e.g. 마오핑, 미오팡, 아오팡, 야오펑, Yaofang)"
               spellCheck={false}
-              className="w-full rounded border border-stone-300 dark:border-stone-700 bg-transparent px-2 py-1 text-xs"
+              className="w-full rounded border border-slate-300 dark:border-slate-700 bg-transparent px-2 py-1 text-xs"
             />
             <label className="flex items-start gap-2 text-[11px] opacity-70">
               <input
@@ -465,14 +465,14 @@ export default function MindPage() {
             <button
               onClick={mergeManual}
               disabled={manualBusy}
-              className="rounded bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 px-3 py-1.5 text-xs disabled:opacity-50"
+              className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-xs disabled:opacity-50"
             >
               {manualBusy ? "Merging…" : "Merge these"}
             </button>
           </div>
         )}
         {labelDebug && (labelDebug.labels || labelDebug.raw || labelDebug.error) && (
-          <details className="rounded border border-stone-200 dark:border-stone-800 p-2 text-[11px] space-y-1">
+          <details className="rounded border border-slate-200 dark:border-slate-800 p-2 text-[11px] space-y-1">
             <summary className="cursor-pointer opacity-70">
               Last label attempt — tap to inspect
             </summary>
@@ -483,7 +483,7 @@ export default function MindPage() {
                   labelDebug.labels?.[k] ? (
                     <p key={k}>
                       <span className="font-mono opacity-50">{["X", "Y", "Z"][i]}</span>{" "}
-                      <span className="text-amber-600 dark:text-amber-400">
+                      <span className="text-sky-700 dark:text-sky-400">
                         {labelDebug.labels[k].positive}
                       </span>{" "}
                       ↔{" "}
@@ -503,7 +503,7 @@ export default function MindPage() {
             {labelDebug.raw && (
               <div className="pt-1">
                 <p className="opacity-60">Raw Claude response:</p>
-                <pre className="whitespace-pre-wrap break-words opacity-80 bg-stone-100 dark:bg-stone-900 p-2 rounded">
+                <pre className="whitespace-pre-wrap break-words opacity-80 bg-slate-100 dark:bg-slate-900 p-2 rounded">
                   {labelDebug.raw}
                 </pre>
               </div>
@@ -526,7 +526,7 @@ export default function MindPage() {
           {[0, 1, 2, 3].map((i) => (
             <div
               key={i}
-              className="h-32 rounded border border-stone-200 dark:border-stone-800 animate-pulse opacity-30"
+              className="h-32 rounded border border-slate-200 dark:border-slate-800 animate-pulse opacity-30"
             />
           ))}
         </div>
@@ -630,7 +630,7 @@ function Heatmap({ data }: { data: HeatmapBucket[] }) {
   const height = 7 * (cellSize + gap) + 14;
 
   const shade = (pages: number) => {
-    if (pages === 0) return "rgb(231, 229, 228)"; // stone-200
+    if (pages === 0) return "rgb(231, 229, 228)"; // slate-200
     const t = Math.min(1, pages / maxPages);
     // Warm amber ramp.
     const r = Math.round(254 - 90 * t);
@@ -670,7 +670,7 @@ function Heatmap({ data }: { data: HeatmapBucket[] }) {
               x={16 + m.col * (cellSize + gap)}
               y={10}
               fontSize="9"
-              className="fill-stone-500 dark:fill-stone-400"
+              className="fill-slate-500 dark:fill-slate-400"
             >
               {m.label}
             </text>
@@ -838,7 +838,7 @@ function SentimentChart({ data }: { data: SentimentPoint[] }) {
                 y={chart.yAt(v) + 3}
                 fontSize="9"
                 textAnchor="end"
-                className="fill-stone-500"
+                className="fill-slate-500"
               >
                 {v > 0 ? "+" : ""}{v}
               </text>
@@ -872,7 +872,7 @@ function SentimentChart({ data }: { data: SentimentPoint[] }) {
             x={chart.padL}
             y={chart.h - 6}
             fontSize="9"
-            className="fill-stone-500"
+            className="fill-slate-500"
           >
             {data[Math.max(0, data.length - 180)].date}
           </text>
@@ -881,7 +881,7 @@ function SentimentChart({ data }: { data: SentimentPoint[] }) {
             y={chart.h - 6}
             fontSize="9"
             textAnchor="end"
-            className="fill-stone-500"
+            className="fill-slate-500"
           >
             {data[data.length - 1].date}
           </text>
@@ -946,7 +946,7 @@ function EmbeddingMap({
           disabled={labelling}
           onClick={onLabelAxes}
           title="Sends a few extreme entries from each axis of the 3D map to Claude for short labels (e.g. 'family life ↔ business'). One Claude call total."
-          className="rounded border border-stone-300 dark:border-stone-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+          className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
         >
           {labelling
             ? "Labelling…"

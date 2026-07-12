@@ -42,7 +42,7 @@ export type AxisLabels = {
 };
 
 function sentimentColour(s: number | null): string {
-  if (s == null) return "#78716c"; // stone-500
+  if (s == null) return "#78716c"; // slate-500
   if (s > 0) {
     // Warm amber, brighter for more positive.
     const t = Math.min(1, s);
@@ -177,12 +177,12 @@ function AxisEndLabel({
 // WebGL `lineBasicMaterial.linewidth` is ignored by every major browser on
 // every desktop platform — the axes always render at exactly 1 pixel, which
 // is invisible on dense phone displays. Cylinder geometry gives real,
-// device-independent thickness. Still neutral (stone-500) so they don't
+// device-independent thickness. Still neutral (slate-500) so they don't
 // fight the points for attention.
 function Axes() {
   const len = 1.2; // half-length: axis runs from -len to +len
   const radius = 0.007; // thin but actually visible on a phone
-  const color = "#78716c"; // stone-500 — reads on both warm-paper and AMOLED
+  const color = "#78716c"; // slate-500 — reads on both warm-paper and AMOLED
   const opacity = 0.55;
   return (
     <group>
@@ -220,7 +220,7 @@ export default function Map3D({
   return (
     <div className="space-y-2">
       <div
-        className="w-full rounded border border-stone-200 dark:border-stone-800 overflow-hidden bg-stone-50 dark:bg-stone-950"
+        className="w-full rounded border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-50 dark:bg-slate-950"
         // touchAction:none is set on BOTH the wrapper and the Canvas to keep
         // mobile browsers from stealing one-finger drags as page scrolls.
         // The wrapper covers the gap if the Canvas hasn't mounted yet; the
@@ -293,7 +293,7 @@ export default function Map3D({
           the WebGL canvas so it renders regardless of font / Html overlay
           behaviour inside three.js. Shown only when labels actually exist. */}
       {axisLabels && (
-        <div className="rounded border border-stone-200 dark:border-stone-800 p-2 text-xs space-y-1.5">
+        <div className="rounded border border-slate-200 dark:border-slate-800 p-2 text-xs space-y-1.5">
           <p className="text-[11px] opacity-50 uppercase tracking-wide">
             Axes
           </p>
@@ -302,7 +302,7 @@ export default function Map3D({
               <span className="font-mono opacity-40 text-[10px]">
                 {["X", "Y", "Z"][i]}
               </span>
-              <span className="rounded-full bg-amber-900/80 text-amber-100 px-2 py-0.5">
+              <span className="rounded-full bg-sky-900/80 text-sky-100 px-2 py-0.5">
                 {axisLabels[k].positive}
               </span>
               <span className="opacity-40">↔</span>
@@ -315,7 +315,7 @@ export default function Map3D({
       )}
 
       {active ? (
-        <div className="rounded border border-stone-200 dark:border-stone-800 p-2 text-xs space-y-1">
+        <div className="rounded border border-slate-200 dark:border-slate-800 p-2 text-xs space-y-1">
           <p className="opacity-60">
             {active.entry_date || "(no date)"} · {active.notebook_name} · page{" "}
             {active.page_index + 1}
@@ -328,7 +328,7 @@ export default function Map3D({
               {active.themes.map((t) => (
                 <span
                   key={t}
-                  className="inline-block mr-1 mb-1 rounded bg-stone-200 dark:bg-stone-800 px-1.5 py-0.5"
+                  className="inline-block mr-1 mb-1 rounded bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5"
                 >
                   {t}
                 </span>
