@@ -75,7 +75,24 @@ describe("getRecentLocations chat tool", () => {
     expect(out.route).toBe("");
     expect(out.current).not.toBeNull();
     expect(out.current!.lat).toBeCloseTo(37.5081, 4);
-    expect(out.note).toMatch(/no completed stays/i);
+    // The note now tells Claude `current` is where they are now (vs history).
+    expect(out.note).toMatch(/right now|where they are|current/i);
+  });
+
+  it("still reports a stationary hours-old point as current, flagged as last-known (the bug fix)", async () => {
+    // Office-all-day: newest point is 8h old (phone stopped publishing while
+    // stationary). Previously currentLocation() went null and chat fell back
+    // to last night's stay. Now it must report the point with a "last known /
+    // likely still there" note so chat answers "where am I now?" correctly.
+    const now = Math.floor(Date.now() / 1000);
+    insertPoint(37.5081, 127.0334, now - 8 * 60 * 60);
+    const out = (await chatTools.getRecentLocations({ days: 1 })) as {
+      current: { stale?: boolean } | null;
+      note?: string;
+    };
+    expect(out.current).not.toBeNull();
+    expect(out.current!.stale).toBe(true);
+    expect(out.note).toMatch(/last known|still here|haven.t moved|min ago/i);
   });
 
   it("returns the 'no data' note when there are no points at all", async () => {

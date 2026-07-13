@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-07-13 (location: chat now sees your current position for a stationary user)
+
+Fixed the reported bug where chat couldn't retrieve your recent/current
+location — it kept reporting last night's stay while you were at the office,
+and only caught up once a brand-new ping arrived. A 4-agent, adversarially-
+verified assessment traced it to one root cause: the location data handed to
+chat dropped a stationary user's real position.
+
+- **`currentLocation()` no longer hard-drops a stationary position.** OwnTracks
+  publishes mostly on movement, so sitting at the office all day produces no
+  new pings — and the old 6-hour cutoff then returned `null`, so chat had no
+  "current" and fell back to last night's completed stay. Now it returns the
+  last-known point up to 36h with a `stale` flag (live under 45 min), so "at
+  the office ~8h ago, likely still there" is reported instead of being erased.
+- **The ambient location block leads with CURRENT POSITION** and labels the
+  stays as history ("NOT necessarily where they are now"), so Claude stops
+  reading an old completed stay as "now" even before calling the tool.
+- **`get_recent_locations` explains `current` vs `route`** and that an old
+  timestamp on a movement-published phone usually means "hasn't moved", not
+  "wrong data".
+- `owntracks?debug=1` now surfaces the `stale` flag too.
+
++tests (suite 405); build clean. The refuted findings (re-call guidance,
+centroid clustering, clock-skew drop) are recorded, not acted on.
+
+
 ## 2026-07-12 (redesign phase 4 — consistent page headers)
 
 Fourth redesign phase: every page's header brought up to the Home standard, so

@@ -367,9 +367,10 @@ export async function chatOverNotes(opts: {
     ...(opts.recentLocations?.trim()
       ? [
           "",
-          "=== WHERE THEY'VE BEEN RECENTLY (places they logged) ===",
+          "=== THEIR LOCATION ===",
           opts.recentLocations,
-          "=== END LOCATIONS ===",
+          'For "where am I now?": trust CURRENT POSITION and respect its stated age — an old timestamp on a phone that publishes only on movement still means they are most likely there, not that the data is wrong. The history list is past stays, NOT where they are now. For anything time-sensitive, call get_recent_locations for the freshest read.',
+          "=== END LOCATION ===",
         ]
       : []),
     ...(opts.recalledMemories?.trim()

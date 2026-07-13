@@ -647,16 +647,33 @@ export async function getRecentLocations(
   // background Nominatim lookup so the next chat turn graduates from raw
   // coordinates to a place name. Doesn't block this response.
   warmCurrentLocationGeocode();
+
+  // How Claude should read `current` vs `route`. The key correction: an OLD
+  // `current` on a movement-published phone (`stale: true`) usually means the
+  // user hasn't MOVED, not that the data is wrong — so it's still the answer
+  // to "where are you now?", just phrased with its age. `route` is history.
+  const currentNote = current
+    ? current.stale
+      ? `\`current\` is the user's LAST KNOWN position, logged ${current.minutesAgo} min ago. Their phone only publishes on movement, so an older timestamp usually means they simply haven't moved — treat this as where they are now (mention it's as of ${current.minutesAgo} min ago) unless they tell you otherwise. \`route\` below is history — past places they stayed, NOT where they are now.`
+      : `\`current\` is where the user is right now (logged ${current.minutesAgo} min ago). \`route\` is history — past places they stayed.`
+    : null;
+
   if (route) {
-    return current ? { days, route, current } : { days, route };
+    return current
+      ? { days, route, current, note: currentNote }
+      : {
+          days,
+          route,
+          note:
+            "Only historical stays are available (no recent position — the phone may not have published lately). Don't state where they are NOW from `route` alone; it's history.",
+        };
   }
   return current
     ? {
         days,
         route: "",
         current,
-        note:
-          "No completed stays in this range yet, but the user has a recent position (see `current`). Likely they're moving, or just arrived somewhere and haven't been there for the 8-minute stay threshold yet.",
+        note: currentNote,
       }
     : {
         days,
