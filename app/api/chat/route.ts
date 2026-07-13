@@ -6,7 +6,12 @@ import { db, DATA_DIR } from "@/lib/db";
 import { runMaintenanceSweep } from "@/lib/notes";
 import { getCurrentProfile } from "@/lib/profile";
 import { recentLocationsContext, isLocationEnabled } from "@/lib/location";
-import { owntracksRouteContext, warmOwntracksGeocodes } from "@/lib/owntracks";
+import {
+  owntracksRouteContext,
+  warmOwntracksGeocodes,
+  currentLocation,
+  warmCurrentLocationGeocode,
+} from "@/lib/owntracks";
 import { chatOverNotes } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
 import { extractTextFromAttachment } from "@/lib/extractText";
@@ -205,10 +210,32 @@ export async function POST(req: NextRequest) {
   // cached geocodes only — any uncached stays show as raw lat/lng for
   // this turn, and a background warmer (fired below) fills them in so
   // the next chat resolves to real place names.
-  const recentLocations = isLocationEnabled()
-    ? (await owntracksRouteContext()) || recentLocationsContext()
-    : "";
-  if (isLocationEnabled()) warmOwntracksGeocodes();
+  // Ambient location block: the user's CURRENT position first (so Claude
+  // answers "where am I now?" without necessarily calling the tool, and never
+  // reads an old completed stay as "now"), then the recent history of stays.
+  // currentLocation() now returns a stationary user's last-known point (with
+  // an age) instead of null, so "at the office all day" is reported instead
+  // of falling back to last night's stay.
+  let recentLocations = "";
+  if (isLocationEnabled()) {
+    const route = (await owntracksRouteContext()) || recentLocationsContext();
+    const cur = currentLocation();
+    const parts: string[] = [];
+    if (cur) {
+      const placeStr =
+        cur.place || `${cur.lat.toFixed(4)}, ${cur.lng.toFixed(4)}`;
+      const freshness = cur.stale
+        ? `as of ${cur.minutesAgo} min ago — last known; their phone publishes on movement, so they're most likely still here unless they've moved`
+        : `as of ${cur.minutesAgo} min ago`;
+      parts.push(`CURRENT POSITION (where they are now): ${placeStr} (${freshness})`);
+    }
+    if (route) {
+      parts.push(`RECENT HISTORY (places they've stayed — NOT necessarily where they are now):\n${route}`);
+    }
+    recentLocations = parts.join("\n\n");
+    warmOwntracksGeocodes();
+    warmCurrentLocationGeocode();
+  }
 
   // Compose the message sent to Claude: the user's typed message + (if we
   // pulled out a document) the extracted text. The stored chat row (below)

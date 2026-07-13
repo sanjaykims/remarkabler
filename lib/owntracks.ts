@@ -33,12 +33,20 @@ export function addPoint(p: {
     .run(p.lat, p.lng, p.tst, p.acc ?? null);
 }
 
-// Last known position + recency context for chat, useful when stay-clustering
-// hasn't produced anything yet (e.g. user just arrived somewhere and hasn't
-// hit the 8-min dwell threshold). Returns null when there's nothing recent
-// enough to be meaningful — for that, "recent" means within the last 6
-// hours, otherwise we'd be confidently reporting where the user was last
-// week as their "current" position.
+// Last known position + recency context for chat. This is what answers
+// "where am I now?".
+//
+// CRITICAL: OwnTracks publishes mostly on MOVEMENT (plus a coarse interval),
+// so a STATIONARY user — sitting at the office all day — produces no new
+// points for hours even though they haven't moved. An old newest-point is
+// therefore usually POSITIVE evidence they're still there, not evidence the
+// position is unreliable. So we do NOT drop the point just because it's a few
+// hours old (the previous 6h hard cutoff did exactly that, and made chat
+// answer "where am I now?" with last night's stay — the bug this fixes).
+// Instead we return the last known point up to a full stationary day+night
+// (36h) and mark it `stale` when it's old enough to be "last known" rather
+// than "live", so chat can phrase the age honestly. Beyond 36h we return null
+// (don't confidently report last week as "current").
 //
 // `place` is filled in only when the coords are already in the geocode
 // cache — we don't synchronously hit Nominatim on the chat hot path. Same
@@ -53,8 +61,21 @@ export type CurrentLocation = {
   minutesAgo: number;
   /** Geocoded place name if already cached, otherwise null. */
   place: string | null;
+  /**
+   * true → this is a "last known" position (older than the live threshold),
+   * not a fresh ping. On a movement-published phone that usually still means
+   * "they're there and haven't moved", so chat should report it (with the
+   * age) rather than say "no current location".
+   */
+  stale: boolean;
 };
-const CURRENT_LOCATION_MAX_AGE_SEC = 6 * 60 * 60; // 6 hours
+// Under this, the point is "live"; above it (but within the max), it's a
+// still-useful "last known" position that we flag stale.
+const CURRENT_LOCATION_LIVE_SEC = 45 * 60; // 45 minutes
+// Beyond this we stop calling the newest point "current" at all — a full
+// stationary day + overnight without any ping is where "last known" stops
+// being a safe assumption.
+const CURRENT_LOCATION_MAX_AGE_SEC = 36 * 60 * 60; // 36 hours
 
 export function currentLocation(): CurrentLocation | null {
   const row = db()
@@ -62,15 +83,17 @@ export function currentLocation(): CurrentLocation | null {
     .get() as { lat: number; lng: number; tst: number } | undefined;
   if (!row) return null;
   const nowSec = Math.floor(Date.now() / 1000);
-  if (nowSec - row.tst > CURRENT_LOCATION_MAX_AGE_SEC) return null;
+  const ageSec = nowSec - row.tst;
+  if (ageSec > CURRENT_LOCATION_MAX_AGE_SEC) return null;
   const local = fmtLocal(row.tst);
   return {
     lat: row.lat,
     lng: row.lng,
     tst: row.tst,
     atTime: `${local.date} ${local.time}`,
-    minutesAgo: Math.max(0, Math.round((nowSec - row.tst) / 60)),
+    minutesAgo: Math.max(0, Math.round(ageSec / 60)),
     place: cachedPlace(row.lat, row.lng),
+    stale: ageSec > CURRENT_LOCATION_LIVE_SEC,
   };
 }
 
@@ -107,6 +130,7 @@ export function owntracksDebug(): {
     atTime: string;
     minutesAgo: number;
     place: string | null;
+    stale: boolean;
   } | null;
   windows: Array<{
     days: number;
@@ -186,6 +210,7 @@ export function owntracksDebug(): {
         atTime: cur.atTime,
         minutesAgo: cur.minutesAgo,
         place: cur.place,
+        stale: cur.stale,
       }
     : null;
   return {
