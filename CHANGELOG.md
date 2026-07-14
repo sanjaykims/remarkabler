@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-13 (Memory page warns when OwnTracks goes quiet)
+
+The chat's location knowledge is only as fresh as what the OwnTracks app
+PUSHES — the server cannot pull from the phone. When Android battery
+optimization kills OwnTracks in the background (points arrive only when the
+user opens the app), that failure was invisible. The Memory page's OwnTracks
+section now shows a warning when no point has arrived in >6h, with the
+concrete Android fixes (location "Allow all the time", battery Unrestricted,
+Monitoring mode). UI-only.
+
 ## 2026-07-13 (location: chat now sees your current position for a stationary user)
 
 Fixed the reported bug where chat couldn't retrieve your recent/current
