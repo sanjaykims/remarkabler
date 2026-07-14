@@ -987,8 +987,12 @@ export default function MemoryPage() {
                 pushes. If nothing has arrived for many hours, Android has
                 almost certainly killed OwnTracks in the background (battery
                 optimization / a while-in-use-only location permission) — the
-                one failure the user can't see from here without this hint. */}
-            {ot.lastTst !== null &&
+                one failure the user can't see from here without this hint.
+                Suppressed while location sharing is off: the app itself is
+                rejecting points then, so blaming phone settings would be
+                misleading (review #136). */}
+            {locEnabled !== false &&
+              ot.lastTst !== null &&
               Date.now() / 1000 - ot.lastTst > 6 * 60 * 60 && (
                 <div className="rounded border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 p-3 space-y-1">
                   <p className="text-xs font-medium text-sky-700 dark:text-sky-300">
