@@ -983,6 +983,36 @@ export default function MemoryPage() {
               . Your route (places + how long you stayed) is fed to chat
               automatically — no taps.
             </p>
+            {/* Staleness warning: the server can only receive what the phone
+                pushes. If nothing has arrived for many hours, Android has
+                almost certainly killed OwnTracks in the background (battery
+                optimization / a while-in-use-only location permission) — the
+                one failure the user can't see from here without this hint. */}
+            {ot.lastTst !== null &&
+              Date.now() / 1000 - ot.lastTst > 6 * 60 * 60 && (
+                <div className="rounded border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 p-3 space-y-1">
+                  <p className="text-xs font-medium text-sky-700 dark:text-sky-300">
+                    No location received in{" "}
+                    {Math.floor((Date.now() / 1000 - ot.lastTst) / 3600)}h —
+                    your phone is probably stopping OwnTracks in the
+                    background.
+                  </p>
+                  <ul className="text-xs opacity-80 list-disc list-inside space-y-0.5">
+                    <li>
+                      Phone Settings → Apps → OwnTracks → <b>Location</b> →{" "}
+                      <b>Allow all the time</b> (not “only while using”).
+                    </li>
+                    <li>
+                      Same screen → <b>Battery</b> → <b>Unrestricted</b>, and
+                      remove OwnTracks from any “sleeping apps” list.
+                    </li>
+                    <li>
+                      In OwnTracks: Preferences → Monitoring →{" "}
+                      <b>Significant changes</b> (or Move).
+                    </li>
+                  </ul>
+                </div>
+              )}
             <p className="text-xs opacity-70 break-all">
               OwnTracks URL:{" "}
               <code>{origin}/api/owntracks?token=YOUR_TOKEN</code>
