@@ -654,7 +654,7 @@ export async function getRecentLocations(
   // to "where are you now?", just phrased with its age. `route` is history.
   const currentNote = current
     ? current.stale
-      ? `\`current\` is the user's LAST KNOWN position, logged ${current.minutesAgo} min ago. Their phone only publishes on movement, so an older timestamp usually means they simply haven't moved — treat this as where they are now (mention it's as of ${current.minutesAgo} min ago) unless they tell you otherwise. \`route\` below is history — past places they stayed, NOT where they are now.`
+      ? `\`current\` is the user's LAST KNOWN position, logged ${current.minutesAgo} min ago. Their phone only publishes on movement, so an older timestamp usually means they simply haven't moved — treat this as where they are now (mention it's as of ${current.minutesAgo} min ago) unless they tell you otherwise. \`route\` below is history — past places they stayed, NOT where they are now. If they ask what they've done recently or up to now, say your location record stops ${current.minutesAgo} min ago — don't invent movement for that gap.`
       : `\`current\` is where the user is right now (logged ${current.minutesAgo} min ago). \`route\` is history — past places they stayed.`
     : null;
 

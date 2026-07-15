@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-07-15 (chat: factual location answers, honest about data gaps)
+
+Two flaws surfaced when the chat answered a plain "list my location history"
+request: it invented explanations for things the data didn't show ("the
+Samsung trip got moved", "your Suwon visit") and turned a factual list into a
+personal interview ("you barely slept — how are you holding up?"). Both come
+from the chat prompt, not the location data (which was retrieving correctly).
+
+- **Factual requests get facts, not confabulation.** The chat guidance now
+  tells Claude that for look-up questions (where was I, what did I do, a list,
+  a timeline) it must report only what the data shows — never narrate a
+  PLANNED or merely POSSIBLE thing as though it happened, and where the data
+  is silent, say so instead of inventing a reason.
+- **No unsolicited interrogation on a factual ask.** A location list no longer
+  triggers "did the visit happen?" / "how are you holding up?" — the warm
+  check-ins are reserved for when the user is actually reflecting.
+- **Chat now discloses location data gaps instead of guessing.** When the last
+  OwnTracks point is more than an hour old, both the ambient block and the
+  `get_recent_locations` tool tell Claude to say plainly that its record stops
+  there ("the last point I have is ~N min ago, so I may be missing anything
+  after that") rather than speculating about what happened in the gap.
+
 ## 2026-07-13 (Memory page warns when OwnTracks goes quiet)
 
 The chat's location knowledge is only as fresh as what the OwnTracks app
