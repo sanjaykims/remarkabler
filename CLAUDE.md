@@ -122,8 +122,13 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `reembedMissingMemories` (bounded re-embed of NULL-embedding rows),
   `formatRecalledMemoriesBlock` (advisory framing for the
   system prompt), `normaliseChatMemoryCategory` (6-value enum),
-  `isDuplicateMemory` (exact text_norm + 0.88 cosine), and
-  `resetBatchForRetry` (clears permanent-skip state).
+  `isDuplicateMemory` (exact text_norm + 0.88 cosine),
+  `resetBatchForRetry` (clears permanent-skip state), and the rolling-memory
+  pair `createRollingBatch` (pure-DB: stamp an active conversation's
+  out-of-window turns into a batch WITHOUT archiving them) +
+  `maybeRollConversationMemory` (create-then-compress, per-conversation
+  in-flight guarded; fired un-awaited from the chat POST). See the rolling-
+  memory rule under "Hard-won rules".
 - `lib/chatMemoryBackfill.ts` — pure helpers (`chunkMessageIds`,
   `estimateTranscriptCost`, `CHUNK_TARGET_CHARS = 12_000`) shared
   between the `/api/chat/memories/backfill-all` endpoint and its test.
@@ -348,6 +353,34 @@ features need the deployed instance to fully verify.
   catches whatever the inline trigger missed. Do NOT revert the POST
   filter to "all rows" — that would double-count cleared messages
   (once as raw history, once as recalled memory).
+- **Rolling memory must stay OUTSIDE the raw-history window.** As an active
+  conversation grows, `maybeRollConversationMemory` (fired un-awaited from the
+  chat POST) compresses its older turns into `chat_memories` *before* a Clear,
+  so the middle of a long never-cleared chat isn't a blind spot (too old for
+  the live window, not yet a memory). `createRollingBatch` stamps those
+  turns with an `archive_batch_id` but **leaves `archived_at` NULL** — so they
+  stay visible in the UI (the GET filters `archived_at IS NULL`) and it's
+  purely additive. The live window is `RAW_HISTORY_WINDOW` (20), exported from
+  `lib/chatMemory.ts` and imported by the chat route's `LIMIT`, so the two can
+  never drift. The load-bearing invariant: `ROLL_KEEP_RECENT` must stay **≥**
+  `RAW_HISTORY_WINDOW`, so a rolled turn can never *also* still be in the live
+  window — that's what stops the same turn counting once as raw history and
+  once as recalled memory. They're set **equal** (both 20), which means there's
+  no structural gap at all — every turn is either in the live window or rolled
+  (the only residual is the sub-`ROLL_MIN_OLD` accumulation buffer).
+  `createRollingBatch` ALSO
+  gates on `MIN_USER_CHARS_FOR_COMPRESSION` (200) before creating a batch:
+  without it, a chunk of terse turns would be rolled, permanently marked
+  `too-short` by `compressBatch`, and — because Clear preserves the existing
+  `archive_batch_id` via `COALESCE` — never re-compressed with the rest of the
+  conversation (its substance silently lost). A later Clear relies on that same
+  `COALESCE` to leave rolled turns in their rolling batch and never re-extract
+  them. Compression is routed through `maybeCompressChatSessions` (the guarded
+  single-flight sweep), NOT a direct `compressBatch` call, so a concurrent
+  sweep can't double-compress the same pending batch. Do NOT make rolling set
+  `archived_at` (it would delete messages from the user's view mid-chat), do
+  NOT drop `ROLL_KEEP_RECENT` below `RAW_HISTORY_WINDOW`, and do NOT drop the
+  user-char gate.
 - **Chat memory recall is fail-open AND embedding-optional.** `chatOverNotes`
   accepts `recalledMemories` as a pre-rendered text block; it lives in the
   dynamic context block (never cached). Recall must never throw — chat must

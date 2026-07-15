@@ -183,7 +183,7 @@ describe("chat-memory flow: Option B Clear semantics", () => {
       .prepare(
         `SELECT role, content FROM chat_messages
          WHERE conversation_id = ? AND archived_at IS NULL
-         ORDER BY id DESC LIMIT 12`
+         ORDER BY id DESC LIMIT 20`
       )
       .all("default") as Array<{ role: string; content: string }>;
     expect(rows.length).toBe(0);
@@ -200,7 +200,7 @@ describe("chat-memory flow: Option B Clear semantics", () => {
         .prepare(
           `SELECT role, content FROM chat_messages
            WHERE conversation_id = ? AND archived_at IS NULL
-           ORDER BY id DESC LIMIT 12`
+           ORDER BY id DESC LIMIT 20`
         )
         .all("default") as Array<{ role: string; content: string }>
     ).reverse();

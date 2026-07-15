@@ -1,5 +1,69 @@
 # Changelog
 
+## 2026-07-15 (chat: widen the live window to fully close the gap)
+
+Follow-up to the rolling-memory tuning: rather than just shrinking the
+residual blind spot, close it structurally. The chat now feeds Claude the last
+**20** turns of an active conversation as raw history (was 12), and the rolling
+keep window is set **equal** to that (also 20). Because a turn is only rolled
+once it's older than the keep window, and the keep window now matches the live
+window exactly, there is **no structural gap** — every turn is either in the
+live window Claude sees directly or compressed into memory (the only residual
+is the small accumulation buffer below the roll batch size). The live window is
+now a single exported constant (`RAW_HISTORY_WINDOW`) shared between the route
+and the rolling logic so they can't drift. Trade-off: a modestly larger prompt
+per message (20 recent turns instead of 12) for fuller recent context.
+
+## 2026-07-15 (chat: rolling memory — review fixes)
+
+Two P2 findings from the Codex review of the rolling-memory PR, both valid,
+both fixed:
+
+- **Don't discard thin rolled chunks (correctness).** `createRollingBatch`
+  gated only on message count, but `compressBatch` permanently marks a batch
+  `too-short` when its user text is under 200 chars — and Clear's `COALESCE`
+  then never re-compresses those turns with the rest of the conversation, so a
+  chunk of terse turns lost its memory extraction outright. Rolling now also
+  gates on `MIN_USER_CHARS_FOR_COMPRESSION` (200): too-thin chunks stay
+  unrolled and accumulate (or get swept by Clear) instead of being created and
+  discarded.
+- **Shrink the residual blind spot (tuning).** Lowered the keep window (20→14)
+  and batch minimum (12→8) so rolling now kicks in around ~22 messages instead
+  of 32, leaving only a couple of just-out-of-window turns uncaptured at any
+  moment instead of an ~8-message band. The new substance gate keeps batch
+  quality up despite the smaller minimum.
+
+## 2026-07-15 (chat: rolling memory so long chats don't forget the middle)
+
+Inspired by looking at claude-mem's "continuous capture" idea, but built on
+our own SQLite + Voyage stack (no Bun worker, no Chroma). The chat already
+compressed a conversation into durable `chat_memories` on Clear, and fed only
+the last 12 turns as raw history. That left a blind spot: in a long chat you
+haven't cleared, turns older than the last 12 were neither in the live window
+nor yet turned into memory — mid-conversation details could quietly fall
+through until you hit Clear.
+
+Rolling memory closes it:
+
+- **`createRollingBatch`** (pure, unit-tested) — once an active conversation
+  grows past a keep window (20 turns), its older un-batched turns are stamped
+  into an archive batch and compressed into `chat_memories` **as they scroll
+  out of the window**, exactly like a partial Clear.
+- **Crucially additive**: rolled turns keep `archived_at` NULL, so they stay
+  visible in the chat (the UI filters on `archived_at`). Nothing disappears
+  mid-conversation.
+- **No double-counting**: the keep window (20) stays larger than the raw
+  history window (12), so a rolled turn is never also fed as raw history; and
+  a later Clear's `COALESCE(archive_batch_id, ...)` leaves rolled turns in
+  their rolling batch and never re-extracts them.
+- **`maybeRollConversationMemory`** — fired un-awaited (with `.catch`) from the
+  chat POST, per-conversation in-flight guarded; the maintenance sweep is the
+  safety net for any batch whose compression failed.
+
+No new infrastructure; reuses `compressBatch`, dedup, and recall. Do NOT
+confuse this with the claude-mem plugin — see that assessment: it's a Claude
+Code dev-tool plugin, not something we adopt into the product.
+
 ## 2026-07-15 (chat: name a location gap plainly, don't reassure it away)
 
 Follow-up polish after watching the deployed behavior. Chat correctly stopped
