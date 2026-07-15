@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-07-15 (location: diagnose WHY tracking gaps form)
+
+Root-cause follow-up to the chat gap-disclosure work. The server was ruled
+out by code: `addPoint` stores every point OwnTracks POSTs — no throttle, no
+dedup, no minimum interval — so a gap in the series means the PHONE stopped
+sending (Android Doze suspending the app, or a Significant-mode monitoring
+setting that only fires on movement), not that data was lost between the
+server and chat.
+
+To confirm from real data instead of theory, added a gap analyzer:
+
+- **`analyzeGaps` (pure, unit-tested)** turns the raw point series into a
+  summary: point count, median gap, count of gaps over 30 min, the longest
+  gaps, and the still-open trailing gap (now − newest point). Timestamps
+  only, no coordinates — safe to screenshot.
+- **Memory page shows a last-24h gap line** ("N points, ~X min apart; M gaps
+  over 30 min, longest Y min ending HH:MM") so a "why is there a 92-minute
+  hole?" question is answered from the phone's actual publishing pattern.
+- **`owntracksStatus` / `?debug=1`** now carry the gap stats too.
+- **Corrected the stale-warning advice**: OwnTracks Monitoring → **Move**
+  (steady interval) rather than Significant changes (movement-only, leaves
+  long gaps), noting the battery trade-off.
+
 ## 2026-07-15 (chat: factual location answers, honest about data gaps)
 
 Two flaws surfaced when the chat answered a plain "list my location history"

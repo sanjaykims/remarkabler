@@ -39,6 +39,13 @@ export default function MemoryPage() {
     configured: boolean;
     points: number;
     lastTst: number | null;
+    gaps24h?: {
+      pointCount: number;
+      medianGapMinutes: number | null;
+      gapsOver30Min: number;
+      maxGap: { startTst: number; endTst: number; minutes: number } | null;
+      trailingGapMinutes: number;
+    };
   } | null>(null);
   const [locEnabled, setLocEnabled] = useState<boolean | null>(null);
   const [locTogBusy, setLocTogBusy] = useState(false);
@@ -983,6 +990,38 @@ export default function MemoryPage() {
               . Your route (places + how long you stayed) is fed to chat
               automatically — no taps.
             </p>
+            {/* Tracking-gap summary (last 24h). The server stores every point
+                the phone POSTs (no throttle), so a gap here means the PHONE
+                stopped sending — Android Doze, or a Significant-mode setting
+                that only fires on movement. This is the "why is there a
+                92-minute hole?" diagnostic: timestamps only, safe to share. */}
+            {locEnabled !== false &&
+              ot.gaps24h &&
+              ot.gaps24h.pointCount > 1 && (
+                <p className="text-xs opacity-70">
+                  Last 24h: {ot.gaps24h.pointCount} points, ~
+                  {ot.gaps24h.medianGapMinutes ?? "?"} min apart typically.{" "}
+                  {ot.gaps24h.gapsOver30Min > 0 ? (
+                    <span className="text-sky-700 dark:text-sky-300">
+                      {ot.gaps24h.gapsOver30Min} gap
+                      {ot.gaps24h.gapsOver30Min === 1 ? "" : "s"} over 30 min
+                      {ot.gaps24h.maxGap
+                        ? ` (longest ${Math.round(
+                            ot.gaps24h.maxGap.minutes
+                          )} min, ending ${new Date(
+                            ot.gaps24h.maxGap.endTst * 1000
+                          ).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })})`
+                        : ""}
+                      . Long gaps = the phone stopped sending, not a chat bug.
+                    </span>
+                  ) : (
+                    <span>No gaps over 30 min — tracking is steady.</span>
+                  )}
+                </p>
+              )}
             {/* Staleness warning: the server can only receive what the phone
                 pushes. If nothing has arrived for many hours, Android has
                 almost certainly killed OwnTracks in the background (battery
@@ -1011,8 +1050,10 @@ export default function MemoryPage() {
                       remove OwnTracks from any “sleeping apps” list.
                     </li>
                     <li>
-                      In OwnTracks: Preferences → Monitoring →{" "}
-                      <b>Significant changes</b> (or Move).
+                      In OwnTracks: Preferences → Monitoring → <b>Move</b> for
+                      a steady interval. <b>Significant changes</b> only reports
+                      on big movements, so it leaves long gaps (at some extra
+                      battery cost in Move mode).
                     </li>
                   </ul>
                 </div>
