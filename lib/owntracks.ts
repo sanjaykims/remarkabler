@@ -97,15 +97,104 @@ export function currentLocation(): CurrentLocation | null {
   };
 }
 
+// Inter-point gap analysis. The server stores every point OwnTracks POSTs
+// (addPoint has no throttle/dedup), so a gap in this series means the PHONE
+// stopped publishing — Android Doze suspending the app, or a Significant-mode
+// monitoring setting that only fires on movement. This is the tool that tells
+// a "why is there a 92-minute hole?" question apart from a server bug: if the
+// gaps are here, the data never reached us. Pure + exported for unit tests;
+// carries only timestamps (no coordinates), so it's safe to screenshot.
+export type LocationGap = { startTst: number; endTst: number; minutes: number };
+export type GapStats = {
+  windowHours: number;
+  pointCount: number;
+  /** first→last point span, in minutes. */
+  spanMinutes: number;
+  /** points ÷ span; null when fewer than 2 points. */
+  pointsPerHour: number | null;
+  /** median consecutive-point gap; null when fewer than 2 points. */
+  medianGapMinutes: number | null;
+  /** largest consecutive-point gap in the window. */
+  maxGap: LocationGap | null;
+  /** how many consecutive gaps exceeded 30 minutes. */
+  gapsOver30Min: number;
+  /** the 5 longest consecutive gaps, descending. */
+  longestGaps: LocationGap[];
+  /** now − newest point, minutes; the still-open "we've heard nothing" gap. */
+  trailingGapMinutes: number;
+};
+
+export function analyzeGaps(
+  tsts: number[],
+  nowSec: number,
+  windowHours: number
+): GapStats {
+  const sorted = [...tsts].sort((a, b) => a - b);
+  const n = sorted.length;
+  const round1 = (x: number) => Math.round(x * 10) / 10;
+  const gaps: LocationGap[] = [];
+  for (let i = 1; i < n; i++) {
+    gaps.push({
+      startTst: sorted[i - 1],
+      endTst: sorted[i],
+      minutes: round1((sorted[i] - sorted[i - 1]) / 60),
+    });
+  }
+  const sortedMins = gaps.map((g) => g.minutes).sort((a, b) => a - b);
+  let median: number | null = null;
+  if (sortedMins.length) {
+    const mid = Math.floor(sortedMins.length / 2);
+    median =
+      sortedMins.length % 2
+        ? sortedMins[mid]
+        : round1((sortedMins[mid - 1] + sortedMins[mid]) / 2);
+  }
+  const span = n >= 2 ? sorted[n - 1] - sorted[0] : 0;
+  const longest = [...gaps].sort((a, b) => b.minutes - a.minutes).slice(0, 5);
+  return {
+    windowHours,
+    pointCount: n,
+    spanMinutes: Math.round(span / 60),
+    pointsPerHour: span > 0 ? round1(n / (span / 3600)) : null,
+    medianGapMinutes: median,
+    maxGap: longest[0] ?? null,
+    gapsOver30Min: gaps.filter((g) => g.minutes > 30).length,
+    longestGaps: longest,
+    trailingGapMinutes: n ? Math.round((nowSec - sorted[n - 1]) / 60) : 0,
+  };
+}
+
+// The last-24h gap summary, computed from the raw point series. Cheap (one
+// bounded query) so it can ride on owntracksStatus() and render inline on the
+// Memory page without the debug button.
+export function gapStatsForWindow(windowHours: number): GapStats {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const since = nowSec - windowHours * 3600;
+  const rows = db()
+    .prepare(`SELECT tst FROM location_points WHERE tst >= ? ORDER BY tst ASC`)
+    .all(since) as Array<{ tst: number }>;
+  return analyzeGaps(
+    rows.map((r) => r.tst),
+    nowSec,
+    windowHours
+  );
+}
+
 export function owntracksStatus(): {
   configured: boolean;
   points: number;
   lastTst: number | null;
+  gaps24h: GapStats;
 } {
   const row = db()
     .prepare(`SELECT COUNT(*) AS c, MAX(tst) AS last FROM location_points`)
     .get() as { c: number; last: number | null };
-  return { configured: owntracksConfigured(), points: row.c, lastTst: row.last };
+  return {
+    configured: owntracksConfigured(),
+    points: row.c,
+    lastTst: row.last,
+    gaps24h: gapStatsForWindow(24),
+  };
 }
 
 // Diagnostic snapshot for the Memory page. Bounded, sanitised — exposes
@@ -146,6 +235,7 @@ export function owntracksDebug(): {
       dwellMinutes: number;
     }>;
     samplePoints: Array<{ lat: number; lng: number; tst: number }>;
+    gaps: GapStats;
   }>;
 } {
   const status = owntracksStatus();
@@ -195,6 +285,7 @@ export function owntracksDebug(): {
       lastTstInWindow: pts[pts.length - 1]?.tst ?? null,
       stays,
       samplePoints: [...head, ...tail].map(blur),
+      gaps: analyzeGaps(pts.map((p) => p.tst), nowSec, days * 24),
     };
   };
 
