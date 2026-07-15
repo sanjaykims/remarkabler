@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-07-15 (chat: name a location gap plainly, don't reassure it away)
+
+Follow-up polish after watching the deployed behavior. Chat correctly stopped
+confabulating and interrogating, but when it hit a gap in the location record
+it added a reassuring gloss — "likely just in transit / no movement trigger,
+not missing data on my end necessarily." That over-reassurance quietly
+downplays a real gap (a stationary stretch too sparse to cluster a stay IS
+thin data). Tightened the guidance so chat:
+
+- names a gap once, plainly, and moves on — no invented reason for it AND no
+  "probably nothing / not missing data / you were likely in transit" gloss;
+- applies the same rule to a hole BETWEEN stays, not just an old current
+  position ("no location logged for that stretch").
+
+Prompt-only; no change to location retrieval.
+
 ## 2026-07-15 (location: diagnose WHY tracking gaps form)
 
 Root-cause follow-up to the chat gap-disclosure work. The server was ruled
