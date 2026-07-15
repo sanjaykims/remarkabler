@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-07-15 (MCP endpoint: chat with the diary on the Claude subscription)
+
+Deep-research-verified path to zero-per-token diary chat: Remarkabler now
+serves a **remote MCP endpoint** at `/api/mcp` (Streamable HTTP, stateless,
+SSE disabled) exposing the in-app chat's read-only tools — `search_diary`,
+dates/summaries, entities, locations, insights — plus an MCP-only
+`get_profile` tool so external Claude can ground itself the way the in-app
+chat does. Add it to claude.ai as a **custom connector** (Settings →
+Connectors, `Authorization: Bearer <MCP_AUTH_TOKEN>` request header — OAuth
+not required) and it propagates automatically to Claude Code (CLI + web
+sessions), so one registration covers both. Chat about the diary then bills
+to the Claude subscription, not the pay-per-token API; the in-app chat is
+unchanged.
+
+Design notes: the MCP tool list is **derived from `CHAT_TOOLS` at runtime**
+(zero drift — a new chat tool automatically appears on MCP), dispatch reuses
+`executeTool`, and auth is a fail-closed, timing-safe bearer check
+(`MCP_AUTH_TOKEN` unset or <16 chars → endpoint disabled with 503, never
+open). Built on `mcp-handler` + `@modelcontextprotocol/sdk`, registered via
+raw `setRequestHandler` so the existing JSON schemas pass through verbatim.
+New "do not regress" rule: the endpoint stays read-only and fail-closed.
+Tests cover the tool mirror, the auth matrix, and a full MCP protocol round
+trip (initialize → tools/list → tools/call) through the real route handler.
+Setup guide (phone-friendly): `docs/mcp-setup.md`.
+
 ## 2026-07-15 (chat: widen the live window to fully close the gap)
 
 Follow-up to the rolling-memory tuning: rather than just shrinking the
