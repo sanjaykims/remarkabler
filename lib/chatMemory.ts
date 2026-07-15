@@ -38,6 +38,28 @@ const RECALL_RECENT_FLOOR = 5;
 const MAX_EXTRACTION_ATTEMPTS = 2;
 const RECENT_MEMORY_PRIMER_COUNT = 15;
 
+// Rolling memory. The chat POST feeds Claude only the most recent slice of an
+// active conversation as raw history (ORDER BY id DESC LIMIT 12 in the route).
+// Turns older than that window are no longer fed raw, and — before this — only
+// became recallable memory when the user hit Clear. That left a blind spot: in
+// a long, never-cleared chat, the middle turns were neither in the live window
+// nor in chat_memories. Rolling memory closes it: once an active conversation
+// grows past ROLL_KEEP_RECENT, its older un-batched turns are compressed into
+// chat_memories as they scroll out of the window — WITHOUT archiving them, so
+// they stay visible in the UI (the GET filters archived_at IS NULL) and this
+// is purely additive.
+//
+// ROLL_KEEP_RECENT must stay comfortably GREATER than the route's raw-history
+// LIMIT (12): a message is only rolled once it's older than the KEEP_RECENT-th
+// most recent, so a rolled message can never also still be in the live window —
+// which is what prevents double-counting (once as raw history, once as memory).
+// Rolled messages get archive_batch_id stamped but archived_at left NULL; a
+// later Clear's COALESCE(archive_batch_id, ...) then leaves them in their
+// rolling batch and never re-extracts them.
+const ROLL_KEEP_RECENT = 20;
+const ROLL_MIN_OLD = 12;
+const ROLL_MAX_PER_BATCH = 30;
+
 export type ChatMemoryCategory =
   | "fact"
   | "preference"
@@ -542,6 +564,101 @@ export async function maybeCompressChatSessions(
     };
   } finally {
     compressionStartedAt = null;
+  }
+}
+
+// Pure-DB half of rolling memory (no Claude call — unit-testable). In one
+// transaction: find the messages of an ACTIVE conversation that have scrolled
+// out of the recent window and haven't been batched yet, and, if there are
+// enough to be worth a compression call, stamp them into a fresh archive batch
+// WITHOUT setting archived_at (they stay visible). Returns the new batchId, or
+// null when there's nothing to roll. The returned batch is then compressed by
+// maybeRollConversationMemory / the maintenance sweep, exactly like a Clear
+// batch.
+//
+// Concurrency: the whole select-and-stamp runs in a single transaction and the
+// candidate filter is `archive_batch_id IS NULL`, so a second concurrent call
+// finds no candidates and returns null — no double-batching.
+export function createRollingBatch(conversationId: string): number | null {
+  return db().transaction(() => {
+    // The cutoff is the ROLL_KEEP_RECENT-th most recent ACTIVE message (rolled
+    // messages are still active/visible, so they count toward the window).
+    // Anything strictly older than it is eligible to roll.
+    const cutoff = db()
+      .prepare(
+        `SELECT id FROM chat_messages
+         WHERE conversation_id = ? AND archived_at IS NULL
+         ORDER BY id DESC LIMIT 1 OFFSET ?`
+      )
+      .get(conversationId, ROLL_KEEP_RECENT - 1) as { id: number } | undefined;
+    if (!cutoff) return null; // fewer than ROLL_KEEP_RECENT active messages
+
+    const old = db()
+      .prepare(
+        `SELECT id FROM chat_messages
+         WHERE conversation_id = ? AND archived_at IS NULL
+           AND archive_batch_id IS NULL AND id < ?
+         ORDER BY id ASC LIMIT ?`
+      )
+      .all(conversationId, cutoff.id, ROLL_MAX_PER_BATCH) as Array<{ id: number }>;
+    if (old.length < ROLL_MIN_OLD) return null;
+
+    const ins = db()
+      .prepare(`INSERT INTO chat_archive_batches(conversation_id) VALUES(?)`)
+      .run(conversationId);
+    const batchId = Number(ins.lastInsertRowid);
+
+    const ids = old.map((o) => o.id);
+    const placeholders = ids.map(() => "?").join(",");
+    // Stamp the batch id but DELIBERATELY leave archived_at NULL — the messages
+    // stay in the user's visible conversation. This is the one thing that makes
+    // rolling memory additive rather than a mid-chat Clear.
+    db()
+      .prepare(
+        `UPDATE chat_messages SET archive_batch_id = ?
+         WHERE id IN (${placeholders})`
+      )
+      .run(batchId, ...ids);
+
+    const stats = db()
+      .prepare(
+        `SELECT MIN(id) AS s, MAX(id) AS e, COUNT(*) AS c,
+                COALESCE(SUM(CASE WHEN role='user' THEN LENGTH(content) ELSE 0 END), 0) AS uc
+           FROM chat_messages WHERE archive_batch_id = ?`
+      )
+      .get(batchId) as { s: number | null; e: number | null; c: number; uc: number };
+    db()
+      .prepare(
+        `UPDATE chat_archive_batches
+           SET message_start_id = ?, message_end_id = ?,
+               message_count = ?, user_char_count = ?
+         WHERE id = ?`
+      )
+      .run(stats.s, stats.e, stats.c, stats.uc, batchId);
+    return batchId;
+  })();
+}
+
+// Per-conversation in-flight guard so a burst of messages doesn't fire
+// overlapping rolls for the same chat. The transaction in createRollingBatch is
+// the real correctness guarantee; this just avoids redundant Claude calls.
+const rollInFlight = new Set<string>();
+
+// Async half: create a rolling batch (if due) and compress it into memories.
+// Fire-and-forget from the chat POST (with .catch). Safe to call every turn —
+// it no-ops cheaply until enough turns have scrolled out of the window.
+export async function maybeRollConversationMemory(
+  conversationId: string
+): Promise<{ rolled: boolean; inserted?: number }> {
+  if (rollInFlight.has(conversationId)) return { rolled: false };
+  rollInFlight.add(conversationId);
+  try {
+    const batchId = createRollingBatch(conversationId);
+    if (batchId === null) return { rolled: false };
+    const r = await compressBatch(batchId);
+    return { rolled: true, inserted: r.inserted };
+  } finally {
+    rollInFlight.delete(conversationId);
   }
 }
 

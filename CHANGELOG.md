@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-07-15 (chat: rolling memory so long chats don't forget the middle)
+
+Inspired by looking at claude-mem's "continuous capture" idea, but built on
+our own SQLite + Voyage stack (no Bun worker, no Chroma). The chat already
+compressed a conversation into durable `chat_memories` on Clear, and fed only
+the last 12 turns as raw history. That left a blind spot: in a long chat you
+haven't cleared, turns older than the last 12 were neither in the live window
+nor yet turned into memory — mid-conversation details could quietly fall
+through until you hit Clear.
+
+Rolling memory closes it:
+
+- **`createRollingBatch`** (pure, unit-tested) — once an active conversation
+  grows past a keep window (20 turns), its older un-batched turns are stamped
+  into an archive batch and compressed into `chat_memories` **as they scroll
+  out of the window**, exactly like a partial Clear.
+- **Crucially additive**: rolled turns keep `archived_at` NULL, so they stay
+  visible in the chat (the UI filters on `archived_at`). Nothing disappears
+  mid-conversation.
+- **No double-counting**: the keep window (20) stays larger than the raw
+  history window (12), so a rolled turn is never also fed as raw history; and
+  a later Clear's `COALESCE(archive_batch_id, ...)` leaves rolled turns in
+  their rolling batch and never re-extracts them.
+- **`maybeRollConversationMemory`** — fired un-awaited (with `.catch`) from the
+  chat POST, per-conversation in-flight guarded; the maintenance sweep is the
+  safety net for any batch whose compression failed.
+
+No new infrastructure; reuses `compressBatch`, dedup, and recall. Do NOT
+confuse this with the claude-mem plugin — see that assessment: it's a Claude
+Code dev-tool plugin, not something we adopt into the product.
+
 ## 2026-07-15 (chat: name a location gap plainly, don't reassure it away)
 
 Follow-up polish after watching the deployed behavior. Chat correctly stopped

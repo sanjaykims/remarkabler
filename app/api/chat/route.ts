@@ -18,6 +18,7 @@ import { extractTextFromAttachment } from "@/lib/extractText";
 import {
   recallChatMemories,
   formatRecalledMemoriesBlock,
+  maybeRollConversationMemory,
 } from "@/lib/chatMemory";
 
 export const runtime = "nodejs";
@@ -310,6 +311,15 @@ export async function POST(req: NextRequest) {
       `INSERT INTO chat_messages(conversation_id, role, content, model) VALUES(?,?,?,?)`
     )
     .run(conversationId, "assistant", reply, replyModel);
+
+  // Rolling memory: as this conversation grows past the raw-history window,
+  // compress its older turns into chat_memories so nothing scrolls out of the
+  // window into a blind spot before the user hits Clear. Fire-and-forget,
+  // guarded, and additive (the turns stay visible). Own .catch — a fire-and-
+  // forget promise's rejection is NOT caught by any surrounding try/catch.
+  void maybeRollConversationMemory(conversationId).catch((e) =>
+    console.warn("[chat] rolling memory failed:", (e as Error).message)
+  );
 
   return NextResponse.json({ reply, model: replyModel });
 }
