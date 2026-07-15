@@ -360,14 +360,21 @@ features need the deployed instance to fully verify.
   the `LIMIT 12` window, not yet a memory). `createRollingBatch` stamps those
   turns with an `archive_batch_id` but **leaves `archived_at` NULL** — so they
   stay visible in the UI (the GET filters `archived_at IS NULL`) and it's
-  purely additive. The load-bearing invariant: `ROLL_KEEP_RECENT` (20) must
-  stay **greater than** the route's raw-history `LIMIT` (12), so a rolled turn
-  can never *also* still be in the live window — that's what stops the same
-  turn counting once as raw history and once as recalled memory. A later Clear
-  relies on `COALESCE(archive_batch_id, ...)` to leave rolled turns in their
-  rolling batch and never re-extract them. Do NOT make rolling set
-  `archived_at` (it would delete messages from the user's view mid-chat), and
-  do NOT drop `ROLL_KEEP_RECENT` to ≤ 12.
+  purely additive. The load-bearing invariant: `ROLL_KEEP_RECENT` (14) must
+  stay **≥** the route's raw-history `LIMIT` (12), so a rolled turn can never
+  *also* still be in the live window — that's what stops the same turn counting
+  once as raw history and once as recalled memory. `createRollingBatch` ALSO
+  gates on `MIN_USER_CHARS_FOR_COMPRESSION` (200) before creating a batch:
+  without it, a chunk of terse turns would be rolled, permanently marked
+  `too-short` by `compressBatch`, and — because Clear preserves the existing
+  `archive_batch_id` via `COALESCE` — never re-compressed with the rest of the
+  conversation (its substance silently lost). A later Clear relies on that same
+  `COALESCE` to leave rolled turns in their rolling batch and never re-extract
+  them. Compression is routed through `maybeCompressChatSessions` (the guarded
+  single-flight sweep), NOT a direct `compressBatch` call, so a concurrent
+  sweep can't double-compress the same pending batch. Do NOT make rolling set
+  `archived_at` (it would delete messages from the user's view mid-chat), do
+  NOT drop `ROLL_KEEP_RECENT` below 12, and do NOT drop the user-char gate.
 - **Chat memory recall is fail-open AND embedding-optional.** `chatOverNotes`
   accepts `recalledMemories` as a pre-rendered text block; it lives in the
   dynamic context block (never cached). Recall must never throw — chat must

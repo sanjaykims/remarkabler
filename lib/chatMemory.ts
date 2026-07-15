@@ -49,15 +49,26 @@ const RECENT_MEMORY_PRIMER_COUNT = 15;
 // they stay visible in the UI (the GET filters archived_at IS NULL) and this
 // is purely additive.
 //
-// ROLL_KEEP_RECENT must stay comfortably GREATER than the route's raw-history
-// LIMIT (12): a message is only rolled once it's older than the KEEP_RECENT-th
-// most recent, so a rolled message can never also still be in the live window —
-// which is what prevents double-counting (once as raw history, once as memory).
-// Rolled messages get archive_batch_id stamped but archived_at left NULL; a
-// later Clear's COALESCE(archive_batch_id, ...) then leaves them in their
-// rolling batch and never re-extracts them.
-const ROLL_KEEP_RECENT = 20;
-const ROLL_MIN_OLD = 12;
+// ROLL_KEEP_RECENT must stay >= the route's raw-history LIMIT (12): a message
+// is only rolled once it's older than the KEEP_RECENT-th most recent, so a
+// rolled message can never also still be in the live window — which is what
+// prevents double-counting (once as raw history, once as memory). We keep a
+// small margin over 12 rather than exactly 12, so a couple of just-out-of-
+// window turns are the only structural gap. Rolled messages get
+// archive_batch_id stamped but archived_at left NULL; a later Clear's
+// COALESCE(archive_batch_id, ...) then leaves them in their rolling batch and
+// never re-extracts them.
+//
+// A rolling batch must ALSO clear compressBatch's own substance gate
+// (MIN_MESSAGES_FOR_COMPRESSION / MIN_USER_CHARS_FOR_COMPRESSION) BEFORE it's
+// created. Otherwise a chunk of short turns ("ok", "thanks") would be rolled,
+// then permanently marked `too-short` with zero memories — and because Clear
+// preserves the existing archive_batch_id via COALESCE, those turns would
+// never get re-compressed as part of the whole conversation. So we gate
+// rolling on user-text volume too: too-thin turns stay unrolled (archive_batch_id
+// NULL) and accumulate until they're worth a batch, or get swept up by Clear.
+const ROLL_KEEP_RECENT = 14;
+const ROLL_MIN_OLD = 8;
 const ROLL_MAX_PER_BATCH = 30;
 
 export type ChatMemoryCategory =
@@ -603,13 +614,27 @@ export function createRollingBatch(conversationId: string): number | null {
       .all(conversationId, cutoff.id, ROLL_MAX_PER_BATCH) as Array<{ id: number }>;
     if (old.length < ROLL_MIN_OLD) return null;
 
+    const ids = old.map((o) => o.id);
+    const placeholders = ids.map(() => "?").join(",");
+
+    // Substance gate: don't create a batch compressBatch would just discard as
+    // `too-short` (permanently, un-recoverable via a later Clear). If the
+    // candidate turns don't carry enough user text yet, leave them unrolled to
+    // accumulate. Mirrors compressBatch's MIN_USER_CHARS_FOR_COMPRESSION.
+    const userChars = (
+      db()
+        .prepare(
+          `SELECT COALESCE(SUM(LENGTH(content)), 0) AS uc FROM chat_messages
+           WHERE role = 'user' AND id IN (${placeholders})`
+        )
+        .get(...ids) as { uc: number }
+    ).uc;
+    if (userChars < MIN_USER_CHARS_FOR_COMPRESSION) return null;
+
     const ins = db()
       .prepare(`INSERT INTO chat_archive_batches(conversation_id) VALUES(?)`)
       .run(conversationId);
     const batchId = Number(ins.lastInsertRowid);
-
-    const ids = old.map((o) => o.id);
-    const placeholders = ids.map(() => "?").join(",");
     // Stamp the batch id but DELIBERATELY leave archived_at NULL — the messages
     // stay in the user's visible conversation. This is the one thing that makes
     // rolling memory additive rather than a mid-chat Clear.

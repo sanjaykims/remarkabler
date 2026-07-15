@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-07-15 (chat: rolling memory — review fixes)
+
+Two P2 findings from the Codex review of the rolling-memory PR, both valid,
+both fixed:
+
+- **Don't discard thin rolled chunks (correctness).** `createRollingBatch`
+  gated only on message count, but `compressBatch` permanently marks a batch
+  `too-short` when its user text is under 200 chars — and Clear's `COALESCE`
+  then never re-compresses those turns with the rest of the conversation, so a
+  chunk of terse turns lost its memory extraction outright. Rolling now also
+  gates on `MIN_USER_CHARS_FOR_COMPRESSION` (200): too-thin chunks stay
+  unrolled and accumulate (or get swept by Clear) instead of being created and
+  discarded.
+- **Shrink the residual blind spot (tuning).** Lowered the keep window (20→14)
+  and batch minimum (12→8) so rolling now kicks in around ~22 messages instead
+  of 32, leaving only a couple of just-out-of-window turns uncaptured at any
+  moment instead of an ~8-message band. The new substance gate keeps batch
+  quality up despite the smaller minimum.
+
 ## 2026-07-15 (chat: rolling memory so long chats don't forget the middle)
 
 Inspired by looking at claude-mem's "continuous capture" idea, but built on

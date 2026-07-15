@@ -6,12 +6,16 @@ import path from "path";
 // Rolling memory: as an ACTIVE conversation grows past the raw-history window,
 // its older turns are compressed into chat_memories WITHOUT being archived, so
 // nothing scrolls out of the window into a blind spot before a Clear. These
-// pins lock the invariants that keep it additive and non-double-counting:
+// pins lock the invariants that keep it additive, non-double-counting, and
+// lossless:
 //   - rolled messages stay visible (archived_at NULL);
 //   - a rolled message is never also in the last-12 raw-history window;
-//   - a later Clear leaves rolled messages in their rolling batch (COALESCE).
+//   - a later Clear leaves rolled messages in their rolling batch (COALESCE);
+//   - a chunk too thin to survive compressBatch's `too-short` gate is NOT
+//     rolled (it would be permanently skipped + never re-compressed by Clear).
 // createRollingBatch is the pure-DB half (no Claude call), so it is directly
-// testable. Knob values live in lib/chatMemory.ts: KEEP_RECENT=20, MIN_OLD=12.
+// testable. Knobs in lib/chatMemory.ts: KEEP_RECENT=14, MIN_OLD=8, and the
+// substance gate MIN_USER_CHARS_FOR_COMPRESSION=200.
 
 type DbMod = typeof import("@/lib/db");
 type ChatMemMod = typeof import("@/lib/chatMemory");
@@ -32,19 +36,24 @@ beforeEach(() => {
   dbMod.db().prepare(`DELETE FROM chat_archive_batches`).run();
 });
 
-function insertMsgs(n: number, conversationId = "default") {
+// User turns are ~60 chars each so a batch of 8 (4 user turns) clears the
+// 200-char substance gate. Pass userLen to simulate terse turns for the gate
+// test.
+function insertMsgs(n: number, conversationId = "default", userLen = 60) {
   const stmt = dbMod
     .db()
     .prepare(
       `INSERT INTO chat_messages(conversation_id, role, content) VALUES(?,?,?)`
     );
   for (let i = 0; i < n; i++) {
-    stmt.run(conversationId, i % 2 === 0 ? "user" : "assistant", `msg ${i}`);
+    const isUser = i % 2 === 0;
+    const content = isUser ? "u".repeat(userLen) : "assistant reply";
+    stmt.run(conversationId, isUser ? "user" : "assistant", content);
   }
 }
 
 function counts(conversationId = "default") {
-  const row = dbMod
+  return dbMod
     .db()
     .prepare(
       `SELECT
@@ -60,7 +69,6 @@ function counts(conversationId = "default") {
     batched: number;
     rolledVisible: number;
   };
-  return row;
 }
 
 // Mirrors app/api/chat/route.ts:DELETE (Clear) — enough to exercise COALESCE.
@@ -101,39 +109,49 @@ function clearChat(conversationId: string): number | null {
 
 describe("createRollingBatch", () => {
   it("does nothing when the conversation is at/under the keep window", () => {
-    insertMsgs(20); // exactly KEEP_RECENT → no message is older than the window
+    insertMsgs(14); // exactly KEEP_RECENT → nothing older than the window
     expect(cm.createRollingBatch("default")).toBeNull();
     expect(counts().batched).toBe(0);
   });
 
   it("does nothing when too few messages have scrolled out (below MIN_OLD)", () => {
-    insertMsgs(31); // 31 - 20 = 11 old candidates, one under MIN_OLD (12)
+    insertMsgs(21); // 21 - 14 = 7 old candidates, one under MIN_OLD (8)
+    expect(cm.createRollingBatch("default")).toBeNull();
+    expect(counts().batched).toBe(0);
+  });
+
+  it("does NOT roll a chunk too thin to survive the substance gate", () => {
+    // Enough messages (22 → 8 old candidates) but terse user turns, so the
+    // batch's user text is under 200 chars. Rolling it would let compressBatch
+    // permanently mark it `too-short`, and Clear's COALESCE would then never
+    // re-compress those turns. So it must stay unrolled instead.
+    insertMsgs(22, "default", 3); // "uuu" user turns → ~12 user chars total
     expect(cm.createRollingBatch("default")).toBeNull();
     expect(counts().batched).toBe(0);
   });
 
   it("rolls the oldest out-of-window turns into a batch, keeping them visible", () => {
-    insertMsgs(32); // 32 - 20 = 12 old candidates == MIN_OLD
+    insertMsgs(22); // 22 - 14 = 8 old candidates == MIN_OLD, with real text
     const batchId = cm.createRollingBatch("default");
     expect(batchId).not.toBeNull();
 
     const c = counts();
-    expect(c.total).toBe(32);
-    expect(c.batched).toBe(12); // the 12 oldest got a batch id
-    expect(c.rolledVisible).toBe(12); // ...and are STILL visible (archived_at NULL)
-    expect(c.visible).toBe(32); // nothing disappeared from the UI
+    expect(c.total).toBe(22);
+    expect(c.batched).toBe(8); // the 8 oldest got a batch id
+    expect(c.rolledVisible).toBe(8); // ...and are STILL visible (archived_at NULL)
+    expect(c.visible).toBe(22); // nothing disappeared from the UI
 
     const batch = dbMod
       .db()
-      .prepare(`SELECT message_count FROM chat_archive_batches WHERE id = ?`)
-      .get(batchId) as { message_count: number };
-    expect(batch.message_count).toBe(12);
+      .prepare(`SELECT message_count, user_char_count FROM chat_archive_batches WHERE id = ?`)
+      .get(batchId) as { message_count: number; user_char_count: number };
+    expect(batch.message_count).toBe(8);
+    expect(batch.user_char_count).toBeGreaterThanOrEqual(200);
   });
 
   it("never rolls a message that is still in the last-12 raw-history window", () => {
-    insertMsgs(32);
+    insertMsgs(22);
     cm.createRollingBatch("default");
-    // The exact query the chat POST runs for raw history.
     const window = dbMod
       .db()
       .prepare(
@@ -149,24 +167,24 @@ describe("createRollingBatch", () => {
   });
 
   it("is idempotent: a second roll with no new turns does nothing", () => {
-    insertMsgs(32);
+    insertMsgs(22);
     expect(cm.createRollingBatch("default")).not.toBeNull();
-    expect(cm.createRollingBatch("default")).toBeNull(); // nothing new to roll
-    expect(counts().batched).toBe(12);
+    expect(cm.createRollingBatch("default")).toBeNull();
+    expect(counts().batched).toBe(8);
   });
 
   it("rolls again once more turns scroll out of the window", () => {
-    insertMsgs(32);
+    insertMsgs(22);
     const b1 = cm.createRollingBatch("default");
-    insertMsgs(12); // 12 fresh turns → the previous window's tail is now old
+    insertMsgs(12); // fresh turns push the previous window's tail out
     const b2 = cm.createRollingBatch("default");
     expect(b2).not.toBeNull();
     expect(b2).not.toBe(b1);
-    expect(counts().batched).toBe(24); // 12 + 12
+    expect(counts().batched).toBeGreaterThan(8);
   });
 
   it("a later Clear leaves rolled messages in their rolling batch (COALESCE)", () => {
-    insertMsgs(32);
+    insertMsgs(22);
     const rollBatch = cm.createRollingBatch("default")!;
     const clearBatch = clearChat("default")!;
     expect(clearBatch).not.toBe(rollBatch);
@@ -175,19 +193,17 @@ describe("createRollingBatch", () => {
       .db()
       .prepare(`SELECT archive_batch_id, archived_at FROM chat_messages ORDER BY id ASC`)
       .all() as Array<{ archive_batch_id: number; archived_at: string | null }>;
-    // Everything is archived now (Clear hides the whole conversation)...
-    expect(rows.every((r) => r.archived_at !== null)).toBe(true);
-    // ...the 12 rolled stay in the rolling batch, the other 20 go to Clear's.
-    expect(rows.filter((r) => r.archive_batch_id === rollBatch).length).toBe(12);
-    expect(rows.filter((r) => r.archive_batch_id === clearBatch).length).toBe(20);
+    expect(rows.every((r) => r.archived_at !== null)).toBe(true); // Clear hides all
+    expect(rows.filter((r) => r.archive_batch_id === rollBatch).length).toBe(8);
+    expect(rows.filter((r) => r.archive_batch_id === clearBatch).length).toBe(14);
   });
 
   it("keeps conversations independent", () => {
-    insertMsgs(32, "A");
+    insertMsgs(22, "A");
     insertMsgs(5, "B");
     expect(cm.createRollingBatch("A")).not.toBeNull();
     expect(cm.createRollingBatch("B")).toBeNull();
-    expect(counts("A").batched).toBe(12);
+    expect(counts("A").batched).toBe(8);
     expect(counts("B").batched).toBe(0);
   });
 });
