@@ -408,11 +408,18 @@ features need the deployed instance to fully verify.
   traffic can share egress IPs with other tenants, so throttling valid
   requests would let an attacker lock the real user out); (4) every failed
   attempt and tool call is recorded in `mcp_audit` (size-capped, best-effort —
-  audit writes must never take the endpoint down). `MCP_AUTH_TOKEN` accepts
-  comma-separated tokens for zero-downtime rotation; `MCP_EXCLUDE_TOOLS`
-  removes tools from list AND call. The tool list is derived from
-  `CHAT_TOOLS`, so a new chat tool automatically appears on MCP — if you ever
-  add a WRITE chat tool, you must exclude it in `mcpToolList` first.
+  audit writes must never take the endpoint down); (5) the sensitive tools
+  `get_recent_locations` + `search_chat_history` are excluded from the MCP
+  surface BY DEFAULT (`SENSITIVE_TOOL_NAMES`) — location is a timestamped
+  movement schedule, and under claude.ai account takeover that's a
+  physical-safety risk, so forgetting config must fail SAFE. Only
+  `MCP_ALLOW_SENSITIVE_TOOLS=true` exposes them; `MCP_EXCLUDE_TOOLS` can add
+  more exclusions but can NEVER re-include a sensitive tool. Do not weaken
+  this to opt-out. `MCP_AUTH_TOKEN` accepts comma-separated tokens for
+  zero-downtime rotation. The tool list is derived from `CHAT_TOOLS`, so a new
+  chat tool automatically appears on MCP — if you ever add a WRITE chat tool,
+  you must exclude it in `mcpToolList` first (and if it's sensitive, add it to
+  `SENSITIVE_TOOL_NAMES`).
 - **Chat memory recall is fail-open AND embedding-optional.** `chatOverNotes`
   accepts `recalledMemories` as a pre-rendered text block; it lives in the
   dynamic context block (never cached). Recall must never throw — chat must

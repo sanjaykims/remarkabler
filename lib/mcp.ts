@@ -45,9 +45,28 @@ const PROFILE_TOOL: McpToolDef = {
   inputSchema: { type: "object", properties: {} },
 };
 
-// Tools removed from the MCP surface via env (comma-separated names).
-// Filtered from tools/list AND refused on tools/call — an excluded tool must
-// not be reachable by a client that remembers its name.
+// Tools whose output is dangerous under account takeover and are therefore
+// excluded from the MCP surface BY DEFAULT (fail-safe): the subscription
+// connector rides on the user's claude.ai account, so a compromised account
+// can just *ask* for whatever these expose.
+//   - get_recent_locations: a timestamped movement schedule (home/work, when
+//     the house is empty) — turns an informational leak into a physical-safety
+//     one. This must never be exposed by forgetting a setting.
+//   - search_chat_history: raw in-app chats, often more revealing than the
+//     diary itself.
+// They come back only when the operator explicitly opts in with
+// MCP_ALLOW_SENSITIVE_TOOLS=true. Forgetting config = safe. The in-app chat
+// (lib/chatTools.ts) still uses these fully; only the MCP door hides them.
+export const SENSITIVE_TOOL_NAMES = new Set<string>([
+  "get_recent_locations",
+  "search_chat_history",
+]);
+
+export function sensitiveToolsAllowed(): boolean {
+  return process.env.MCP_ALLOW_SENSITIVE_TOOLS === "true";
+}
+
+// Manual exclusions from env (comma-separated names) — operator's own list.
 export function excludedToolNames(): Set<string> {
   return new Set(
     (process.env.MCP_EXCLUDE_TOOLS || "")
@@ -57,8 +76,20 @@ export function excludedToolNames(): Set<string> {
   );
 }
 
-export function mcpToolList(): McpToolDef[] {
+// The effective exclusion set enforced everywhere: the manual list UNION the
+// sensitive defaults (unless explicitly allowed). Both tools/list and
+// tools/call key on this, so a hidden tool is also un-callable — the allow
+// flag is the ONLY way a sensitive tool becomes reachable.
+export function effectiveExcludedToolNames(): Set<string> {
   const excluded = excludedToolNames();
+  if (!sensitiveToolsAllowed()) {
+    for (const name of SENSITIVE_TOOL_NAMES) excluded.add(name);
+  }
+  return excluded;
+}
+
+export function mcpToolList(): McpToolDef[] {
+  const excluded = effectiveExcludedToolNames();
   const tools: McpToolDef[] = CHAT_TOOLS.filter(
     (t) => !excluded.has(t.name)
   ).map((t) => ({
@@ -78,7 +109,7 @@ export async function callMcpTool(
   name: string,
   args: unknown
 ): Promise<string> {
-  if (excludedToolNames().has(name)) {
+  if (effectiveExcludedToolNames().has(name)) {
     return JSON.stringify({ error: `Tool not available: ${name}` });
   }
   if (name === PROFILE_TOOL_NAME) {

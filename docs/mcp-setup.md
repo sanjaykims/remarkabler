@@ -83,16 +83,41 @@ use env expansion):
 
 ## What Claude gets access to
 
-All of the in-app chat's read-only tools (they stay in sync automatically),
-plus `get_profile`:
+The in-app chat's read-only tools (they stay in sync automatically), plus
+`get_profile` — **except two sensitive tools that are OFF by default** (see
+the next section):
 
 - `get_profile` — the evolving profile of you (call first)
 - `search_diary`, `get_entries_by_date`, `get_recent_entries`
 - `get_day_summary`, `get_week_summary`, `get_month_summary`
 - `top_entities`, `pages_for_entity`, `related_entities`
-- `get_recent_locations`, `current_time_kst`
+- `current_time_kst`
 - `get_insights`, `get_writing_stats`, `count_entries_mentioning`
-- `search_chat_history`, `list_notebooks`, `get_notebook`
+- `list_notebooks`, `get_notebook`
+
+## Sensitive tools are OFF by default
+
+Two tools are **excluded from this connector by default** — the in-app chat
+still uses them fully, but the subscription door hides them unless you turn
+them on:
+
+- **`get_recent_locations`** — this returns a *timestamped movement schedule*
+  (where you sleep and work, when the house is empty). Combined with the
+  diary, that's the difference between a privacy leak and a physical-safety
+  risk. If your claude.ai account were ever taken over, an attacker could
+  simply ask "where is this person, and when." Keeping location in the in-app
+  chat only removes that door.
+- **`search_chat_history`** — your raw in-app conversations, often more
+  revealing than the diary itself.
+
+To expose them anyway (e.g. you want to ask "where was I last Tuesday?" from
+the Claude app), set in Railway:
+
+```
+MCP_ALLOW_SENSITIVE_TOOLS=true
+```
+
+Leaving it unset keeps them hidden — **forgetting the setting fails safe.**
 
 ## Security notes
 
@@ -108,9 +133,12 @@ plus `get_profile`:
   the `mcp_audit` table (capped at the most recent 2,000 rows), so you can
   always check what came through this door. Failed attempts also show in
   Railway's deploy logs (`[mcp] failed auth attempt from <ip>`).
-- **Scope control**: set `MCP_EXCLUDE_TOOLS` (comma-separated tool names,
-  e.g. `search_chat_history`) to remove tools from the MCP surface without
-  a code change.
+- **Sensitive tools off by default**: `get_recent_locations` and
+  `search_chat_history` are hidden unless `MCP_ALLOW_SENSITIVE_TOOLS=true`
+  (see the section above). The allow flag is the only way to expose them —
+  `MCP_EXCLUDE_TOOLS` cannot re-include them.
+- **Scope control**: set `MCP_EXCLUDE_TOOLS` (comma-separated tool names) to
+  remove *additional* tools from the MCP surface without a code change.
 - The endpoint is separate from the app's passcode/passkey lock
   (`APP_PASSCODE`); the token replaces it for this route.
 - Everything is read-only, and failures are contained: a wrong token gets

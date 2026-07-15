@@ -34,23 +34,83 @@ beforeAll(async () => {
 afterEach(() => {
   delete process.env.MCP_AUTH_TOKEN;
   delete process.env.MCP_EXCLUDE_TOOLS;
+  delete process.env.MCP_ALLOW_SENSITIVE_TOOLS;
   mcp.resetMcpThrottle();
 });
 
 describe("mcpToolList", () => {
-  it("mirrors every chat tool plus get_profile, schemas passed through", () => {
+  it("mirrors every non-sensitive chat tool plus get_profile, schemas passed through", () => {
+    // Sensitive tools are excluded by default (see the sensitive-default
+    // suite below); everything else mirrors CHAT_TOOLS 1:1, plus get_profile.
     const tools = mcp.mcpToolList();
     const names = tools.map((t) => t.name);
     for (const t of chatTools.CHAT_TOOLS) {
+      if (mcp.SENSITIVE_TOOL_NAMES.has(t.name)) continue;
       expect(names).toContain(t.name);
     }
     expect(names).toContain(mcp.PROFILE_TOOL_NAME);
-    expect(tools.length).toBe(chatTools.CHAT_TOOLS.length + 1);
+    expect(tools.length).toBe(
+      chatTools.CHAT_TOOLS.length - mcp.SENSITIVE_TOOL_NAMES.size + 1
+    );
 
     const search = tools.find((t) => t.name === "search_diary")!;
     const original = chatTools.CHAT_TOOLS.find((t) => t.name === "search_diary")!;
     expect(search.inputSchema).toEqual(original.input_schema);
     expect(search.description!.length).toBeGreaterThan(0);
+  });
+
+  it("mirrors ALL chat tools when sensitive tools are explicitly allowed", () => {
+    process.env.MCP_ALLOW_SENSITIVE_TOOLS = "true";
+    const names = mcp.mcpToolList().map((t) => t.name);
+    for (const t of chatTools.CHAT_TOOLS) {
+      expect(names).toContain(t.name);
+    }
+    expect(names.length).toBe(chatTools.CHAT_TOOLS.length + 1);
+  });
+});
+
+describe("sensitive tools are fail-safe by default", () => {
+  it("hides get_recent_locations and search_chat_history unless opted in", () => {
+    const def = mcp.mcpToolList().map((t) => t.name);
+    expect(def).not.toContain("get_recent_locations");
+    expect(def).not.toContain("search_chat_history");
+    // Non-sensitive tools are still there.
+    expect(def).toContain("search_diary");
+    expect(def).toContain(mcp.PROFILE_TOOL_NAME);
+  });
+
+  it("refuses to CALL a sensitive tool by default, even by name", async () => {
+    const out = JSON.parse(await mcp.callMcpTool("get_recent_locations", {}));
+    expect(out.error).toContain("not available");
+    const out2 = JSON.parse(await mcp.callMcpTool("search_chat_history", {}));
+    expect(out2.error).toContain("not available");
+  });
+
+  it("exposes and executes them only with MCP_ALLOW_SENSITIVE_TOOLS=true", async () => {
+    process.env.MCP_ALLOW_SENSITIVE_TOOLS = "true";
+    const names = mcp.mcpToolList().map((t) => t.name);
+    expect(names).toContain("get_recent_locations");
+    expect(names).toContain("search_chat_history");
+    // ...and they now dispatch (empty DB → valid JSON, not the exclusion error).
+    const out = JSON.parse(await mcp.callMcpTool("search_chat_history", { query: "x" }));
+    expect(out.error).toBeUndefined();
+  });
+
+  it("only 'true' opts in — other truthy-ish values do not", () => {
+    for (const v of ["1", "yes", "TRUE", "on", ""]) {
+      process.env.MCP_ALLOW_SENSITIVE_TOOLS = v;
+      expect(mcp.mcpToolList().map((t) => t.name)).not.toContain(
+        "get_recent_locations"
+      );
+    }
+  });
+
+  it("MCP_EXCLUDE_TOOLS composes on top; it cannot re-include a sensitive tool", () => {
+    process.env.MCP_EXCLUDE_TOOLS = "get_insights";
+    const names = mcp.mcpToolList().map((t) => t.name);
+    expect(names).not.toContain("get_insights"); // manual exclusion honored
+    expect(names).not.toContain("get_recent_locations"); // sensitive still hidden
+    // The allow flag is the ONLY way in — MCP_EXCLUDE_TOOLS can't grant access.
   });
 });
 
@@ -132,13 +192,15 @@ describe("clientIp", () => {
 });
 
 describe("MCP_EXCLUDE_TOOLS", () => {
-  it("drops excluded tools from the list AND refuses calls to them", async () => {
-    process.env.MCP_EXCLUDE_TOOLS = "search_chat_history, get_profile";
+  it("drops manually excluded tools from the list AND refuses calls to them", async () => {
+    // Use non-sensitive tools so this exercises the manual-exclusion path
+    // itself, not the sensitive-by-default behaviour tested above.
+    process.env.MCP_EXCLUDE_TOOLS = "get_insights, get_profile";
     const names = mcp.mcpToolList().map((t) => t.name);
-    expect(names).not.toContain("search_chat_history");
+    expect(names).not.toContain("get_insights");
     expect(names).not.toContain(mcp.PROFILE_TOOL_NAME);
     expect(names).toContain("search_diary");
-    const out = JSON.parse(await mcp.callMcpTool("search_chat_history", {}));
+    const out = JSON.parse(await mcp.callMcpTool("get_insights", {}));
     expect(out.error).toContain("not available");
   });
 });

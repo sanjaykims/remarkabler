@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-07-15 (MCP endpoint: sensitive tools fail-safe by default)
+
+War-gamed the worst case — claude.ai **account takeover** — and closed the
+sharpest edge. The MCP connector rides on the user's subscription account, so
+a compromised account can just *ask* for the diary. The most dangerous tool
+there is `get_recent_locations`: it returns a timestamped movement schedule
+(home/work, when the house is empty), turning an informational leak into a
+physical-safety risk. `search_chat_history` similarly exposes raw late-night
+chats.
+
+Both are now **excluded from the MCP surface by default** (`SENSITIVE_TOOL_NAMES`
+in `lib/mcp.ts`), hidden from `tools/list` AND refused on `tools/call`. They
+return only when the operator explicitly opts in with
+`MCP_ALLOW_SENSITIVE_TOOLS=true` — so forgetting a setting fails SAFE, matching
+the token's own fail-closed philosophy. `MCP_EXCLUDE_TOOLS` can add more
+exclusions but can never re-include a sensitive tool; the allow flag is the
+only door. The in-app chat is unaffected — it still uses both tools fully;
+only the subscription connector hides them. New "do not regress" invariant
+(5). Tests: 6 new (default-hidden list + refused call, opt-in exposes +
+executes, `"true"`-only gate, `MCP_EXCLUDE_TOOLS` composition).
+
 ## 2026-07-15 (MCP endpoint: security hardening)
 
 Four layers on top of the bearer check, all fail-safe:
