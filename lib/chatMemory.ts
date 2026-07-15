@@ -655,7 +655,19 @@ export async function maybeRollConversationMemory(
   try {
     const batchId = createRollingBatch(conversationId);
     if (batchId === null) return { rolled: false };
-    const r = await compressBatch(batchId);
+    // Compress through the shared single-flight sweep rather than calling
+    // compressBatch(batchId) directly. compressBatch has no atomic per-batch
+    // claim — it reads memory_extracted_at up front and only writes it after
+    // two awaits (Claude, then Voyage). A direct call here doesn't hold the
+    // compressionInFlight guard, so a concurrent maybeCompressChatSessions
+    // (fired by Clear or runMaintenanceSweep) could select this same still-
+    // pending batch and compress it a second time — duplicate memories (the
+    // 0.88 dedup only catches near-identical phrasings, and nothing at all
+    // when embeddings are unavailable) plus a wasted Claude call. Routing
+    // through the sweep serialises all compression under one guard; if the
+    // sweep is already busy, this batch stays pending and the next sweep
+    // drains it (the standard safety net).
+    const r = await maybeCompressChatSessions();
     return { rolled: true, inserted: r.inserted };
   } finally {
     rollInFlight.delete(conversationId);
