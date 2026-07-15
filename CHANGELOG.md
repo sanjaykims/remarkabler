@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-07-15 (chat: widen the live window to fully close the gap)
+
+Follow-up to the rolling-memory tuning: rather than just shrinking the
+residual blind spot, close it structurally. The chat now feeds Claude the last
+**20** turns of an active conversation as raw history (was 12), and the rolling
+keep window is set **equal** to that (also 20). Because a turn is only rolled
+once it's older than the keep window, and the keep window now matches the live
+window exactly, there is **no structural gap** — every turn is either in the
+live window Claude sees directly or compressed into memory (the only residual
+is the small accumulation buffer below the roll batch size). The live window is
+now a single exported constant (`RAW_HISTORY_WINDOW`) shared between the route
+and the rolling logic so they can't drift. Trade-off: a modestly larger prompt
+per message (20 recent turns instead of 12) for fuller recent context.
+
 ## 2026-07-15 (chat: rolling memory — review fixes)
 
 Two P2 findings from the Codex review of the rolling-memory PR, both valid,

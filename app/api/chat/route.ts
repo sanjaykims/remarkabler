@@ -19,6 +19,7 @@ import {
   recallChatMemories,
   formatRecalledMemoriesBlock,
   maybeRollConversationMemory,
+  RAW_HISTORY_WINDOW,
 } from "@/lib/chatMemory";
 
 export const runtime = "nodejs";
@@ -187,13 +188,15 @@ export async function POST(req: NextRequest) {
 
   // archived_at IS NULL — Clear is a real boundary. Cleared messages no
   // longer feed Claude as raw history; durable carry-forward lives in the
-  // chat_memories block (recalled below) instead.
+  // chat_memories block (recalled below) instead. RAW_HISTORY_WINDOW is the
+  // "live window" — kept in lib/chatMemory.ts so it and rolling memory's
+  // ROLL_KEEP_RECENT can never drift (rolled turns must stay outside it).
   const history = (
     db()
       .prepare(
         `SELECT role, content FROM chat_messages
          WHERE conversation_id = ? AND archived_at IS NULL
-         ORDER BY id DESC LIMIT 12`
+         ORDER BY id DESC LIMIT ${RAW_HISTORY_WINDOW}`
       )
       .all(conversationId) as Array<{ role: "user" | "assistant"; content: string }>
   ).reverse();

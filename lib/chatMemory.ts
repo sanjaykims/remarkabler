@@ -38,26 +38,32 @@ const RECALL_RECENT_FLOOR = 5;
 const MAX_EXTRACTION_ATTEMPTS = 2;
 const RECENT_MEMORY_PRIMER_COUNT = 15;
 
-// Rolling memory. The chat POST feeds Claude only the most recent slice of an
-// active conversation as raw history (ORDER BY id DESC LIMIT 12 in the route).
-// Turns older than that window are no longer fed raw, and — before this — only
-// became recallable memory when the user hit Clear. That left a blind spot: in
-// a long, never-cleared chat, the middle turns were neither in the live window
-// nor in chat_memories. Rolling memory closes it: once an active conversation
-// grows past ROLL_KEEP_RECENT, its older un-batched turns are compressed into
-// chat_memories as they scroll out of the window — WITHOUT archiving them, so
-// they stay visible in the UI (the GET filters archived_at IS NULL) and this
-// is purely additive.
+// The chat POST feeds Claude the most recent RAW_HISTORY_WINDOW turns of an
+// active conversation verbatim (ORDER BY id DESC LIMIT this, in the route).
+// This is the "live window" — the recent context Claude sees without needing
+// recall. Widening it gives fuller recent context at a modest per-message
+// token cost. The route imports this constant so the live window and the
+// rolling machinery can never drift apart.
+export const RAW_HISTORY_WINDOW = 20;
+
+// Rolling memory. Turns older than the live window are no longer fed raw, and —
+// before this — only became recallable memory when the user hit Clear. That
+// left a blind spot: in a long, never-cleared chat, the middle turns were
+// neither in the live window nor in chat_memories. Rolling memory closes it:
+// once an active conversation grows past ROLL_KEEP_RECENT, its older un-batched
+// turns are compressed into chat_memories as they scroll out of the window —
+// WITHOUT archiving them, so they stay visible in the UI (the GET filters
+// archived_at IS NULL) and this is purely additive.
 //
-// ROLL_KEEP_RECENT must stay >= the route's raw-history LIMIT (12): a message
-// is only rolled once it's older than the KEEP_RECENT-th most recent, so a
-// rolled message can never also still be in the live window — which is what
-// prevents double-counting (once as raw history, once as memory). We keep a
-// small margin over 12 rather than exactly 12, so a couple of just-out-of-
-// window turns are the only structural gap. Rolled messages get
-// archive_batch_id stamped but archived_at left NULL; a later Clear's
-// COALESCE(archive_batch_id, ...) then leaves them in their rolling batch and
-// never re-extracts them.
+// ROLL_KEEP_RECENT must stay >= RAW_HISTORY_WINDOW: a message is only rolled
+// once it's older than the KEEP_RECENT-th most recent, so a rolled message can
+// never also still be in the live window — which is what prevents double-
+// counting (once as raw history, once as memory). Setting them EQUAL means
+// there is no structural gap at all: every turn is either in the live window or
+// rolled (the only residual is the accumulation buffer below the roll size).
+// Rolled messages get archive_batch_id stamped but archived_at left NULL; a
+// later Clear's COALESCE(archive_batch_id, ...) then leaves them in their
+// rolling batch and never re-extracts them.
 //
 // A rolling batch must ALSO clear compressBatch's own substance gate
 // (MIN_MESSAGES_FOR_COMPRESSION / MIN_USER_CHARS_FOR_COMPRESSION) BEFORE it's
@@ -67,7 +73,7 @@ const RECENT_MEMORY_PRIMER_COUNT = 15;
 // never get re-compressed as part of the whole conversation. So we gate
 // rolling on user-text volume too: too-thin turns stay unrolled (archive_batch_id
 // NULL) and accumulate until they're worth a batch, or get swept up by Clear.
-const ROLL_KEEP_RECENT = 14;
+const ROLL_KEEP_RECENT = RAW_HISTORY_WINDOW; // 20 — equal ⇒ no structural gap
 const ROLL_MIN_OLD = 8;
 const ROLL_MAX_PER_BATCH = 30;
 
