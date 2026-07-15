@@ -98,10 +98,24 @@ plus `get_profile`:
 
 - The token is the only lock on this door — treat it like a password. To
   revoke access instantly, change or remove `MCP_AUTH_TOKEN` in Railway.
+- **Token rotation without downtime**: `MCP_AUTH_TOKEN` accepts several
+  tokens separated by commas. To rotate: set `old,new`, update the
+  connector to the new token, then remove the old one.
+- **Brute-force protection**: an IP that keeps sending wrong tokens gets
+  blocked (HTTP 429) for a cooling-off window. Requests with the correct
+  token are never blocked, so an attacker can't lock you out.
+- **Audit trail**: every tool call and every failed attempt is recorded in
+  the `mcp_audit` table (capped at the most recent 2,000 rows), so you can
+  always check what came through this door. Failed attempts also show in
+  Railway's deploy logs (`[mcp] failed auth attempt from <ip>`).
+- **Scope control**: set `MCP_EXCLUDE_TOOLS` (comma-separated tool names,
+  e.g. `search_chat_history`) to remove tools from the MCP surface without
+  a code change.
 - The endpoint is separate from the app's passcode/passkey lock
   (`APP_PASSCODE`); the token replaces it for this route.
 - Everything is read-only, and failures are contained: a wrong token gets
-  401, no token configured means the endpoint is off (503).
+  401, no token configured means the endpoint is off (503), repeated
+  failures get 429.
 - Your diary text is only ever sent to Anthropic (same as the app's own
   chat) — no third parties.
 

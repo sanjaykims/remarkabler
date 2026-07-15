@@ -108,7 +108,8 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   soft-deleted items don't resurrect), `dropbox_ingest_tombstones` +
   `remarkable_ingest_tombstones` (deleted source ids the Dropbox watcher /
   reMarkable sweep must not re-ingest — see the "do not regress" rule
-  below). Some durable state also lives in
+  below), `mcp_audit` (size-capped log of MCP tool calls + failed auth
+  attempts; see `lib/mcp.ts`). Some durable state also lives in
   `settings` rows, e.g.
   `mind_pca_axes` (persisted PCA mean + PC vectors + axis labels) and the
   `backup_last_*` markers.
@@ -397,14 +398,21 @@ features need the deployed instance to fully verify.
 - **The MCP endpoint is read-only and fails closed.** `app/api/mcp/route.ts`
   exposes the diary to Claude on the user's subscription, guarded ONLY by the
   `MCP_AUTH_TOKEN` bearer check in `lib/mcp.ts` (the cookie/passkey lock does
-  not apply to it). Two invariants: (1) never register a tool there that
-  mutates the DB or filesystem — diary text is OCR'd handwriting and chat is
-  outside our system prompt, so treat every request as potentially hostile and
-  keep the blast radius at "read"; (2) never make a missing/short token fall
-  back to "open" — `checkMcpAuth` returns `disabled` (503), and that must stay
-  the no-config behavior. The tool list is derived from `CHAT_TOOLS`, so a new
-  chat tool automatically appears on MCP — if you ever add a WRITE chat tool,
-  you must exclude it in `mcpToolList` first.
+  not apply to it). Invariants: (1) never register a tool there that mutates
+  the DB or filesystem — diary text is OCR'd handwriting and chat is outside
+  our system prompt, so treat every request as potentially hostile and keep
+  the blast radius at "read"; (2) never make a missing/short token fall back
+  to "open" — `checkMcpAuth` returns `disabled` (503), and that must stay the
+  no-config behavior; (3) the per-IP brute-force throttle applies to FAILED
+  auth only — a valid token must never be throttled (Claude's connector
+  traffic can share egress IPs with other tenants, so throttling valid
+  requests would let an attacker lock the real user out); (4) every failed
+  attempt and tool call is recorded in `mcp_audit` (size-capped, best-effort —
+  audit writes must never take the endpoint down). `MCP_AUTH_TOKEN` accepts
+  comma-separated tokens for zero-downtime rotation; `MCP_EXCLUDE_TOOLS`
+  removes tools from list AND call. The tool list is derived from
+  `CHAT_TOOLS`, so a new chat tool automatically appears on MCP — if you ever
+  add a WRITE chat tool, you must exclude it in `mcpToolList` first.
 - **Chat memory recall is fail-open AND embedding-optional.** `chatOverNotes`
   accepts `recalledMemories` as a pre-rendered text block; it lives in the
   dynamic context block (never cached). Recall must never throw — chat must

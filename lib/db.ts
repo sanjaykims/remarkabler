@@ -543,6 +543,15 @@ CREATE TABLE IF NOT EXISTS geocode_cache (
   key TEXT PRIMARY KEY,
   place TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS mcp_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL DEFAULT (datetime('now')),
+  ip TEXT NOT NULL,
+  event TEXT NOT NULL,
+  tool TEXT,
+  ok INTEGER NOT NULL DEFAULT 1
+);
 `;
 
 export function getSetting(key: string): string | null {

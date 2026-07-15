@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-15 (MCP endpoint: security hardening)
+
+Four layers on top of the bearer check, all fail-safe:
+
+- **Brute-force throttle** — per-IP sliding window (10 failures / 10 min);
+  once tripped, invalid attempts get 429. Deliberately failure-only: a valid
+  token is NEVER throttled, so failed-attempt spam from a shared egress IP
+  (Claude's connector proxy) can't lock the real user out.
+- **Audit trail** — new size-capped `mcp_audit` table records every tool call
+  (with tool name), handshake, failed attempt, and throttled hit, best-effort
+  (an audit failure never takes the endpoint down). Failed attempts also log
+  to console for Railway's log view.
+- **Zero-downtime token rotation** — `MCP_AUTH_TOKEN` accepts comma-separated
+  tokens; entries under 16 chars are ignored (all-short = disabled).
+- **Scope control** — `MCP_EXCLUDE_TOOLS` removes tools from the MCP surface
+  (filtered from tools/list AND refused on tools/call).
+
+Tests: 8 new (rotation matrix, throttle window + aging, valid-token-bypasses-
+throttle at the route level, audit rows, exclusion, client IP parsing).
+
 ## 2026-07-15 (MCP endpoint: chat with the diary on the Claude subscription)
 
 Deep-research-verified path to zero-per-token diary chat: Remarkabler now

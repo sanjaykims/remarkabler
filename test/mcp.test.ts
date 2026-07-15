@@ -33,6 +33,8 @@ beforeAll(async () => {
 
 afterEach(() => {
   delete process.env.MCP_AUTH_TOKEN;
+  delete process.env.MCP_EXCLUDE_TOOLS;
+  mcp.resetMcpThrottle();
 });
 
 describe("mcpToolList", () => {
@@ -77,6 +79,67 @@ describe("checkMcpAuth", () => {
     expect(mcp.checkMcpAuth("")).toBe("unauthorized");
     // A token that merely prefixes the real one must not pass.
     expect(mcp.checkMcpAuth(`Bearer ${TOKEN.slice(0, -1)}`)).toBe("unauthorized");
+  });
+
+  it("supports comma-separated tokens for zero-downtime rotation", () => {
+    const other = "second-rotation-token-abcdef";
+    process.env.MCP_AUTH_TOKEN = `${TOKEN}, ${other}`;
+    expect(mcp.checkMcpAuth(`Bearer ${TOKEN}`)).toBe("ok");
+    expect(mcp.checkMcpAuth(`Bearer ${other}`)).toBe("ok");
+    expect(mcp.checkMcpAuth("Bearer neither-of-those-tokens")).toBe("unauthorized");
+  });
+
+  it("ignores too-short entries in a token list; all-short means disabled", () => {
+    process.env.MCP_AUTH_TOKEN = `short, ${TOKEN}`;
+    expect(mcp.checkMcpAuth("Bearer short")).toBe("unauthorized");
+    expect(mcp.checkMcpAuth(`Bearer ${TOKEN}`)).toBe("ok");
+    process.env.MCP_AUTH_TOKEN = "short, tiny";
+    expect(mcp.checkMcpAuth("Bearer short")).toBe("disabled");
+  });
+});
+
+describe("brute-force throttle", () => {
+  it("throttles an IP after repeated failures within the window", () => {
+    const t0 = 1_000_000;
+    for (let i = 0; i < mcp.THROTTLE_MAX_FAILURES; i++) {
+      expect(mcp.isThrottled("1.2.3.4", t0 + i)).toBe(false);
+      mcp.recordAuthFailure("1.2.3.4", t0 + i);
+    }
+    expect(mcp.isThrottled("1.2.3.4", t0 + 1000)).toBe(true);
+    // A different IP is unaffected.
+    expect(mcp.isThrottled("5.6.7.8", t0 + 1000)).toBe(false);
+  });
+
+  it("failures age out of the sliding window", () => {
+    const t0 = 1_000_000;
+    for (let i = 0; i < mcp.THROTTLE_MAX_FAILURES; i++) {
+      mcp.recordAuthFailure("1.2.3.4", t0 + i);
+    }
+    expect(mcp.isThrottled("1.2.3.4", t0 + 1000)).toBe(true);
+    expect(mcp.isThrottled("1.2.3.4", t0 + mcp.THROTTLE_WINDOW_MS + 1001)).toBe(
+      false
+    );
+  });
+});
+
+describe("clientIp", () => {
+  it("takes the first X-Forwarded-For value, else unknown", () => {
+    expect(
+      mcp.clientIp(new Headers({ "x-forwarded-for": "9.9.9.9, 10.0.0.1" }))
+    ).toBe("9.9.9.9");
+    expect(mcp.clientIp(new Headers())).toBe("unknown");
+  });
+});
+
+describe("MCP_EXCLUDE_TOOLS", () => {
+  it("drops excluded tools from the list AND refuses calls to them", async () => {
+    process.env.MCP_EXCLUDE_TOOLS = "search_chat_history, get_profile";
+    const names = mcp.mcpToolList().map((t) => t.name);
+    expect(names).not.toContain("search_chat_history");
+    expect(names).not.toContain(mcp.PROFILE_TOOL_NAME);
+    expect(names).toContain("search_diary");
+    const out = JSON.parse(await mcp.callMcpTool("search_chat_history", {}));
+    expect(out.error).toContain("not available");
   });
 });
 
@@ -143,6 +206,71 @@ describe("POST /api/mcp", () => {
     );
     expect(res.status).toBe(401);
     expect(res.headers.get("www-authenticate")).toContain("Bearer");
+  });
+
+  it("throttles repeated failures with 429, but a valid token still passes", async () => {
+    process.env.MCP_AUTH_TOKEN = TOKEN;
+    const failing = () =>
+      new Request("http://localhost/api/mcp", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer wrong-token-wrong-token",
+          "x-forwarded-for": "203.0.113.7",
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+      });
+    for (let i = 0; i < mcp.THROTTLE_MAX_FAILURES; i++) {
+      expect((await route.POST(failing())).status).toBe(401);
+    }
+    const throttled = await route.POST(failing());
+    expect(throttled.status).toBe(429);
+    expect(throttled.headers.get("retry-after")).toBeTruthy();
+
+    // The real user (valid token) is NOT throttled — even from the same IP.
+    const valid = new Request("http://localhost/api/mcp", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        authorization: `Bearer ${TOKEN}`,
+        "x-forwarded-for": "203.0.113.7",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+    });
+    expect((await route.POST(valid)).status).toBe(200);
+  });
+
+  it("audits tool calls and failed attempts", async () => {
+    process.env.MCP_AUTH_TOKEN = TOKEN;
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM mcp_audit").run();
+
+    await route.POST(
+      rpcRequest({ jsonrpc: "2.0", id: 1, method: "ping" }) // no token → auth_fail
+    );
+    await route.POST(
+      rpcRequest(
+        {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: "get_writing_stats", arguments: {} },
+        },
+        TOKEN
+      )
+    );
+
+    const rows = db()
+      .prepare("SELECT event, tool, ok FROM mcp_audit ORDER BY id ASC")
+      .all() as Array<{ event: string; tool: string | null; ok: number }>;
+    expect(rows.some((r) => r.event === "auth_fail" && r.ok === 0)).toBe(true);
+    expect(
+      rows.some(
+        (r) => r.event === "tools_call" && r.tool === "get_writing_stats" && r.ok === 1
+      )
+    ).toBe(true);
   });
 
   it("initialize → tools/list → tools/call round trip", async () => {
