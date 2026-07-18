@@ -458,7 +458,12 @@ features need the deployed instance to fully verify.
   longer configured — so **rotating** the token (not just unsetting it) truly
   revokes tokens minted under the old value, which is the documented
   revocation path for a compromised connector. Keep that binding; don't let a
-  token validate solely because *some* `MCP_AUTH_TOKEN` is set. Registration
+  token validate solely because *some* `MCP_AUTH_TOKEN` is set. (One bridge:
+  `backfillLegacyTokenSecrets` adopts pre-migration rows whose `secret_hash` is
+  NULL into the *current* secret once, at first use — so the migration deploy
+  doesn't log an existing connector out; after adoption they revoke on rotation
+  like any other token. Don't turn that into a general "NULL = always valid".)
+  Registration
   is open (public clients) ON PURPOSE — it grants nothing without passing the
   consent gate. Don't relax any of these.
 - **Chat memory recall is fail-open AND embedding-optional.** `chatOverNotes`
