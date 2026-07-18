@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-07-15 (MCP endpoint: enforce read-only literally — Codex review fix)
+
+Codex (P2) caught that the blanket auto-mirror of `CHAT_TOOLS` exposed a tool
+with side effects: `get_recent_locations` fires `warmCurrentLocationGeocode`,
+a background Nominatim lookup + `geocode_cache` write — so the endpoint's
+"read-only" promise wasn't strictly true (only reachable under the sensitive
+opt-in, but still a violation). Fixed by threading a `{ readOnly: true }`
+option through `executeTool` (`lib/chatTools.ts`) that side-effecting tools
+honor; `callMcpTool` (`lib/mcp.ts`) always passes it, so the location warm is
+skipped on the MCP path while the in-app chat keeps warming as before.
+`search_diary`'s Voyage query-embed is compute-only (no DB/fs write) and
+stays. New invariant + a test proving the in-app path warms but the MCP path
+does not. 27 MCP tests pass.
+
 ## 2026-07-15 (MCP endpoint: sensitive tools fail-safe by default)
 
 War-gamed the worst case — claude.ai **account takeover** — and closed the

@@ -629,7 +629,8 @@ function currentTimeKst(): unknown {
 // but a recent point exists, `current` must be populated so Claude doesn't
 // say "no location data" while the phone is still publishing every second.
 export async function getRecentLocations(
-  input: { days?: number }
+  input: { days?: number },
+  opts?: { readOnly?: boolean }
 ): Promise<unknown> {
   if (!isLocationEnabled()) {
     return { route: "", note: "Location sharing is off in Remarkabler." };
@@ -645,8 +646,10 @@ export async function getRecentLocations(
   const current = currentLocation();
   // Fire-and-forget: if the latest point's place isn't cached, kick off a
   // background Nominatim lookup so the next chat turn graduates from raw
-  // coordinates to a place name. Doesn't block this response.
-  warmCurrentLocationGeocode();
+  // coordinates to a place name. Doesn't block this response. Skipped under
+  // readOnly (the MCP path) — the endpoint must not trigger outbound calls or
+  // the geocode_cache write, so its read-only guarantee holds literally.
+  if (!opts?.readOnly) warmCurrentLocationGeocode();
 
   // How Claude should read `current` vs `route`. The key correction: an OLD
   // `current` on a movement-published phone (`stale: true`) usually means the
@@ -1098,9 +1101,15 @@ function countEntriesMentioning(input: { term?: string }): unknown {
   }
 }
 
+// opts.readOnly: when set, tools must not perform side effects (DB writes,
+// outbound cache-warming). The MCP endpoint passes it so its "read-only"
+// guarantee is actually enforced, not just aspirational — see lib/mcp.ts and
+// the do-not-regress rule in CLAUDE.md. The in-app chat leaves it unset, so
+// nothing about its behavior changes.
 export async function executeTool(
   name: string,
-  input: unknown
+  input: unknown,
+  opts?: { readOnly?: boolean }
 ): Promise<string> {
   const i = (input ?? {}) as Record<string, unknown>;
   try {
@@ -1124,7 +1133,7 @@ export async function executeTool(
       case "related_entities":
         return JSON.stringify(relatedEntities(i));
       case "get_recent_locations":
-        return JSON.stringify(await getRecentLocations(i));
+        return JSON.stringify(await getRecentLocations(i, opts));
       case "search_chat_history":
         return JSON.stringify(searchChatHistory(i));
       case "get_insights":

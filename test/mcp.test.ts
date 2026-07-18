@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
@@ -111,6 +111,65 @@ describe("sensitive tools are fail-safe by default", () => {
     expect(names).not.toContain("get_insights"); // manual exclusion honored
     expect(names).not.toContain("get_recent_locations"); // sensitive still hidden
     // The allow flag is the ONLY way in — MCP_EXCLUDE_TOOLS can't grant access.
+  });
+});
+
+describe("MCP path is genuinely side-effect-free (read-only)", () => {
+  it("get_recent_locations warms geocode in-app but NOT via the readOnly MCP path", async () => {
+    const owntracks = await import("@/lib/owntracks");
+    const { setLocationEnabled } = await import("@/lib/location");
+    const { db } = await import("@/lib/db");
+
+    // Arrange: location on, a recent point with no cached place — exactly the
+    // state where the in-app chat kicks off a background Nominatim lookup +
+    // geocode_cache write. The MCP endpoint must not.
+    setLocationEnabled(true);
+    db().prepare("DELETE FROM location_points").run();
+    db().prepare("DELETE FROM geocode_cache").run();
+    const nowSec = Math.floor(Date.now() / 1000);
+    db()
+      .prepare("INSERT INTO location_points(lat,lng,tst) VALUES(?,?,?)")
+      .run(37.5, 127.0, nowSec - 60);
+
+    const spy = vi
+      .spyOn(owntracks, "warmCurrentLocationGeocode")
+      .mockImplementation(() => {});
+
+    // In-app path (no opts): the warm IS attempted — proves the point is
+    // warm-eligible, so the MCP assertion below is meaningful.
+    await chatTools.executeTool("get_recent_locations", {});
+    expect(spy.mock.calls.length).toBeGreaterThan(0);
+
+    spy.mockClear();
+
+    // MCP path (readOnly): the warm is NOT attempted — no outbound call, no
+    // geocode_cache write.
+    await chatTools.executeTool("get_recent_locations", {}, { readOnly: true });
+    expect(spy).not.toHaveBeenCalled();
+
+    spy.mockRestore();
+    setLocationEnabled(false);
+  });
+
+  it("callMcpTool routes through the readOnly path", async () => {
+    process.env.MCP_ALLOW_SENSITIVE_TOOLS = "true";
+    const owntracks = await import("@/lib/owntracks");
+    const { setLocationEnabled } = await import("@/lib/location");
+    const { db } = await import("@/lib/db");
+    setLocationEnabled(true);
+    db().prepare("DELETE FROM location_points").run();
+    const nowSec = Math.floor(Date.now() / 1000);
+    db()
+      .prepare("INSERT INTO location_points(lat,lng,tst) VALUES(?,?,?)")
+      .run(37.5, 127.0, nowSec - 60);
+
+    const spy = vi
+      .spyOn(owntracks, "warmCurrentLocationGeocode")
+      .mockImplementation(() => {});
+    await mcp.callMcpTool("get_recent_locations", { days: 7 });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+    setLocationEnabled(false);
   });
 });
 

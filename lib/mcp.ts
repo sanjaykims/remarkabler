@@ -123,7 +123,10 @@ export async function callMcpTool(
           }
     );
   }
-  return executeTool(name, args ?? {});
+  // readOnly: the MCP endpoint's core guarantee. Tools that would otherwise
+  // warm caches / write / call out (e.g. get_recent_locations' geocode warm)
+  // skip those side effects when invoked here — see lib/chatTools.ts.
+  return executeTool(name, args ?? {}, { readOnly: true });
 }
 
 // --- Auth ---------------------------------------------------------------

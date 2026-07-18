@@ -398,10 +398,16 @@ features need the deployed instance to fully verify.
 - **The MCP endpoint is read-only and fails closed.** `app/api/mcp/route.ts`
   exposes the diary to Claude on the user's subscription, guarded ONLY by the
   `MCP_AUTH_TOKEN` bearer check in `lib/mcp.ts` (the cookie/passkey lock does
-  not apply to it). Invariants: (1) never register a tool there that mutates
-  the DB or filesystem — diary text is OCR'd handwriting and chat is outside
-  our system prompt, so treat every request as potentially hostile and keep
-  the blast radius at "read"; (2) never make a missing/short token fall back
+  not apply to it). Invariants: (1) the endpoint is genuinely read-only, not
+  just by convention — `callMcpTool` passes `{ readOnly: true }` to
+  `executeTool`, and any tool with a side effect must honor it (e.g.
+  `get_recent_locations` skips its `warmCurrentLocationGeocode` — a Nominatim
+  call + `geocode_cache` write — under readOnly; `search_diary`'s Voyage
+  query-embed is compute-only, no DB/fs write, and stays). Diary text is OCR'd
+  handwriting and chat is outside our system prompt, so treat every request as
+  hostile and keep the blast radius at "read" — if you add a tool that writes
+  anywhere, gate the write behind `!opts?.readOnly`; (2) never make a
+  missing/short token fall back
   to "open" — `checkMcpAuth` returns `disabled` (503), and that must stay the
   no-config behavior; (3) the per-IP brute-force throttle applies to FAILED
   auth only — a valid token must never be throttled (Claude's connector
