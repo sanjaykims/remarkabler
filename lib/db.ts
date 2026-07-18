@@ -552,6 +552,27 @@ CREATE TABLE IF NOT EXISTS mcp_audit (
   tool TEXT,
   ok INTEGER NOT NULL DEFAULT 1
 );
+
+-- OAuth 2.1 authorization server state for the MCP endpoint (claude.ai custom
+-- connectors require an OAuth handshake; static bearer works for Claude Code
+-- but the claude.ai web UI does not expose a header field). Dynamically
+-- registered clients + issued tokens; auth codes are short-lived and kept in
+-- memory (see lib/mcpOauth.ts). Tokens are stored HASHED (sha256) so a DB
+-- leak doesn't expose live bearer tokens.
+CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+  client_id     TEXT PRIMARY KEY,
+  redirect_uris TEXT NOT NULL,          -- JSON array of allowed redirect URIs
+  client_name   TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
+  token_hash  TEXT PRIMARY KEY,         -- sha256(access|refresh token)
+  kind        TEXT NOT NULL,            -- 'access' | 'refresh'
+  client_id   TEXT,
+  expires_at  INTEGER,                  -- unix seconds; NULL = no expiry (refresh)
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 export function getSetting(key: string): string | null {

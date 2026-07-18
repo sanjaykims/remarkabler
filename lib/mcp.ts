@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "crypto";
 import { db } from "@/lib/db";
 import { CHAT_TOOLS, executeTool } from "@/lib/chatTools";
 import { getCurrentProfile } from "@/lib/profile";
+import { isValidAccessToken } from "@/lib/mcpOauth";
 
 // MCP bridge: exposes the SAME read-only diary tools the in-app chat uses
 // (lib/chatTools.ts) over the Model Context Protocol, so Claude on the user's
@@ -174,9 +175,12 @@ export function checkMcpAuth(
     : raw;
   // Check every configured token (constant work per token; the count is the
   // operator's own config, not attacker-controlled).
-  let ok = false;
-  for (const t of expected) if (tokenMatches(presented, t)) ok = true;
-  return ok ? "ok" : "unauthorized";
+  for (const t of expected) if (tokenMatches(presented, t)) return "ok";
+  // Also accept a live OAuth access token issued via the claude.ai connector
+  // handshake (lib/mcpOauth.ts). The raw MCP_AUTH_TOKEN path above stays for
+  // Claude Code / direct use; this is the claude.ai-app path.
+  if (isValidAccessToken(presented)) return "ok";
+  return "unauthorized";
 }
 
 // --- Brute-force throttle -------------------------------------------------
