@@ -63,8 +63,13 @@ and generate an accumulating record of "insights" about themselves.
   chars, long random string) to enable the read-only remote MCP endpoint at
   `/api/mcp` — added to claude.ai as a custom connector and to Claude Code, so
   the user can chat with their diary on their Claude subscription instead of
-  per-token API billing. Unset = endpoint disabled (fails closed). Setup guide:
-  `docs/mcp-setup.md`.
+  per-token API billing. Unset = endpoint disabled (fails closed). The
+  claude.ai web connector UI only offers OAuth (no static-header field), so the
+  endpoint also runs a minimal OAuth 2.1 authorization server (`lib/mcpOauth.ts`)
+  whose consent screen reuses `MCP_AUTH_TOKEN` as the password; Claude Code
+  accepts the raw bearer token directly. Optional `APP_BASE_URL` fixes the
+  public origin used in OAuth metadata/redirects (else derived from
+  `X-Forwarded-*`). Setup guide: `docs/mcp-setup.md`.
 - Optional automatic location (OwnTracks): set `OWNTRACKS_TOKEN` to enable the
   `/api/owntracks` ingestion endpoint (the phone app posts there with
   `?token=`). Points are clustered into stays (place + dwell), reverse-geocoded
@@ -109,7 +114,10 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `remarkable_ingest_tombstones` (deleted source ids the Dropbox watcher /
   reMarkable sweep must not re-ingest — see the "do not regress" rule
   below), `mcp_audit` (size-capped log of MCP tool calls + failed auth
-  attempts; see `lib/mcp.ts`). Some durable state also lives in
+  attempts; see `lib/mcp.ts`), `mcp_oauth_clients` + `mcp_oauth_tokens`
+  (OAuth 2.1 state for the claude.ai connector — dynamically registered
+  clients + issued access/refresh tokens stored HASHED; see `lib/mcpOauth.ts`).
+  Some durable state also lives in
   `settings` rows, e.g.
   `mind_pca_axes` (persisted PCA mean + PC vectors + axis labels) and the
   `backup_last_*` markers.
@@ -161,6 +169,17 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   Served by `app/api/mcp/route.ts` (mcp-handler, Streamable HTTP, stateless,
   SSE disabled) so Claude on the user's subscription (claude.ai custom
   connector / Claude Code) can query the diary. Read-only by design.
+- `lib/mcpOauth.ts` — minimal OAuth 2.1 authorization server backing the
+  claude.ai connector (its web UI has no static-header field, so it requires
+  the OAuth discovery → DCR → authorize → token dance). `publicOrigin`
+  (APP_BASE_URL → X-Forwarded-* → req.url), the RFC 9728 / RFC 8414 metadata
+  builders, `registerClient`/`getClient` (DCR), `issueAuthCode`/`redeemAuthCode`
+  (single-use, in-memory, PKCE-bound), `verifyPkce` (S256), `issueTokens`/
+  `refreshAccessToken`/`isValidAccessToken` (opaque tokens stored HASHED in
+  `mcp_oauth_tokens`), and `consentSecretValid` (the `/authorize` gate reuses
+  `MCP_AUTH_TOKEN`). Endpoints under `app/api/mcp/oauth/*`; well-known
+  discovery paths are `next.config.mjs` rewrites. `checkMcpAuth` accepts a live
+  access token in addition to the raw `MCP_AUTH_TOKEN`.
 - `lib/entityGraph.ts` — pure `computeRelatedEntities`: ranks the entities
   that share diary days with a target (undated pages excluded). DB glue +
   effective-date carry-forward live in `lib/chatTools.ts:relatedEntities`.
@@ -289,7 +308,10 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities`,
   `mind/build-wiki`), `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect,export}`,
-  `location`, `owntracks`, `mcp` (remote MCP endpoint — see `lib/mcp.ts`),
+  `location`, `owntracks`, `mcp` (remote MCP endpoint — see `lib/mcp.ts`) +
+  `mcp/oauth/{register,authorize,token,protected-resource,authorization-server}`
+  (OAuth 2.1 server for the claude.ai connector — see `lib/mcpOauth.ts`; the
+  `/.well-known/oauth-*` discovery paths are `next.config.mjs` rewrites),
   `remarkable/{connect,refresh,disconnect,status,import,compare,autosync}`,
   `export` (+ `export/diary` diary-only Markdown,
   `export/book` Opus editor pass), `settings`,
@@ -425,7 +447,14 @@ features need the deployed instance to fully verify.
   zero-downtime rotation. The tool list is derived from `CHAT_TOOLS`, so a new
   chat tool automatically appears on MCP — if you ever add a WRITE chat tool,
   you must exclude it in `mcpToolList` first (and if it's sensitive, add it to
-  `SENSITIVE_TOOL_NAMES`).
+  `SENSITIVE_TOOL_NAMES`); (6) the OAuth `/authorize` endpoint
+  (`lib/mcpOauth.ts`) is the auth server's security anchor — it MUST keep
+  gating on `consentSecretValid` (= `MCP_AUTH_TOKEN`), never auto-approve;
+  PKCE `S256` is required at token exchange, `redirect_uri` must exact-match a
+  registered client's URIs (no open redirect / code interception), auth codes
+  are single-use, and issued tokens are stored HASHED. Registration is open
+  (public clients) ON PURPOSE — it grants nothing without passing the consent
+  gate. Don't relax any of these.
 - **Chat memory recall is fail-open AND embedding-optional.** `chatOverNotes`
   accepts `recalledMemories` as a pre-rendered text block; it lives in the
   dynamic context block (never cached). Recall must never throw — chat must

@@ -29,26 +29,41 @@ characters are treated as unset.
 
 ## Step 2 — Connect the Claude app (claude.ai)
 
-Do this once, in a browser (phone Chrome is fine):
+The claude.ai connector dialog only offers OAuth (there's no field for a
+static token), so the endpoint speaks OAuth — but the "login" is just your
+token. Do this once in a browser (phone Chrome is fine):
 
 1. Go to **claude.ai → Settings → Connectors**.
 2. Tap **Add custom connector**.
-3. **URL**: `https://<your-app>.up.railway.app/api/mcp`
-4. Open the **Request headers** section and add a header:
-   - Name: `Authorization`
-   - Value: `Bearer <your token>` — the word `Bearer`, a space, then the
-     token. (If you paste just the bare token, that works too.)
-5. Save. Leave the OAuth fields in Advanced settings empty — they are not
-   needed.
+3. **Name**: anything (e.g. `Remarkabler`).
+   **원격 MCP 서버 URL / Remote MCP server URL**:
+   `https://<your-app>.up.railway.app/api/mcp`
+4. **Leave the OAuth Client ID / Secret fields (Advanced) empty.** Tap **Add**.
+5. A small **Remarkabler login page** pops up ("Remarkabler를 Claude에 연결").
+   Paste your **MCP token** (the same `MCP_AUTH_TOKEN` value) and tap
+   **연결 승인 / Approve**.
+6. Claude finishes the connection automatically.
 
-Now start a chat in Claude, enable the connector for that chat (tools
-menu), and ask something like *"Search my diary for what I wrote about
-Jeju."* Claude will call your diary tools. Tip: ask it to call
-`get_profile` first — that's the same "understanding of you" your app's
-chat uses.
+Behind the scenes: Claude registers itself, you approve once with the token,
+and Claude gets its own access token — you never have to touch the token
+again. To revoke everything, change or remove `MCP_AUTH_TOKEN` in Railway.
+
+Now start a chat, enable the connector (tools menu), and ask something like
+*"Search my diary for what I wrote about Jeju."* Tip: ask it to call
+`get_profile` first — that's the same "understanding of you" your app's chat
+uses.
 
 Connectors are account-level: added once at claude.ai, they follow your
 subscription across surfaces.
+
+### Why OAuth (and not a simple header)?
+
+The claude.ai **web** connector UI exposes only OAuth fields, so a header-only
+server can't be added there and fails with *"couldn't register with sign-in
+service."* The endpoint therefore implements a minimal OAuth 2.1 server
+(discovery + dynamic client registration + PKCE) whose consent step reuses
+your `MCP_AUTH_TOKEN` as the password. **Claude Code** (below) also accepts a
+plain `Authorization: Bearer` header, so it can skip OAuth entirely.
 
 ## Step 3 — Claude Code
 

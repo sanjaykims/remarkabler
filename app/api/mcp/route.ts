@@ -13,6 +13,7 @@ import {
   recordAuthFailure,
   recordMcpAudit,
 } from "@/lib/mcp";
+import { publicOrigin, RESOURCE_METADATA_PATH } from "@/lib/mcpOauth";
 
 // Remote MCP endpoint (Streamable HTTP, stateless) exposing the diary's
 // read-only chat tools to Claude on the user's subscription — added at
@@ -121,11 +122,17 @@ async function guarded(req: Request): Promise<Response> {
   recordAuthFailure(ip);
   recordMcpAudit("auth_fail", { ip, ok: false });
   console.warn(`[mcp] failed auth attempt from ${ip}`);
+  // The WWW-Authenticate header MUST point at the Protected Resource Metadata
+  // (RFC 9728) — that's what makes claude.ai discover the OAuth authorization
+  // server and run the handshake (lib/mcpOauth.ts) instead of failing with
+  // "couldn't register with sign-in service". Without resource_metadata here,
+  // the claude.ai web connector can't complete a custom-connector add.
+  const origin = publicOrigin(req);
   return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
     status: 401,
     headers: {
       "content-type": "application/json",
-      "www-authenticate": 'Bearer realm="remarkabler-mcp"',
+      "www-authenticate": `Bearer realm="remarkabler-mcp", resource_metadata="${origin}${RESOURCE_METADATA_PATH}"`,
     },
   });
 }

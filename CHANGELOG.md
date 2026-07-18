@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-07-18 (MCP: OAuth so the claude.ai app connector can connect)
+
+The claude.ai **web** custom-connector UI only exposes OAuth fields (no static
+Bearer header), so a token-only MCP server can't be added there — it fails
+with *"couldn't register with sign-in service."* Added a **minimal OAuth 2.1
+authorization server** (`lib/mcpOauth.ts` + `app/api/mcp/oauth/*`) so the
+Claude app can complete the handshake, kept single-user simple:
+
+- **Discovery**: RFC 9728 Protected Resource Metadata + RFC 8414 Authorization
+  Server Metadata (served at `/.well-known/oauth-*` via `next.config.mjs`
+  rewrites; the `/api/mcp` 401 now points `WWW-Authenticate` at the resource
+  metadata — the bit that makes claude.ai discover the auth server).
+- **Dynamic Client Registration** (RFC 7591) — public clients, no secret.
+- **Authorize** — a consent screen that reuses `MCP_AUTH_TOKEN` as the
+  password (the security anchor); issues a single-use, PKCE-bound code.
+- **Token** — `authorization_code` (PKCE S256 required) + `refresh_token`;
+  opaque access/refresh tokens stored HASHED in `mcp_oauth_tokens`.
+- `checkMcpAuth` now also accepts a live OAuth access token, so both the
+  claude.ai app (OAuth) and Claude Code (raw bearer) work off one endpoint.
+
+Origin for metadata/redirects is `APP_BASE_URL` → `X-Forwarded-*` (never the
+internal `req.url` behind Railway's proxy). Security anchors are a new
+do-not-regress invariant: consent gate, PKCE, exact `redirect_uri` match,
+single-use codes, hashed tokens. Verified with 9 new tests (full handshake +
+every failure mode: wrong token, PKCE mismatch, code reuse, redirect
+tampering) and a live end-to-end curl smoke test through the running server.
+455 tests pass, build clean.
+
 ## 2026-07-15 (MCP endpoint: enforce read-only literally — Codex review fix)
 
 Codex (P2) caught that the blanket auto-mirror of `CHAT_TOOLS` exposed a tool

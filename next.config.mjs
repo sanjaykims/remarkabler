@@ -21,6 +21,31 @@ const nextConfig = {
   // middleware bypass) is low, and a hand-rolled CSP risks silently breaking
   // the UI for a non-technical, phone-only user with no easy way to diagnose
   // it — a real CSP deserves its own tested pass, not a drive-by addition.
+  // OAuth discovery lives at well-known paths (RFC 9728 / RFC 8414). Serve
+  // them from normal API routes via rewrites — folders starting with a dot in
+  // app/ are treated as hidden by Next, so a route file there wouldn't map.
+  // The `/api/mcp`-suffixed variants cover clients that append the resource
+  // path when locating metadata.
+  async rewrites() {
+    return [
+      {
+        source: "/.well-known/oauth-protected-resource",
+        destination: "/api/mcp/oauth/protected-resource",
+      },
+      {
+        source: "/.well-known/oauth-protected-resource/api/mcp",
+        destination: "/api/mcp/oauth/protected-resource",
+      },
+      {
+        source: "/.well-known/oauth-authorization-server",
+        destination: "/api/mcp/oauth/authorization-server",
+      },
+      {
+        source: "/.well-known/oauth-authorization-server/api/mcp",
+        destination: "/api/mcp/oauth/authorization-server",
+      },
+    ];
+  },
   async headers() {
     return [
       {
