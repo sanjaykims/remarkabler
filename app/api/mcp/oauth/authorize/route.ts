@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   getClient,
-  consentSecretValid,
+  matchConsentSecret,
   issueAuthCode,
 } from "@/lib/mcpOauth";
 import {
@@ -144,15 +144,17 @@ export async function POST(req: Request) {
     return consentForm(p, "시도가 너무 많습니다. 잠시 후 다시 시도하세요.");
   }
 
-  if (!consentSecretValid(token)) {
+  const secretHash = matchConsentSecret(token);
+  if (!secretHash) {
     recordAuthFailure(ip);
     recordMcpAudit("auth_fail", { ip, tool: "oauth_authorize", ok: false });
     return consentForm(p, "토큰이 올바르지 않습니다. Railway의 MCP_AUTH_TOKEN 값과 정확히 같아야 합니다.");
   }
 
   // Correct token → issue a single-use auth code bound to this client +
-  // redirect + PKCE challenge, and redirect back to Claude.
-  const code = issueAuthCode(p.client_id, p.redirect_uri, p.code_challenge);
+  // redirect + PKCE challenge, and to the secret that authorized it (so a
+  // later rotation of that secret revokes the resulting tokens).
+  const code = issueAuthCode(p.client_id, p.redirect_uri, p.code_challenge, secretHash);
   recordMcpAudit("initialize", { ip, tool: "oauth_authorize" });
   const to = new URL(p.redirect_uri);
   to.searchParams.set("code", code);

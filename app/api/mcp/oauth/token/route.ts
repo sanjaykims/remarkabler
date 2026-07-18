@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     const res = redeemAuthCode(code, clientId, redirectUri, codeVerifier);
     if (!res.ok) return err("invalid_grant", "Code invalid, expired, reused, or PKCE mismatch.");
 
-    const t = issueTokens(clientId);
+    const t = issueTokens(clientId, res.secretHash);
     return NextResponse.json(
       {
         access_token: t.access_token,

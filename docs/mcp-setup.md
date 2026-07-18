@@ -140,7 +140,11 @@ Leaving it unset keeps them hidden — **forgetting the setting fails safe.**
   revoke access instantly, change or remove `MCP_AUTH_TOKEN` in Railway.
 - **Token rotation without downtime**: `MCP_AUTH_TOKEN` accepts several
   tokens separated by commas. To rotate: set `old,new`, update the
-  connector to the new token, then remove the old one.
+  connector to the new token, then remove the old one. **Rotating fully
+  revokes the old connection** — any OAuth access/refresh tokens Claude was
+  issued under the old value stop working the moment you drop it (they're
+  bound to the secret that authorized them). So changing the token — not only
+  removing it — is a real "log everyone out."
 - **Brute-force protection**: an IP that keeps sending wrong tokens gets
   blocked (HTTP 429) for a cooling-off window. Requests with the correct
   token are never blocked, so an attacker can't lock you out.

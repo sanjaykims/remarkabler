@@ -240,6 +240,15 @@ export function db(): Database.Database {
   } catch {
     // column already exists
   }
+  // Bind each issued OAuth token to the MCP_AUTH_TOKEN that authorized it, so
+  // rotating the secret (not just unsetting it) actually revokes tokens minted
+  // under the old value. Added after mcp_oauth_tokens first shipped, so an
+  // ALTER is needed for already-deployed DBs.
+  try {
+    _db.exec(`ALTER TABLE mcp_oauth_tokens ADD COLUMN secret_hash TEXT`);
+  } catch {
+    // column already exists
+  }
   // Life-wiki: a Claude-written profile per entity (kind, name_norm), embedded
   // atop that entity's stub note in the Obsidian export. `source_hash` is a
   // digest of the mentioning pages the summary was written from — when it no
@@ -570,6 +579,7 @@ CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
   token_hash  TEXT PRIMARY KEY,         -- sha256(access|refresh token)
   kind        TEXT NOT NULL,            -- 'access' | 'refresh'
   client_id   TEXT,
+  secret_hash TEXT,                     -- sha256 of the MCP_AUTH_TOKEN that minted it
   expires_at  INTEGER,                  -- unix seconds; NULL = no expiry (refresh)
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );

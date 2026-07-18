@@ -452,9 +452,15 @@ features need the deployed instance to fully verify.
   gating on `consentSecretValid` (= `MCP_AUTH_TOKEN`), never auto-approve;
   PKCE `S256` is required at token exchange, `redirect_uri` must exact-match a
   registered client's URIs (no open redirect / code interception), auth codes
-  are single-use, and issued tokens are stored HASHED. Registration is open
-  (public clients) ON PURPOSE — it grants nothing without passing the consent
-  gate. Don't relax any of these.
+  are single-use, and issued tokens are stored HASHED. Every issued token is
+  BOUND to the `MCP_AUTH_TOKEN` value that authorized it (`secret_hash`), and
+  `isValidAccessToken`/`refreshAccessToken` reject a token whose secret is no
+  longer configured — so **rotating** the token (not just unsetting it) truly
+  revokes tokens minted under the old value, which is the documented
+  revocation path for a compromised connector. Keep that binding; don't let a
+  token validate solely because *some* `MCP_AUTH_TOKEN` is set. Registration
+  is open (public clients) ON PURPOSE — it grants nothing without passing the
+  consent gate. Don't relax any of these.
 - **Chat memory recall is fail-open AND embedding-optional.** `chatOverNotes`
   accepts `recalledMemories` as a pre-rendered text block; it lives in the
   dynamic context block (never cached). Recall must never throw — chat must

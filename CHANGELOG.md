@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-07-18 (MCP OAuth: rotating the token now truly revokes — Codex P1 fix)
+
+Codex caught a real hole in the revocation story: the docs say "change
+`MCP_AUTH_TOKEN` to revoke a compromised connector," but issued OAuth tokens
+weren't bound to any secret, and `checkMcpAuth` accepted any live DB access
+token as long as *some* valid `MCP_AUTH_TOKEN` existed. So **rotating** the
+secret (old→new) left the old connector's tokens minting access forever —
+only fully *unsetting* it disabled them.
+
+Fixed by binding every issued token to the secret that authorized it
+(`mcp_oauth_tokens.secret_hash`, captured at the `/authorize` consent step and
+carried through the code exchange). `isValidAccessToken` and
+`refreshAccessToken` now reject a token whose authorizing secret is no longer
+in `MCP_AUTH_TOKEN`, and `pruneExpiredTokens` deletes the orphaned rows. This
+preserves the comma-separated zero-downtime overlap (both valid during
+`old,new`; the old-minted tokens die the moment you drop `old`). 3 new tests
+pin it (rotate-revokes, overlap-then-drop, unset-disables); 458 tests pass,
+build clean.
+
 ## 2026-07-18 (MCP: OAuth so the claude.ai app connector can connect)
 
 The claude.ai **web** custom-connector UI only exposes OAuth fields (no static
