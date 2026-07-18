@@ -108,7 +108,8 @@ Companion docs — read in order if any is unfamiliar:
 - **Discipline:** `discipline` (GET + POST sync), `discipline/settings` (enable toggle).
 - **Location:** `location` (GET + POST manual log), `location/settings`, `owntracks` (`?token=` push endpoint).
 - **MCP:** `mcp` (remote MCP endpoint, Streamable HTTP — read-only diary tools
-  for Claude on the user's subscription; bearer auth via `MCP_AUTH_TOKEN`,
+  for Claude on the user's subscription, + three MCP-only companion tools
+  `get_profile`/`recall_memories`/`get_guidance`; bearer auth via `MCP_AUTH_TOKEN`,
   fails closed when unset; backed by `lib/mcp.ts`; setup in `docs/mcp-setup.md`)
   + `mcp/oauth/{register,authorize,token,protected-resource,authorization-server}`
   (minimal OAuth 2.1 server so the claude.ai connector can complete its OAuth

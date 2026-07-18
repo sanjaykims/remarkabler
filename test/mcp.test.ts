@@ -23,6 +23,8 @@ let chatTools: ChatToolsMod;
 let route: RouteMod;
 
 const TOKEN = "test-mcp-token-0123456789";
+// MCP-only tools not present in CHAT_TOOLS: get_profile, recall_memories, get_guidance.
+const MCP_ONLY_TOOLS = 3;
 
 beforeAll(async () => {
   process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "mcp-test-"));
@@ -48,9 +50,14 @@ describe("mcpToolList", () => {
       if (mcp.SENSITIVE_TOOL_NAMES.has(t.name)) continue;
       expect(names).toContain(t.name);
     }
+    // Three MCP-only tools (not in CHAT_TOOLS): get_profile, recall_memories,
+    // get_guidance — external Claude gets these instead of the in-app
+    // system-prompt injection.
     expect(names).toContain(mcp.PROFILE_TOOL_NAME);
+    expect(names).toContain(mcp.RECALL_TOOL_NAME);
+    expect(names).toContain(mcp.GUIDANCE_TOOL_NAME);
     expect(tools.length).toBe(
-      chatTools.CHAT_TOOLS.length - mcp.SENSITIVE_TOOL_NAMES.size + 1
+      chatTools.CHAT_TOOLS.length - mcp.SENSITIVE_TOOL_NAMES.size + MCP_ONLY_TOOLS
     );
 
     const search = tools.find((t) => t.name === "search_diary")!;
@@ -65,7 +72,55 @@ describe("mcpToolList", () => {
     for (const t of chatTools.CHAT_TOOLS) {
       expect(names).toContain(t.name);
     }
-    expect(names.length).toBe(chatTools.CHAT_TOOLS.length + 1);
+    expect(names.length).toBe(chatTools.CHAT_TOOLS.length + MCP_ONLY_TOOLS);
+  });
+});
+
+describe("MCP-only companion tools (recall_memories, get_guidance)", () => {
+  it("get_guidance returns the behavior contract, no side effects", async () => {
+    const out = JSON.parse(await mcp.callMcpTool(mcp.GUIDANCE_TOOL_NAME, {}));
+    expect(typeof out.guidance).toBe("string");
+    expect(out.guidance).toContain("companion");
+    // Mirrors the app's anti-confabulation rule.
+    expect(out.guidance.toLowerCase()).toContain("gap");
+  });
+
+  it("recall_memories returns durable memories, empty-state safe", async () => {
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM chat_memories").run();
+    // Empty corpus → safe note, no throw.
+    const empty = JSON.parse(await mcp.callMcpTool(mcp.RECALL_TOOL_NAME, {}));
+    expect(Array.isArray(empty.memories)).toBe(true);
+    expect(empty.memories.length).toBe(0);
+
+    // With a memory present, it comes back (recall is fail-open: no embedding
+    // needed for a small corpus).
+    db()
+      .prepare(
+        `INSERT INTO chat_memories(source_conversation_id, category, text, text_norm) VALUES(?,?,?,?)`
+      )
+      .run("c1", "preference", "Prefers tea over coffee in the mornings.", "prefers tea over coffee in the mornings");
+    const out = JSON.parse(
+      await mcp.callMcpTool(mcp.RECALL_TOOL_NAME, { query: "drinks" })
+    );
+    expect(out.memories.length).toBeGreaterThan(0);
+    expect(out.memories[0].text).toContain("tea");
+    expect(out.memories[0].category).toBe("preference");
+  });
+
+  it("both are read tools with no DB writes beyond what recall reads", async () => {
+    // get_guidance is pure text; recall only SELECTs. A call must not error.
+    await expect(mcp.callMcpTool(mcp.GUIDANCE_TOOL_NAME, {})).resolves.toBeTruthy();
+    await expect(mcp.callMcpTool(mcp.RECALL_TOOL_NAME, {})).resolves.toBeTruthy();
+  });
+
+  it("can be excluded via MCP_EXCLUDE_TOOLS like any tool", async () => {
+    process.env.MCP_EXCLUDE_TOOLS = "recall_memories";
+    const names = mcp.mcpToolList().map((t) => t.name);
+    expect(names).not.toContain(mcp.RECALL_TOOL_NAME);
+    expect(names).toContain(mcp.GUIDANCE_TOOL_NAME);
+    const out = JSON.parse(await mcp.callMcpTool(mcp.RECALL_TOOL_NAME, {}));
+    expect(out.error).toContain("not available");
   });
 });
 
