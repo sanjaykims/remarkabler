@@ -38,6 +38,7 @@ afterEach(() => {
   delete process.env.MCP_EXCLUDE_TOOLS;
   delete process.env.MCP_ALLOW_SENSITIVE_TOOLS;
   delete process.env.MCP_ALLOW_CONVERSATION_EXPORT;
+  delete process.env.MCP_ALLOW_WIKI_LINKING;
   mcp.resetMcpThrottle();
 });
 
@@ -175,6 +176,111 @@ describe("export_conversation write tool (Phase B — opt-in, add-only)", () => 
     expect(mcp.mcpToolList().map((t) => t.name)).not.toContain(mcp.EXPORT_TOOL_NAME);
     const out = JSON.parse(
       await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, { content: "hi" })
+    );
+    expect(out.error).toContain("not available");
+  });
+});
+
+describe("librarian tools (Phase C — opt-in, one flag for all six)", () => {
+  it("are ALL hidden and refused by default, including the reads", async () => {
+    const names = mcp.mcpToolList().map((t) => t.name);
+    for (const name of [
+      mcp.LIST_UNLINKED_TOOL_NAME,
+      mcp.GET_CONVERSATION_TOOL_NAME,
+      mcp.GET_ENTITY_WIKI_TOOL_NAME,
+      mcp.TAG_ENTITIES_TOOL_NAME,
+      mcp.UPDATE_NOTES_TOOL_NAME,
+      mcp.HEARTBEAT_TOOL_NAME,
+    ]) {
+      expect(names).not.toContain(name);
+      const out = JSON.parse(await mcp.callMcpTool(name, {}));
+      expect(out.error).toContain("not available");
+    }
+  });
+
+  it("all six appear once MCP_ALLOW_WIKI_LINKING=true", () => {
+    process.env.MCP_ALLOW_WIKI_LINKING = "true";
+    const names = mcp.mcpToolList().map((t) => t.name);
+    expect(names).toContain(mcp.LIST_UNLINKED_TOOL_NAME);
+    expect(names).toContain(mcp.GET_CONVERSATION_TOOL_NAME);
+    expect(names).toContain(mcp.GET_ENTITY_WIKI_TOOL_NAME);
+    expect(names).toContain(mcp.TAG_ENTITIES_TOOL_NAME);
+    expect(names).toContain(mcp.UPDATE_NOTES_TOOL_NAME);
+    expect(names).toContain(mcp.HEARTBEAT_TOOL_NAME);
+  });
+
+  it("end-to-end: export -> list unlinked -> get -> tag -> notes -> heartbeat", async () => {
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    process.env.MCP_ALLOW_WIKI_LINKING = "true";
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM mcp_conversations").run();
+    db().prepare("DELETE FROM entry_entities").run();
+    db().prepare("DELETE FROM entity_conversation_notes").run();
+
+    const exported = JSON.parse(
+      await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, {
+        content: "User: what did I do in Suwon?\n\nClaude: You visited a friend.",
+        title: "Suwon trip",
+        conversation_id: "conv-1",
+      })
+    );
+    expect(exported.ok).toBe(true);
+
+    const unlinked = JSON.parse(
+      await mcp.callMcpTool(mcp.LIST_UNLINKED_TOOL_NAME, {})
+    );
+    expect(unlinked.conversations.map((c: { conversation_key: string }) => c.conversation_key)).toContain(
+      "conv-1"
+    );
+
+    const fetched = JSON.parse(
+      await mcp.callMcpTool(mcp.GET_CONVERSATION_TOOL_NAME, { conversation_key: "conv-1" })
+    );
+    expect(fetched.conversation.content).toContain("Suwon");
+
+    const wiki = JSON.parse(
+      await mcp.callMcpTool(mcp.GET_ENTITY_WIKI_TOOL_NAME, { kind: "person", name: "Suwon Friend" })
+    );
+    expect(wiki.bio).toBeNull();
+    expect(wiki.conversation_notes).toBeNull();
+
+    const tagged = JSON.parse(
+      await mcp.callMcpTool(mcp.TAG_ENTITIES_TOOL_NAME, {
+        conversation_key: "conv-1",
+        entities: [{ kind: "person", name: "Suwon Friend" }],
+      })
+    );
+    expect(tagged.tagged).toBe(1);
+
+    const notesResult = JSON.parse(
+      await mcp.callMcpTool(mcp.UPDATE_NOTES_TOOL_NAME, {
+        kind: "person",
+        name: "Suwon Friend",
+        notes: "Visited them in Suwon.",
+      })
+    );
+    expect(notesResult.name).toBe("Suwon Friend");
+
+    const heartbeat = JSON.parse(
+      await mcp.callMcpTool(mcp.HEARTBEAT_TOOL_NAME, { ok: true, note: "linked 1 conversation" })
+    );
+    expect(heartbeat.ok).toBe(true);
+
+    // Now hidden from the unlinked list — it's been tagged.
+    const afterTag = JSON.parse(
+      await mcp.callMcpTool(mcp.LIST_UNLINKED_TOOL_NAME, {})
+    );
+    expect(afterTag.conversations.map((c: { conversation_key: string }) => c.conversation_key)).not.toContain(
+      "conv-1"
+    );
+  });
+
+  it("respects MCP_EXCLUDE_TOOLS even when opted in", async () => {
+    process.env.MCP_ALLOW_WIKI_LINKING = "true";
+    process.env.MCP_EXCLUDE_TOOLS = "tag_conversation_entities";
+    expect(mcp.mcpToolList().map((t) => t.name)).not.toContain(mcp.TAG_ENTITIES_TOOL_NAME);
+    const out = JSON.parse(
+      await mcp.callMcpTool(mcp.TAG_ENTITIES_TOOL_NAME, { conversation_key: "x", entities: [] })
     );
     expect(out.error).toContain("not available");
   });

@@ -413,6 +413,11 @@ export type EntityStub = {
   dates: string[]; // day keys this entity appears on
   undated: boolean; // also appears on at least one undated page
   summary?: string | null; // Claude-written wiki profile (lib/entityWiki.ts)
+  // The librarian agent's own notes, from subscription conversations — a
+  // SEPARATE field/table (entity_conversation_notes) from `summary` above, so
+  // the two authors (in-app diary bio vs. the librarian) never clobber each
+  // other. See lib/conversationEntities.ts.
+  conversationNotes?: string | null;
 };
 
 const ENTITY_STUB_FOLDER: Record<EntityStub["kind"], string> = {
@@ -453,7 +458,9 @@ function renderEntityStub(stub: EntityStub, exportedAt: string): string {
   lines.push(`# ${stub.name}`);
   lines.push("");
   lines.push(
-    `_${stub.kind} · appears on ${dayCount} day${dayCount === 1 ? "" : "s"} in your diary._`
+    dayCount > 0
+      ? `_${stub.kind} · appears on ${dayCount} day${dayCount === 1 ? "" : "s"} in your diary._`
+      : `_${stub.kind} · mentioned only in conversations so far._`
   );
   lines.push("");
   // Claude-written profile (the "wiki" body), when one has been generated.
@@ -462,11 +469,22 @@ function renderEntityStub(stub: EntityStub, exportedAt: string): string {
     lines.push(summary);
     lines.push("");
   }
-  lines.push("## Mentions");
-  lines.push("");
-  for (const d of stub.dates) lines.push(`- [[${d}]]`);
-  if (stub.undated) lines.push(`- [[undated]]`);
-  lines.push("");
+  // The librarian's own notes — a separate section so it's visually and
+  // structurally distinct from the diary-written summary above.
+  const conversationNotes = (stub.conversationNotes || "").trim();
+  if (conversationNotes) {
+    lines.push("## Recent conversations");
+    lines.push("");
+    lines.push(conversationNotes);
+    lines.push("");
+  }
+  if (dayCount > 0) {
+    lines.push("## Mentions");
+    lines.push("");
+    for (const d of stub.dates) lines.push(`- [[${d}]]`);
+    if (stub.undated) lines.push(`- [[undated]]`);
+    lines.push("");
+  }
   return lines.join("\n");
 }
 

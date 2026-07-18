@@ -109,15 +109,22 @@ Companion docs — read in order if any is unfamiliar:
 - **Location:** `location` (GET + POST manual log), `location/settings`, `owntracks` (`?token=` push endpoint).
 - **MCP:** `mcp` (remote MCP endpoint, Streamable HTTP — read-only diary tools
   for Claude on the user's subscription, + three MCP-only companion tools
-  `get_profile`/`recall_memories`/`get_guidance`, + the ONE opt-in write tool
+  `get_profile`/`recall_memories`/`get_guidance`, + the opt-in write tool
   `export_conversation` (`MCP_ALLOW_CONVERSATION_EXPORT=true`; files a full
-  conversation verbatim into the Obsidian vault — Phase B, `lib/conversationWiki.ts`);
+  conversation verbatim into the Obsidian vault — Phase B, `lib/conversationWiki.ts`),
+  + six Phase C "librarian" tools behind one flag `MCP_ALLOW_WIKI_LINKING=true`
+  (reads `list_unlinked_conversations`/`get_conversation`/`get_entity_wiki`,
+  writes `tag_conversation_entities`/`update_entity_conversation_notes`/
+  `record_librarian_heartbeat` — lets a SEPARATE, subscription-billed Claude
+  Code agent link conversations into the entity graph/wiki; `lib/conversationEntities.ts`);
   bearer auth via `MCP_AUTH_TOKEN`,
   fails closed when unset; backed by `lib/mcp.ts`; setup in `docs/mcp-setup.md`)
   + `mcp/oauth/{register,authorize,token,protected-resource,authorization-server}`
   (minimal OAuth 2.1 server so the claude.ai connector can complete its OAuth
   handshake — consent reuses `MCP_AUTH_TOKEN`; backed by `lib/mcpOauth.ts`;
   `/.well-known/oauth-*` discovery via `next.config.mjs` rewrites).
+- **Librarian status:** `librarian` (GET-only heartbeat for the Phase C
+  agent — `lib/conversationEntities.ts`; surfaced on `/memory`).
 - **Export:** `export` (raw bundle Markdown: profile+diary+chats+insights),
   `export/diary` (diary-only Markdown, per-day, for Obsidian/NotebookLM/backup —
   no LLM cost), `export/book` (Opus editor pass).

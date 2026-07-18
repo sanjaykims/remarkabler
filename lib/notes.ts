@@ -997,6 +997,40 @@ export function setDisciplineEnabled(enabled: boolean): void {
   setSetting("discipline_enabled", enabled ? "1" : "0");
 }
 
+// A second synthetic notebook (lib/conversationEntities.ts), one page per
+// subscription-conversation export, so the librarian agent's entity tags
+// flow through the same entry_entities/pages pipeline diary content uses.
+// Unlike discipline it's never excluded from the entity graph/rankings (a
+// person only ever discussed in a conversation should still surface there)
+// — but it DOES need excluding from surfaces that assume "this is real
+// diary content" (day-file export, /mind charts, entity-wiki bio
+// composition, date/recency lookups), because — unlike discipline pages —
+// its synthetic pages carry a real, non-empty ocr_text and entry_date.
+export const CONVERSATIONS_NOTEBOOK_ID = "mcp-conversations";
+
+/**
+ * The two notebook ids to exclude from chat-tool surfaces that must reflect
+ * only real diary content (dates, recents, notebook listing) — discipline
+ * (respecting the sharing toggle) plus the conversations notebook always.
+ * Deliberately NOT used by topEntities/pagesForEntity/relatedEntities,
+ * which stay inclusive of conversation-derived entities on purpose.
+ */
+export function nonDiaryNotebookExcludeIdsForChat(): [string, string] {
+  return [disciplineExcludeIdForChat(), CONVERSATIONS_NOTEBOOK_ID];
+}
+
+/**
+ * The two notebook ids to exclude from /mind surfaces that must stay
+ * diary-only (heatmap, entry_analysis backfill — themes/sentiment/embedding
+ * map ride the same entry_analysis rows, so starving it here protects all
+ * three) and from the in-app entity-wiki bio composer. getTopEntities is
+ * deliberately NOT one of these call sites — /mind's entity rankings
+ * include conversation-derived entities on purpose.
+ */
+export function nonDiaryNotebookExcludeIdsForMind(): [string, string] {
+  return [DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID];
+}
+
 /** Replace the discipline notebook with the freshly fetched repo files.
  *  Returns the concatenated text for folding into the profile. */
 export function replaceDisciplineNotebook(
