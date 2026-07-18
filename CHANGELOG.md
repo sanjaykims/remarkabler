@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-18 (MCP OAuth: don't log out existing connectors on the migration — Codex P2)
+
+Follow-up to the secret-binding fix: Codex noted the `ALTER TABLE ADD COLUMN
+secret_hash` leaves NULL on every pre-existing `mcp_oauth_tokens` row, and the
+new "reject a token whose secret isn't current" check treats NULL as invalid —
+so a *plain* deploy (no rotation) would silently invalidate the user's current
+connector session. Fixed with `backfillLegacyTokenSecrets`: it adopts NULL-
+secret rows into the currently-configured secret once, at first use after the
+migration (when the current secret is still the one that authorized them). They
+then behave like any other token — valid on a same-secret deploy, revoked on a
+later rotation — so the P1 revocation guarantee is preserved. 1 new test; 459
+tests pass, build clean.
+
+Also refreshed within-range dependencies (`npm update`, lockfile only) as part
+of a repo-freshness pass; the flagged npm-audit vulnerabilities are almost all
+dev/test tooling that never ships (the one runtime-relevant one, Next.js,
+needs a 14->16 major migration deferred to its own effort).
+
 ## 2026-07-18 (MCP OAuth: rotating the token now truly revokes — Codex P1 fix)
 
 Codex caught a real hole in the revocation story: the docs say "change
