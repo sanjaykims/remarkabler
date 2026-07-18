@@ -81,22 +81,41 @@ export function corsHeaders(): Record<string, string> {
 }
 
 // --- Consent secret (reuses MCP_AUTH_TOKEN) -------------------------------
-// Accepts any of the comma-separated MCP_AUTH_TOKEN values, timing-safe.
-function consentSecretValid(presented: string): boolean {
-  const tokens = (process.env.MCP_AUTH_TOKEN || "")
+function configuredSecrets(): string[] {
+  return (process.env.MCP_AUTH_TOKEN || "")
     .split(",")
     .map((t) => t.trim())
     .filter((t) => t.length >= 16);
-  if (tokens.length === 0) return false;
-  const p = createHash("sha256").update(presented).digest();
-  let ok = false;
-  for (const t of tokens) {
-    const e = createHash("sha256").update(t).digest();
-    if (timingSafeEqual(p, e)) ok = true;
-  }
-  return ok;
 }
-export { consentSecretValid };
+
+function sha256hex(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
+
+// Hashes of the CURRENTLY configured secrets. A rotation (dropping the old
+// value from MCP_AUTH_TOKEN) removes its hash here, which is what makes tokens
+// minted under it stop validating — see isValidAccessToken / refreshAccessToken.
+export function currentSecretHashes(): Set<string> {
+  return new Set(configuredSecrets().map(sha256hex));
+}
+
+// Validates the presented consent secret against any configured token
+// (timing-safe) and returns THAT token's hash so the issued OAuth tokens can
+// be bound to it. Returns null when no configured secret matches.
+export function matchConsentSecret(presented: string): string | null {
+  const p = createHash("sha256").update(presented).digest();
+  let matched: string | null = null;
+  for (const t of configuredSecrets()) {
+    const e = createHash("sha256").update(t).digest();
+    if (timingSafeEqual(p, e)) matched = sha256hex(t);
+  }
+  return matched;
+}
+
+// Back-compat boolean form.
+export function consentSecretValid(presented: string): boolean {
+  return matchConsentSecret(presented) !== null;
+}
 
 // --- Clients (Dynamic Client Registration) --------------------------------
 export type RegisteredClient = { client_id: string; redirect_uris: string[] };
@@ -132,6 +151,7 @@ type AuthCode = {
   clientId: string;
   redirectUri: string;
   codeChallenge: string;
+  secretHash: string; // the MCP_AUTH_TOKEN hash that authorized this grant
   expiresAt: number;
 };
 const authCodes = new Map<string, AuthCode>();
@@ -140,6 +160,7 @@ export function issueAuthCode(
   clientId: string,
   redirectUri: string,
   codeChallenge: string,
+  secretHash: string,
   now = Date.now()
 ): string {
   const code = randomBytes(32).toString("base64url");
@@ -147,19 +168,21 @@ export function issueAuthCode(
     clientId,
     redirectUri,
     codeChallenge,
+    secretHash,
     expiresAt: now + CODE_TTL_MS,
   });
   return code;
 }
 
 // Redeem a code exactly once, enforcing PKCE, client, redirect, and expiry.
+// On success returns the secretHash so the issued tokens can be bound to it.
 export function redeemAuthCode(
   code: string,
   clientId: string,
   redirectUri: string,
   codeVerifier: string,
   now = Date.now()
-): { ok: true } | { ok: false; error: string } {
+): { ok: true; secretHash: string } | { ok: false; error: string } {
   const entry = authCodes.get(code);
   if (!entry) return { ok: false, error: "invalid_grant" };
   authCodes.delete(code); // single-use, even on failure
@@ -168,7 +191,7 @@ export function redeemAuthCode(
   if (entry.redirectUri !== redirectUri) return { ok: false, error: "invalid_grant" };
   if (!verifyPkce(codeVerifier, entry.codeChallenge))
     return { ok: false, error: "invalid_grant" };
-  return { ok: true };
+  return { ok: true, secretHash: entry.secretHash };
 }
 
 export function verifyPkce(codeVerifier: string, codeChallenge: string): boolean {
@@ -195,19 +218,26 @@ export type IssuedTokens = {
   expires_in: number;
 };
 
-export function issueTokens(clientId: string, now = Date.now()): IssuedTokens {
+export function issueTokens(
+  clientId: string,
+  secretHash: string,
+  now = Date.now()
+): IssuedTokens {
   const access = randomBytes(32).toString("base64url");
   const refresh = randomBytes(32).toString("base64url");
   const nowSec = Math.floor(now / 1000);
   const ins = db().prepare(
-    `INSERT INTO mcp_oauth_tokens(token_hash, kind, client_id, expires_at) VALUES(?,?,?,?)`
+    `INSERT INTO mcp_oauth_tokens(token_hash, kind, client_id, secret_hash, expires_at) VALUES(?,?,?,?,?)`
   );
-  ins.run(hash(access), "access", clientId, nowSec + ACCESS_TTL_SEC);
-  ins.run(hash(refresh), "refresh", clientId, null);
+  ins.run(hash(access), "access", clientId, secretHash, nowSec + ACCESS_TTL_SEC);
+  ins.run(hash(refresh), "refresh", clientId, secretHash, null);
   return { access_token: access, refresh_token: refresh, expires_in: ACCESS_TTL_SEC };
 }
 
 // Rotate a refresh token into a fresh access token (refresh_token grant).
+// Refuses if the secret that minted the refresh token has since been rotated
+// out of MCP_AUTH_TOKEN — so rotation revokes the whole grant, not just the
+// access token.
 export function refreshAccessToken(
   refreshToken: string,
   clientId: string,
@@ -215,37 +245,50 @@ export function refreshAccessToken(
 ): IssuedTokens | null {
   const row = db()
     .prepare(
-      `SELECT client_id FROM mcp_oauth_tokens WHERE token_hash = ? AND kind = 'refresh'`
+      `SELECT client_id, secret_hash FROM mcp_oauth_tokens WHERE token_hash = ? AND kind = 'refresh'`
     )
-    .get(hash(refreshToken)) as { client_id: string | null } | undefined;
+    .get(hash(refreshToken)) as
+    | { client_id: string | null; secret_hash: string | null }
+    | undefined;
   if (!row) return null;
   if (row.client_id && clientId && row.client_id !== clientId) return null;
-  // Issue a new access token; keep the same refresh token valid.
+  // Revoked if the authorizing secret is no longer configured.
+  if (!row.secret_hash || !currentSecretHashes().has(row.secret_hash)) return null;
+  // Issue a new access token bound to the same secret; keep the refresh token.
   const access = randomBytes(32).toString("base64url");
   const nowSec = Math.floor(now / 1000);
   db()
     .prepare(
-      `INSERT INTO mcp_oauth_tokens(token_hash, kind, client_id, expires_at) VALUES(?,?,?,?)`
+      `INSERT INTO mcp_oauth_tokens(token_hash, kind, client_id, secret_hash, expires_at) VALUES(?,?,?,?,?)`
     )
-    .run(hash(access), "access", row.client_id, nowSec + ACCESS_TTL_SEC);
+    .run(hash(access), "access", row.client_id, row.secret_hash, nowSec + ACCESS_TTL_SEC);
   return { access_token: access, refresh_token: refreshToken, expires_in: ACCESS_TTL_SEC };
 }
 
-// True if the presented bearer is a live (unexpired) OAuth access token.
-// better-sqlite3 is synchronous, so this stays a sync check.
+// True if the presented bearer is a live (unexpired) OAuth access token whose
+// authorizing secret is STILL configured. Rotating MCP_AUTH_TOKEN away from
+// the value that minted a token invalidates it here — this is what makes the
+// documented "change the token to revoke" actually revoke. better-sqlite3 is
+// synchronous, so this stays a sync check.
 export function isValidAccessToken(token: string, now = Date.now()): boolean {
   const row = db()
     .prepare(
-      `SELECT expires_at FROM mcp_oauth_tokens WHERE token_hash = ? AND kind = 'access'`
+      `SELECT secret_hash, expires_at FROM mcp_oauth_tokens WHERE token_hash = ? AND kind = 'access'`
     )
-    .get(hash(token)) as { expires_at: number | null } | undefined;
+    .get(hash(token)) as
+    | { secret_hash: string | null; expires_at: number | null }
+    | undefined;
   if (!row) return false;
   const nowSec = Math.floor(now / 1000);
   if (row.expires_at !== null && row.expires_at < nowSec) return false;
+  // A token minted under a now-rotated-out secret is dead (revocation).
+  if (!row.secret_hash || !currentSecretHashes().has(row.secret_hash)) return false;
   return true;
 }
 
-// Best-effort GC of expired access tokens (called opportunistically).
+// Best-effort GC: expired access tokens AND any token (access or refresh)
+// whose authorizing secret is no longer configured — the latter clears the
+// dead rows left behind by a rotation, so revocation is also a real delete.
 export function pruneExpiredTokens(now = Date.now()): void {
   try {
     db()
@@ -253,6 +296,17 @@ export function pruneExpiredTokens(now = Date.now()): void {
         `DELETE FROM mcp_oauth_tokens WHERE kind = 'access' AND expires_at IS NOT NULL AND expires_at < ?`
       )
       .run(Math.floor(now / 1000));
+    const live = [...currentSecretHashes()];
+    if (live.length > 0) {
+      const placeholders = live.map(() => "?").join(",");
+      db()
+        .prepare(
+          `DELETE FROM mcp_oauth_tokens WHERE secret_hash IS NULL OR secret_hash NOT IN (${placeholders})`
+        )
+        .run(...live);
+    }
+    // When no secret is configured the endpoint is disabled anyway; leave rows
+    // (they can't validate) rather than wipe on a transient empty config.
   } catch {
     // best-effort
   }

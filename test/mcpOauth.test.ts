@@ -41,6 +41,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  process.env.MCP_AUTH_TOKEN = TOKEN; // canonical, even if a rotation test left it changed
   oauth.clearAuthCodes();
   mcp.resetMcpThrottle();
   dbMod.db().prepare("DELETE FROM mcp_oauth_clients").run();
@@ -271,5 +272,63 @@ describe("OAuth security", () => {
 
   it("a made-up (non-issued) bearer is not accepted by the MCP endpoint", () => {
     expect(mcp.checkMcpAuth("Bearer not-a-real-access-token-xxxxxxxx")).toBe("unauthorized");
+  });
+});
+
+// Codex P1: rotating (not just unsetting) MCP_AUTH_TOKEN must actually revoke
+// tokens minted under the old secret — the documented "change the token to
+// revoke a compromised connector" path.
+describe("secret rotation revokes issued OAuth tokens", () => {
+  async function issueAccessToken(): Promise<{ access: string; refresh: string; clientId: string }> {
+    const clientId = await register();
+    const { verifier, challenge } = pkce();
+    const code = codeFrom(await consent(clientId, challenge, TOKEN));
+    const tok = await (await exchange(clientId, code, verifier)).json();
+    return { access: tok.access_token, refresh: tok.refresh_token, clientId };
+  }
+
+  function refreshReq(refresh: string, clientId: string): Request {
+    return new Request(`${ORIGIN}/api/mcp/oauth/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refresh,
+        client_id: clientId,
+      }).toString(),
+    });
+  }
+
+  it("rotating the secret away invalidates old access AND refresh tokens", async () => {
+    const { access, refresh, clientId } = await issueAccessToken();
+    expect(mcp.checkMcpAuth(`Bearer ${access}`)).toBe("ok");
+
+    // Rotate: the old value is no longer configured.
+    process.env.MCP_AUTH_TOKEN = "rotated-fresh-secret-9876543210";
+
+    // Old access token is dead...
+    expect(mcp.checkMcpAuth(`Bearer ${access}`)).toBe("unauthorized");
+    // ...and the refresh token can no longer mint a new one.
+    const ref = await tokenRoute.POST(refreshReq(refresh, clientId));
+    expect(ref.status).toBe(400);
+  });
+
+  it("keeps old tokens valid during a comma-separated overlap, dead once the old value is dropped", async () => {
+    const { access } = await issueAccessToken();
+
+    // Overlap window: both old + new configured → old-minted token still works.
+    process.env.MCP_AUTH_TOKEN = `${TOKEN},new-overlap-secret-1234567890`;
+    expect(mcp.checkMcpAuth(`Bearer ${access}`)).toBe("ok");
+
+    // Drop the old value → the old-minted token is revoked.
+    process.env.MCP_AUTH_TOKEN = "new-overlap-secret-1234567890";
+    expect(mcp.checkMcpAuth(`Bearer ${access}`)).toBe("unauthorized");
+  });
+
+  it("unsetting the token entirely disables the endpoint (tokens can't validate)", async () => {
+    const { access } = await issueAccessToken();
+    delete process.env.MCP_AUTH_TOKEN;
+    // Endpoint is disabled; a previously-valid access token gets no free pass.
+    expect(mcp.checkMcpAuth(`Bearer ${access}`)).toBe("disabled");
   });
 });
