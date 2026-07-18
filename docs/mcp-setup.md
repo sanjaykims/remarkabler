@@ -115,6 +115,35 @@ section):
 - `get_insights`, `get_writing_stats`, `count_entries_mentioning`
 - `list_notebooks`, `get_notebook`
 
+## Saving conversations into your Obsidian wiki (OFF by default)
+
+There's an optional **write** tool, `export_conversation`, that lets Claude
+save the **full text** of a subscription conversation into your diary's
+Obsidian vault (via Dropbox) — one Markdown note per conversation, verbatim
+(nothing summarized). Over time you get a browsable record of your Claude
+conversations alongside the diary.
+
+It is **OFF by default** — the endpoint stays fully read-only unless you turn
+this on. To enable it, set in Railway:
+
+```
+MCP_ALLOW_CONVERSATION_EXPORT=true
+```
+
+Requirements + how it behaves:
+- Needs Dropbox export enabled (the same `files.content.write` scope as the
+  diary auto-export — see `/memory`). Notes land under `Conversations/` in your
+  export folder.
+- **Add-only**: it can only *add* a conversation record and *create* a note —
+  it never edits or deletes your diary or anything else. The content is written
+  verbatim as plain text.
+- **Not automatic**: Claude has to *choose* to call it (nudge it: "save this
+  conversation"). We can't tap the transcript ourselves.
+- ⚠️ **Privacy tradeoff**: with this on, your subscription conversations are no
+  longer ephemeral — the full text is stored in Remarkabler and written to your
+  vault. That's the opposite of the read-only default's privacy; enable it only
+  if you want that permanent record.
+
 ## Sensitive tools are OFF by default
 
 Two tools are **excluded from this connector by default** — the in-app chat

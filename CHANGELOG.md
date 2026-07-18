@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-07-18 (MCP Phase B: export a full conversation into the Obsidian wiki)
+
+The first WRITE on the (otherwise read-only) MCP endpoint, built to the user's
+② vision: subscription-Claude **fully exports** a conversation and the app
+files it, **verbatim (no summarizing)**, into the Obsidian/Dropbox vault as one
+Markdown note — an accumulating, browsable record of your Claude conversations
+alongside the diary.
+
+- **`export_conversation` write tool** (`lib/mcp.ts`) — MCP-only, **OFF unless
+  `MCP_ALLOW_CONVERSATION_EXPORT=true`** (hidden from `tools/list` AND refused on
+  `tools/call` by default — forgetting config keeps the endpoint read-only).
+  Add-only (upserts one row in the new `mcp_conversations` table, by
+  `conversation_id`), size-capped (`MAX_CONVERSATION_CHARS`).
+- **Filing** (`lib/conversationWiki.ts` + `maybeExportConversationsToDropbox` in
+  `lib/dropbox.ts`) — renders each conversation as `Conversations/<date>-<slug>.md`
+  with the full content verbatim, uploads via the existing Dropbox export path,
+  and marks filed only on a clean upload. Deterministic (no Claude "librarian"
+  call → no prompt-injection-into-summarizer surface). Fired inline from the
+  tool and as a maintenance-sweep safety net (fire-and-forget + `.catch()`).
+- New do-not-regress carve-out: the read-only invariant now documents this one
+  sanctioned write and its three properties (opt-in/fail-safe, add-only,
+  capped).
+
+Honest tradeoffs (as designed): capture is Claude-initiated (it must call the
+tool), and this reverses the subscription-privacy property — the full transcript
+is now stored + written to your vault. Requires the Dropbox `files.content.write`
+scope + export enabled. 16 new tests (store/renderer + tool gating/limits); 473
+pass, build clean. (Follow-ups: entity `[[wikilinks]]` in conversation notes; a
+smarter "librarian" organizing pass.)
+
 ## 2026-07-18 (MCP: recall_memories + get_guidance — richer subscription companion)
 
 Phase A of bringing the in-app chat's richness to the subscription (MCP)

@@ -37,6 +37,7 @@ afterEach(() => {
   delete process.env.MCP_AUTH_TOKEN;
   delete process.env.MCP_EXCLUDE_TOOLS;
   delete process.env.MCP_ALLOW_SENSITIVE_TOOLS;
+  delete process.env.MCP_ALLOW_CONVERSATION_EXPORT;
   mcp.resetMcpThrottle();
 });
 
@@ -120,6 +121,61 @@ describe("MCP-only companion tools (recall_memories, get_guidance)", () => {
     expect(names).not.toContain(mcp.RECALL_TOOL_NAME);
     expect(names).toContain(mcp.GUIDANCE_TOOL_NAME);
     const out = JSON.parse(await mcp.callMcpTool(mcp.RECALL_TOOL_NAME, {}));
+    expect(out.error).toContain("not available");
+  });
+});
+
+describe("export_conversation write tool (Phase B — opt-in, add-only)", () => {
+  it("is HIDDEN and REFUSED by default (endpoint stays read-only)", async () => {
+    const names = mcp.mcpToolList().map((t) => t.name);
+    expect(names).not.toContain(mcp.EXPORT_TOOL_NAME);
+    const out = JSON.parse(
+      await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, { content: "hi" })
+    );
+    expect(out.error).toContain("not available");
+  });
+
+  it("appears and writes ONLY when MCP_ALLOW_CONVERSATION_EXPORT=true", async () => {
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM mcp_conversations").run();
+
+    expect(mcp.mcpToolList().map((t) => t.name)).toContain(mcp.EXPORT_TOOL_NAME);
+
+    const out = JSON.parse(
+      await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, {
+        content: "User: hi\n\nClaude: hello",
+        title: "greeting",
+        conversation_id: "s1",
+      })
+    );
+    expect(out.ok).toBe(true);
+    expect(out.key).toBe("s1");
+    const row = db()
+      .prepare("SELECT content, title FROM mcp_conversations WHERE conversation_key = 's1'")
+      .get() as { content: string; title: string };
+    expect(row.content).toContain("hello"); // full content, verbatim
+    expect(row.title).toBe("greeting");
+  });
+
+  it("requires content and rejects oversize input", async () => {
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    const empty = JSON.parse(await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, {}));
+    expect(empty.error).toContain("required");
+    const big = "x".repeat(600_000);
+    const over = JSON.parse(
+      await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, { content: big })
+    );
+    expect(over.error).toContain("too large");
+  });
+
+  it("MCP_EXCLUDE_TOOLS still blocks it even when opted in", async () => {
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    process.env.MCP_EXCLUDE_TOOLS = "export_conversation";
+    expect(mcp.mcpToolList().map((t) => t.name)).not.toContain(mcp.EXPORT_TOOL_NAME);
+    const out = JSON.parse(
+      await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, { content: "hi" })
+    );
     expect(out.error).toContain("not available");
   });
 });

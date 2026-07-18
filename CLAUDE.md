@@ -69,7 +69,11 @@ and generate an accumulating record of "insights" about themselves.
   whose consent screen reuses `MCP_AUTH_TOKEN` as the password; Claude Code
   accepts the raw bearer token directly. Optional `APP_BASE_URL` fixes the
   public origin used in OAuth metadata/redirects (else derived from
-  `X-Forwarded-*`). Setup guide: `docs/mcp-setup.md`.
+  `X-Forwarded-*`). Optional `MCP_ALLOW_CONVERSATION_EXPORT=true` enables the
+  ONE write tool (`export_conversation`) — subscription-Claude saves a full
+  conversation, filed verbatim into the Obsidian/Dropbox vault as one note
+  (Phase B); OFF by default keeps the endpoint read-only. Setup guide:
+  `docs/mcp-setup.md`.
 - Optional automatic location (OwnTracks): set `OWNTRACKS_TOKEN` to enable the
   `/api/owntracks` ingestion endpoint (the phone app posts there with
   `?token=`). Points are clustered into stays (place + dwell), reverse-geocoded
@@ -116,7 +120,10 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   below), `mcp_audit` (size-capped log of MCP tool calls + failed auth
   attempts; see `lib/mcp.ts`), `mcp_oauth_clients` + `mcp_oauth_tokens`
   (OAuth 2.1 state for the claude.ai connector — dynamically registered
-  clients + issued access/refresh tokens stored HASHED; see `lib/mcpOauth.ts`).
+  clients + issued access/refresh tokens stored HASHED; see `lib/mcpOauth.ts`),
+  `mcp_conversations` (full subscription-conversation transcripts exported via
+  the `export_conversation` write tool, filed verbatim into the Obsidian vault;
+  see `lib/conversationWiki.ts`).
   Some durable state also lives in
   `settings` rows, e.g.
   `mind_pca_axes` (persisted PCA mean + PC vectors + axis labels) and the
@@ -167,12 +174,23 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `recall_memories` (the durable `chat_memories` layer, via `recallChatMemories`),
   and `get_guidance` (the companion tone/anti-confabulation contract) — so the
   two surfaces can never drift; these three exist ONLY on MCP because the in-app
-  chat gets the same content via its system prompt + auto-recall), `callMcpTool`
-  (special-cases the three MCP-only tools, else dispatch via `executeTool`), and
+  chat gets the same content via its system prompt + auto-recall — plus the ONE
+  opt-in WRITE tool `export_conversation` (Phase B, off unless
+  `MCP_ALLOW_CONVERSATION_EXPORT=true`)), `callMcpTool`
+  (special-cases the MCP-only tools, else dispatch via `executeTool`), and
   the fail-closed bearer auth (`checkMcpAuth`, timing-safe, `MIN_TOKEN_LENGTH`).
   Served by `app/api/mcp/route.ts` (mcp-handler, Streamable HTTP, stateless,
   SSE disabled) so Claude on the user's subscription (claude.ai custom
-  connector / Claude Code) can query the diary. Read-only by design.
+  connector / Claude Code) can query the diary. Read-only by default (the one
+  write is `export_conversation`, see the do-not-regress rule).
+- `lib/conversationWiki.ts` — Phase B store + renderer for full
+  subscription-conversation transcripts (`mcp_conversations`): `saveExportedConversation`
+  (upsert by key, add-only), pure `renderConversationNote`/`conversationNoteFileName`
+  (verbatim note, no summarizing), and `renderConversationNoteFiles`/
+  `unfiledConversationKeys`/`markConversationsFiled` for the filing cycle. Filed
+  into the Obsidian/Dropbox vault by `maybeExportConversationsToDropbox`
+  (`lib/dropbox.ts`), fired from the `export_conversation` tool + the maintenance
+  sweep.
 - `lib/mcpOauth.ts` — minimal OAuth 2.1 authorization server backing the
   claude.ai connector (its web UI has no static-header field, so it requires
   the OAuth discovery → DCR → authorize → token dance). `publicOrigin`
@@ -421,19 +439,28 @@ features need the deployed instance to fully verify.
   `archived_at` (it would delete messages from the user's view mid-chat), do
   NOT drop `ROLL_KEEP_RECENT` below `RAW_HISTORY_WINDOW`, and do NOT drop the
   user-char gate.
-- **The MCP endpoint is read-only and fails closed.** `app/api/mcp/route.ts`
-  exposes the diary to Claude on the user's subscription, guarded ONLY by the
-  `MCP_AUTH_TOKEN` bearer check in `lib/mcp.ts` (the cookie/passkey lock does
-  not apply to it). Invariants: (1) the endpoint is genuinely read-only, not
-  just by convention — `callMcpTool` passes `{ readOnly: true }` to
-  `executeTool`, and any tool with a side effect must honor it (e.g.
-  `get_recent_locations` skips its `warmCurrentLocationGeocode` — a Nominatim
-  call + `geocode_cache` write — under readOnly; `search_diary`'s Voyage
-  query-embed is compute-only, no DB/fs write, and stays). Diary text is OCR'd
-  handwriting and chat is outside our system prompt, so treat every request as
-  hostile and keep the blast radius at "read" — if you add a tool that writes
-  anywhere, gate the write behind `!opts?.readOnly`; (2) never make a
-  missing/short token fall back
+- **The MCP endpoint is read-only by default and fails closed.**
+  `app/api/mcp/route.ts` exposes the diary to Claude on the user's
+  subscription, guarded ONLY by the `MCP_AUTH_TOKEN` bearer check in
+  `lib/mcp.ts` (the cookie/passkey lock does not apply to it). Invariants: (1)
+  the endpoint is genuinely read-only, not just by convention — `callMcpTool`
+  passes `{ readOnly: true }` to `executeTool`, and any tool with a side effect
+  must honor it (e.g. `get_recent_locations` skips its
+  `warmCurrentLocationGeocode` — a Nominatim call + `geocode_cache` write —
+  under readOnly; `search_diary`'s Voyage query-embed is compute-only, no DB/fs
+  write, and stays). Diary text is OCR'd handwriting and chat is outside our
+  system prompt, so treat every request as hostile and keep the blast radius at
+  "read". **The ONE sanctioned write is `export_conversation`** (Phase B): it
+  is MCP-only, handled directly in `callMcpTool` (not via `executeTool`), and
+  is (a) OFF unless `MCP_ALLOW_CONVERSATION_EXPORT=true` — default keeps the
+  endpoint read-only (fail-safe), hidden from `tools/list` AND refused on
+  `tools/call`; (b) ADD-ONLY — it upserts exactly one row in `mcp_conversations`
+  (its own table) and touches nothing else; (c) size-capped
+  (`MAX_CONVERSATION_CHARS`). The content is filed into the vault VERBATIM as
+  quoted markdown by a deterministic exporter (no Claude "librarian" call, so no
+  prompt-injection-into-summarizer surface). Any OTHER new write tool must
+  follow the same three properties AND gate behind `!opts?.readOnly` if it rides
+  `executeTool`; (2) never make a missing/short token fall back
   to "open" — `checkMcpAuth` returns `disabled` (503), and that must stay the
   no-config behavior; (3) the per-IP brute-force throttle applies to FAILED
   auth only — a valid token must never be throttled (Claude's connector

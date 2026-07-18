@@ -583,6 +583,22 @@ CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
   expires_at  INTEGER,                  -- unix seconds; NULL = no expiry (refresh)
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Full subscription-conversation transcripts exported via the MCP
+-- export_conversation write tool (opt-in, add-only — see lib/mcp.ts and the
+-- "do not regress" rule in CLAUDE.md). Stored verbatim (no compression), then
+-- filed into the Obsidian/Dropbox vault as one Markdown note each by the
+-- maintenance sweep (lib/conversationWiki.ts). Upsert by conversation_key so a
+-- growing conversation re-exported keeps ONE record (latest full content);
+-- filed_at is cleared on update so it re-files.
+CREATE TABLE IF NOT EXISTS mcp_conversations (
+  conversation_key TEXT PRIMARY KEY,    -- client-supplied id, or generated
+  title            TEXT,
+  content          TEXT NOT NULL,       -- full verbatim transcript
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  filed_at         TEXT                 -- when last filed to the vault; NULL = needs filing
+);
 `;
 
 export function getSetting(key: string): string | null {
