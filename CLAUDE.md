@@ -163,9 +163,13 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   co-occurrence helper — the relationship view behind the Obsidian graph,
   not just a flat ranking.
 - `lib/mcp.ts` — the MCP bridge: `mcpToolList` (derives the MCP tool list from
-  `CHAT_TOOLS` at runtime + the MCP-only `get_profile`, so the two surfaces
-  can never drift), `callMcpTool` (dispatch via `executeTool`), and the
-  fail-closed bearer auth (`checkMcpAuth`, timing-safe, `MIN_TOKEN_LENGTH`).
+  `CHAT_TOOLS` at runtime + three MCP-only tools — `get_profile`,
+  `recall_memories` (the durable `chat_memories` layer, via `recallChatMemories`),
+  and `get_guidance` (the companion tone/anti-confabulation contract) — so the
+  two surfaces can never drift; these three exist ONLY on MCP because the in-app
+  chat gets the same content via its system prompt + auto-recall), `callMcpTool`
+  (special-cases the three MCP-only tools, else dispatch via `executeTool`), and
+  the fail-closed bearer auth (`checkMcpAuth`, timing-safe, `MIN_TOKEN_LENGTH`).
   Served by `app/api/mcp/route.ts` (mcp-handler, Streamable HTTP, stateless,
   SSE disabled) so Claude on the user's subscription (claude.ai custom
   connector / Claude Code) can query the diary. Read-only by design.

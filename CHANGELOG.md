@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-07-18 (MCP: recall_memories + get_guidance — richer subscription companion)
+
+Phase A of bringing the in-app chat's richness to the subscription (MCP)
+surface. The in-app chat auto-injects the durable memory layer and the persona
+as its system prompt every turn; external Claude gets neither, so two MCP-only
+tools (beside `get_profile`) close that gap:
+
+- **`recall_memories`** — exposes the durable `chat_memories` layer (compressed
+  preferences / facts / intents the author has told Claude before, distinct from
+  diary entries) via the existing fail-open `recallChatMemories`. Optional
+  `query`; omit for the most recent. Pure read (the Voyage query-embed is
+  compute-only, matching `search_diary`).
+- **`get_guidance`** — returns the companion tone + anti-confabulation contract
+  (mirrors `lib/claude.ts:staticGuidance`), so subscription Claude behaves like
+  the in-app companion: warm/specific, grounds in profile+memories+diary, and
+  never fills a gap with a guess.
+
+Both are MCP-only (not in `CHAT_TOOLS`) since the in-app chat already has this
+content; both honor the read-only invariant, `MCP_EXCLUDE_TOOLS`, and the
+sensitive-default machinery. 6 new tests; 463 pass, build clean. (Phase B —
+full-conversation export into an Obsidian wiki — remains a deliberate, opt-in
+decision; see the session plan.)
+
 ## 2026-07-18 (MCP OAuth: don't log out existing connectors on the migration — Codex P2)
 
 Follow-up to the secret-binding fix: Codex noted the `ALTER TABLE ADD COLUMN

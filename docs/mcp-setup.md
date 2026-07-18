@@ -99,10 +99,15 @@ use env expansion):
 ## What Claude gets access to
 
 The in-app chat's read-only tools (they stay in sync automatically), plus
-`get_profile` — **except two sensitive tools that are OFF by default** (see
-the next section):
+three companion tools that make the subscription chat feel like the in-app one
+— **except two sensitive tools that are OFF by default** (see the next
+section):
 
 - `get_profile` — the evolving profile of you (call first)
+- `recall_memories` — durable things you've told Claude before (preferences,
+  facts, intents) — the same "memory" the in-app chat carries between chats
+- `get_guidance` — how to be your diary companion (tone + don't-make-things-up
+  rules); Claude can read this once at the start
 - `search_diary`, `get_entries_by_date`, `get_recent_entries`
 - `get_day_summary`, `get_week_summary`, `get_month_summary`
 - `top_entities`, `pages_for_entity`, `related_entities`

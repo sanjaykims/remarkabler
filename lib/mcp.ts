@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "crypto";
 import { db } from "@/lib/db";
 import { CHAT_TOOLS, executeTool } from "@/lib/chatTools";
 import { getCurrentProfile } from "@/lib/profile";
+import { recallChatMemories } from "@/lib/chatMemory";
 import { isValidAccessToken } from "@/lib/mcpOauth";
 
 // MCP bridge: exposes the SAME read-only diary tools the in-app chat uses
@@ -45,6 +46,75 @@ const PROFILE_TOOL: McpToolDef = {
     "about the person.",
   inputSchema: { type: "object", properties: {} },
 };
+
+// MCP-only: the durable chat-memory layer (chat_memories) — compact items the
+// author has told Claude before (preferences, stable facts, recurring intents,
+// unresolved threads), DISTINCT from diary entries. The in-app chat auto-recalls
+// these every turn; external Claude gets no such injection, so it's a tool.
+export const RECALL_TOOL_NAME = "recall_memories";
+
+const RECALL_TOOL: McpToolDef = {
+  name: RECALL_TOOL_NAME,
+  description:
+    "Recall durable things the author has told Claude in past conversations — " +
+    "their stated preferences, stable facts about their life, recurring intents, " +
+    "and unresolved threads. This is separate from diary entries (use search_diary " +
+    "for those). Pass `query` describing what you want to remember about (a topic, " +
+    "a person, or the user's current message); omit it to get the most recent " +
+    "memories. Call this early so you sound like you already know them.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description:
+          "What to recall about — a topic, person, or the user's current message. Optional.",
+      },
+    },
+  },
+};
+
+// MCP-only: how to BEHAVE as this person's diary companion. The in-app chat has
+// this as its system prompt; external Claude gets no system prompt from us, so
+// the tone + anti-confabulation contract is exposed as a tool.
+export const GUIDANCE_TOOL_NAME = "get_guidance";
+
+const GUIDANCE_TOOL: McpToolDef = {
+  name: GUIDANCE_TOOL_NAME,
+  description:
+    "Get guidance on HOW to be this person's diary companion — the tone and the " +
+    "grounding/anti-confabulation rules the in-app assistant follows. Call this " +
+    "once at the start of a conversation.",
+  inputSchema: { type: "object", properties: {} },
+};
+
+// Mirrors the in-app chat's persona contract (lib/claude.ts:staticGuidance),
+// adapted for an external Claude that pulls context via tools instead of having
+// it injected. Kept as advisory text — the model may or may not follow it.
+const COMPANION_GUIDANCE = [
+  "You are this person's personal diary companion. You know them through their",
+  "diary and your past conversations — treat that as your memory of them, and",
+  "answer with your honest, thoughtful opinion, not a bare summary.",
+  "",
+  "Ground yourself in what's real before answering about their life:",
+  "- get_profile — your accumulated understanding of who they are (call first).",
+  "- recall_memories — durable things they've told you before.",
+  "- search_diary / get_entries_by_date / get_recent_entries — actual entries.",
+  "- get_day_summary / get_week_summary / get_month_summary — prefer these for",
+  "  \"how was [date/week/month]?\"; fall back to entries only for the raw words.",
+  "- current_time_kst — call whenever they say \"today/yesterday/this week\"; you",
+  "  don't know what today is otherwise.",
+  "",
+  "Be warm, direct, and specific. If you genuinely don't know, say so.",
+  "",
+  "Never fill a gap with a guess dressed as fact. If the tools are silent, say so",
+  "plainly — don't invent a reason for the gap and don't wave it away. Answer only",
+  "from what the tool results actually show. And don't turn a factual request",
+  "(\"what did I do on X\", a list, a timeline) into an interview — answer what was",
+  "asked; save the check-ins for when they're actually reflecting with you.",
+  "",
+  "Diary timestamps are written YYYY-MM-DD-HHMM-KST (Korea Standard Time, UTC+9).",
+].join("\n");
 
 // Tools whose output is dangerous under account takeover and are therefore
 // excluded from the MCP surface BY DEFAULT (fail-safe): the subscription
@@ -101,6 +171,8 @@ export function mcpToolList(): McpToolDef[] {
     inputSchema: t.input_schema as unknown as Record<string, unknown>,
   }));
   if (!excluded.has(PROFILE_TOOL_NAME)) tools.push(PROFILE_TOOL);
+  if (!excluded.has(RECALL_TOOL_NAME)) tools.push(RECALL_TOOL);
+  if (!excluded.has(GUIDANCE_TOOL_NAME)) tools.push(GUIDANCE_TOOL);
   return tools;
 }
 
@@ -122,6 +194,24 @@ export async function callMcpTool(
             profile: null,
             note: "No profile has been built yet — the diary may be empty.",
           }
+    );
+  }
+  if (name === GUIDANCE_TOOL_NAME) {
+    return JSON.stringify({ guidance: COMPANION_GUIDANCE });
+  }
+  if (name === RECALL_TOOL_NAME) {
+    // recallChatMemories is read-only + fail-open (embeds the query via Voyage,
+    // which is compute-only — no DB/fs write — matching search_diary). Never
+    // throws, so a Voyage outage degrades to recency, not an endpoint error.
+    const q =
+      typeof (args as { query?: unknown })?.query === "string"
+        ? ((args as { query: string }).query)
+        : "";
+    const { items } = await recallChatMemories(q);
+    return JSON.stringify(
+      items.length > 0
+        ? { memories: items.map((m) => ({ category: m.category, text: m.text })) }
+        : { memories: [], note: "No durable memories recorded yet." }
     );
   }
   // readOnly: the MCP endpoint's core guarantee. Tools that would otherwise
