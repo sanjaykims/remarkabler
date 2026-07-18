@@ -1147,6 +1147,18 @@ export function runMaintenanceSweep(): void {
   } catch {
     // best-effort
   }
+  // Phase B safety net: file any exported subscription-conversations that the
+  // inline fire (from the MCP export tool) missed into the Obsidian vault.
+  // No-op unless Dropbox export is on and there are unfiled conversations.
+  try {
+    void import("./dropbox")
+      .then((m) => m.maybeExportConversationsToDropbox())
+      .catch((e) =>
+        console.warn("[sweep] conversation export failed:", (e as Error).message)
+      );
+  } catch {
+    // best-effort
+  }
 }
 
 let _maybeSyncRemarkable: (() => Promise<unknown>) | null = null;

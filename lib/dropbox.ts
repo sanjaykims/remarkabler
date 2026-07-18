@@ -13,6 +13,11 @@ import {
   affectedEntityStubFileNames,
 } from "@/lib/diaryExportDb";
 import { UNDATED_FILE } from "@/lib/diaryExport";
+import {
+  renderConversationNoteFiles,
+  unfiledConversationKeys,
+  markConversationsFiled,
+} from "@/lib/conversationWiki";
 
 // Folder inside the user's Dropbox where the per-day diary Markdown files
 // are written (one file per day, e.g. `2026-06-19.md`, + `undated.md`).
@@ -863,6 +868,70 @@ export async function maybeExportDiaryToDropbox(
     const msg = friendlyExportError(e);
     setSetting("dropbox_export_last_error", msg);
     console.warn("[dropbox] diary export failed:", msg);
+    return { ok: false, error: msg };
+  } finally {
+    exportInFlight = false;
+  }
+}
+
+/**
+ * Phase B: file exported subscription-conversations into the vault as
+ * `Conversations/<date>-<slug>.md`, VERBATIM (no summarizing). A dedicated
+ * path (separate from the diary day-file sync) that owns the
+ * render-unfiled → upload → mark-filed cycle, so a re-export or a restart
+ * neither loses nor duplicates a note. Opt-in via `dropbox_export_enabled`
+ * (same gate as the diary export) and best-effort — never throws.
+ */
+export async function maybeExportConversationsToDropbox(): Promise<DiaryExportResult> {
+  if (!dropboxExportEnabled()) return { ok: false, skipped: "disabled" };
+  if (!dropboxConnected()) return { ok: false, skipped: "not-connected" };
+  if (exportInFlight) return { ok: false, skipped: "in-flight" };
+  exportInFlight = true;
+  try {
+    const keys = unfiledConversationKeys();
+    if (keys.length === 0) return { ok: true, written: 0, skipped: "nothing" };
+    const files = renderConversationNoteFiles(true); // unfiled only
+    const folder = dropboxExportFolder();
+    const names = [...files.keys()];
+    let written = 0;
+    let failed = 0;
+    let lastError: unknown = null;
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      try {
+        await uploadTextFile(`${folder}/${name}`, files.get(name) as string);
+        written++;
+      } catch (e) {
+        if (e instanceof DropboxApiError && e.kind === "auth") {
+          const msg = friendlyExportError(e);
+          setSetting("dropbox_export_last_error", msg);
+          console.warn("[dropbox] conversation export aborted (auth):", msg);
+          return { ok: false, written, failed, error: msg };
+        }
+        failed++;
+        lastError = e;
+        console.warn(
+          `[dropbox] conversation export: ${name} failed, continuing:`,
+          (e as Error).message
+        );
+      }
+      if (i < names.length - 1) await new Promise((r) => setTimeout(r, 150));
+    }
+    // Mark filed only on a fully clean run — a failed file re-uploads next time
+    // instead of being silently dropped.
+    if (failed === 0) {
+      markConversationsFiled(keys);
+      clearSetting("dropbox_export_last_error");
+      return { ok: true, written, failed: 0 };
+    }
+    const msg = `${written} saved, ${failed} failed (${friendlyExportError(
+      lastError
+    )}).`;
+    setSetting("dropbox_export_last_error", msg);
+    return { ok: false, written, failed, error: msg };
+  } catch (e) {
+    const msg = friendlyExportError(e);
+    console.warn("[dropbox] conversation export failed:", msg);
     return { ok: false, error: msg };
   } finally {
     exportInFlight = false;

@@ -109,7 +109,10 @@ Companion docs — read in order if any is unfamiliar:
 - **Location:** `location` (GET + POST manual log), `location/settings`, `owntracks` (`?token=` push endpoint).
 - **MCP:** `mcp` (remote MCP endpoint, Streamable HTTP — read-only diary tools
   for Claude on the user's subscription, + three MCP-only companion tools
-  `get_profile`/`recall_memories`/`get_guidance`; bearer auth via `MCP_AUTH_TOKEN`,
+  `get_profile`/`recall_memories`/`get_guidance`, + the ONE opt-in write tool
+  `export_conversation` (`MCP_ALLOW_CONVERSATION_EXPORT=true`; files a full
+  conversation verbatim into the Obsidian vault — Phase B, `lib/conversationWiki.ts`);
+  bearer auth via `MCP_AUTH_TOKEN`,
   fails closed when unset; backed by `lib/mcp.ts`; setup in `docs/mcp-setup.md`)
   + `mcp/oauth/{register,authorize,token,protected-resource,authorization-server}`
   (minimal OAuth 2.1 server so the claude.ai connector can complete its OAuth

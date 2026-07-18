@@ -3,6 +3,10 @@ import { db } from "@/lib/db";
 import { CHAT_TOOLS, executeTool } from "@/lib/chatTools";
 import { getCurrentProfile } from "@/lib/profile";
 import { recallChatMemories } from "@/lib/chatMemory";
+import {
+  saveExportedConversation,
+  MAX_CONVERSATION_CHARS,
+} from "@/lib/conversationWiki";
 import { isValidAccessToken } from "@/lib/mcpOauth";
 
 // MCP bridge: exposes the SAME read-only diary tools the in-app chat uses
@@ -86,6 +90,46 @@ const GUIDANCE_TOOL: McpToolDef = {
     "grounding/anti-confabulation rules the in-app assistant follows. Call this " +
     "once at the start of a conversation.",
   inputSchema: { type: "object", properties: {} },
+};
+
+// MCP-only WRITE tool (Phase B): the ONLY thing on this read-only endpoint that
+// writes. It lets subscription-Claude export a full conversation so the API side
+// can file it, verbatim, into the diary's Obsidian wiki. It is a deliberate,
+// audited, ADD-ONLY exception to the read-only invariant, and it is OFF unless
+// the operator explicitly opts in with MCP_ALLOW_CONVERSATION_EXPORT=true —
+// forgetting config keeps the endpoint fully read-only (fail-safe). See the
+// do-not-regress rule in CLAUDE.md.
+export const EXPORT_TOOL_NAME = "export_conversation";
+
+export function conversationExportEnabled(): boolean {
+  return process.env.MCP_ALLOW_CONVERSATION_EXPORT === "true";
+}
+
+const EXPORT_TOOL: McpToolDef = {
+  name: EXPORT_TOOL_NAME,
+  description:
+    "Save the FULL text of this conversation to the person's diary wiki so they " +
+    "can look back on it later. Pass `content` = the complete conversation " +
+    "transcript verbatim (both sides, in order), an optional `title`, and an " +
+    "optional stable `conversation_id` (re-exporting with the same id updates the " +
+    "same record). Do this at natural end points or when they say something worth " +
+    "keeping. It is stored as-is — do not summarize.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      content: {
+        type: "string",
+        description: "The full conversation transcript, verbatim (required).",
+      },
+      title: { type: "string", description: "Short title for the conversation. Optional." },
+      conversation_id: {
+        type: "string",
+        description:
+          "Stable id for this conversation; re-export with the same id to update it. Optional.",
+      },
+    },
+    required: ["content"],
+  },
 };
 
 // Mirrors the in-app chat's persona contract (lib/claude.ts:staticGuidance),
@@ -173,6 +217,11 @@ export function mcpToolList(): McpToolDef[] {
   if (!excluded.has(PROFILE_TOOL_NAME)) tools.push(PROFILE_TOOL);
   if (!excluded.has(RECALL_TOOL_NAME)) tools.push(RECALL_TOOL);
   if (!excluded.has(GUIDANCE_TOOL_NAME)) tools.push(GUIDANCE_TOOL);
+  // The write tool appears ONLY when explicitly opted in (and not manually
+  // excluded) — default OFF keeps the surface read-only.
+  if (conversationExportEnabled() && !excluded.has(EXPORT_TOOL_NAME)) {
+    tools.push(EXPORT_TOOL);
+  }
   return tools;
 }
 
@@ -184,6 +233,44 @@ export async function callMcpTool(
 ): Promise<string> {
   if (effectiveExcludedToolNames().has(name)) {
     return JSON.stringify({ error: `Tool not available: ${name}` });
+  }
+  if (name === EXPORT_TOOL_NAME) {
+    // The one write on this endpoint — refused unless opted in (fail-safe).
+    if (!conversationExportEnabled()) {
+      return JSON.stringify({ error: `Tool not available: ${name}` });
+    }
+    const a = (args ?? {}) as {
+      content?: unknown;
+      title?: unknown;
+      conversation_id?: unknown;
+    };
+    const content = typeof a.content === "string" ? a.content : "";
+    if (!content.trim()) {
+      return JSON.stringify({ error: "content is required (the full transcript)." });
+    }
+    if (content.length > MAX_CONVERSATION_CHARS) {
+      return JSON.stringify({
+        error: `content too large — ${content.length} chars, max ${MAX_CONVERSATION_CHARS}.`,
+      });
+    }
+    // Add-only: writes exactly one row in mcp_conversations (upsert by id),
+    // never anything else. Then fire the filing job so it lands in the vault
+    // promptly (fire-and-forget with .catch; no-ops if Dropbox export is off).
+    const { key } = saveExportedConversation({
+      content,
+      title: typeof a.title === "string" ? a.title : undefined,
+      conversationId: typeof a.conversation_id === "string" ? a.conversation_id : undefined,
+    });
+    import("@/lib/dropbox")
+      .then((m) => m.maybeExportConversationsToDropbox())
+      .catch((e) =>
+        console.warn("[mcp] conversation filing failed:", (e as Error).message)
+      );
+    return JSON.stringify({
+      ok: true,
+      key,
+      note: "Saved this conversation to your diary wiki.",
+    });
   }
   if (name === PROFILE_TOOL_NAME) {
     const profile = getCurrentProfile();
