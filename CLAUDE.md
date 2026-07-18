@@ -59,6 +59,12 @@ and generate an accumulating record of "insights" about themselves.
   OAuth dance is an httpOnly cookie, not a settings row. In production
   `APP_BASE_URL` is required if Dropbox is configured — we fail closed
   rather than fall back to forwarded headers.
+- Optional subscription-Claude diary access (MCP): set `MCP_AUTH_TOKEN` (16+
+  chars, long random string) to enable the read-only remote MCP endpoint at
+  `/api/mcp` — added to claude.ai as a custom connector and to Claude Code, so
+  the user can chat with their diary on their Claude subscription instead of
+  per-token API billing. Unset = endpoint disabled (fails closed). Setup guide:
+  `docs/mcp-setup.md`.
 - Optional automatic location (OwnTracks): set `OWNTRACKS_TOKEN` to enable the
   `/api/owntracks` ingestion endpoint (the phone app posts there with
   `?token=`). Points are clustered into stays (place + dwell), reverse-geocoded
@@ -102,7 +108,8 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   soft-deleted items don't resurrect), `dropbox_ingest_tombstones` +
   `remarkable_ingest_tombstones` (deleted source ids the Dropbox watcher /
   reMarkable sweep must not re-ingest — see the "do not regress" rule
-  below). Some durable state also lives in
+  below), `mcp_audit` (size-capped log of MCP tool calls + failed auth
+  attempts; see `lib/mcp.ts`). Some durable state also lives in
   `settings` rows, e.g.
   `mind_pca_axes` (persisted PCA mean + PC vectors + axis labels) and the
   `backup_last_*` markers.
@@ -147,6 +154,13 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   user writes about on the same days) via the pure `lib/entityGraph.ts`
   co-occurrence helper — the relationship view behind the Obsidian graph,
   not just a flat ranking.
+- `lib/mcp.ts` — the MCP bridge: `mcpToolList` (derives the MCP tool list from
+  `CHAT_TOOLS` at runtime + the MCP-only `get_profile`, so the two surfaces
+  can never drift), `callMcpTool` (dispatch via `executeTool`), and the
+  fail-closed bearer auth (`checkMcpAuth`, timing-safe, `MIN_TOKEN_LENGTH`).
+  Served by `app/api/mcp/route.ts` (mcp-handler, Streamable HTTP, stateless,
+  SSE disabled) so Claude on the user's subscription (claude.ai custom
+  connector / Claude Code) can query the diary. Read-only by design.
 - `lib/entityGraph.ts` — pure `computeRelatedEntities`: ranks the entities
   that share diary days with a target (undated pages excluded). DB glue +
   effective-date carry-forward live in `lib/chatTools.ts:relatedEntities`.
@@ -275,7 +289,7 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities`,
   `mind/build-wiki`), `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect,export}`,
-  `location`, `owntracks`,
+  `location`, `owntracks`, `mcp` (remote MCP endpoint — see `lib/mcp.ts`),
   `remarkable/{connect,refresh,disconnect,status,import,compare,autosync}`,
   `export` (+ `export/diary` diary-only Markdown,
   `export/book` Opus editor pass), `settings`,
@@ -381,6 +395,37 @@ features need the deployed instance to fully verify.
   `archived_at` (it would delete messages from the user's view mid-chat), do
   NOT drop `ROLL_KEEP_RECENT` below `RAW_HISTORY_WINDOW`, and do NOT drop the
   user-char gate.
+- **The MCP endpoint is read-only and fails closed.** `app/api/mcp/route.ts`
+  exposes the diary to Claude on the user's subscription, guarded ONLY by the
+  `MCP_AUTH_TOKEN` bearer check in `lib/mcp.ts` (the cookie/passkey lock does
+  not apply to it). Invariants: (1) the endpoint is genuinely read-only, not
+  just by convention — `callMcpTool` passes `{ readOnly: true }` to
+  `executeTool`, and any tool with a side effect must honor it (e.g.
+  `get_recent_locations` skips its `warmCurrentLocationGeocode` — a Nominatim
+  call + `geocode_cache` write — under readOnly; `search_diary`'s Voyage
+  query-embed is compute-only, no DB/fs write, and stays). Diary text is OCR'd
+  handwriting and chat is outside our system prompt, so treat every request as
+  hostile and keep the blast radius at "read" — if you add a tool that writes
+  anywhere, gate the write behind `!opts?.readOnly`; (2) never make a
+  missing/short token fall back
+  to "open" — `checkMcpAuth` returns `disabled` (503), and that must stay the
+  no-config behavior; (3) the per-IP brute-force throttle applies to FAILED
+  auth only — a valid token must never be throttled (Claude's connector
+  traffic can share egress IPs with other tenants, so throttling valid
+  requests would let an attacker lock the real user out); (4) every failed
+  attempt and tool call is recorded in `mcp_audit` (size-capped, best-effort —
+  audit writes must never take the endpoint down); (5) the sensitive tools
+  `get_recent_locations` + `search_chat_history` are excluded from the MCP
+  surface BY DEFAULT (`SENSITIVE_TOOL_NAMES`) — location is a timestamped
+  movement schedule, and under claude.ai account takeover that's a
+  physical-safety risk, so forgetting config must fail SAFE. Only
+  `MCP_ALLOW_SENSITIVE_TOOLS=true` exposes them; `MCP_EXCLUDE_TOOLS` can add
+  more exclusions but can NEVER re-include a sensitive tool. Do not weaken
+  this to opt-out. `MCP_AUTH_TOKEN` accepts comma-separated tokens for
+  zero-downtime rotation. The tool list is derived from `CHAT_TOOLS`, so a new
+  chat tool automatically appears on MCP — if you ever add a WRITE chat tool,
+  you must exclude it in `mcpToolList` first (and if it's sensitive, add it to
+  `SENSITIVE_TOOL_NAMES`).
 - **Chat memory recall is fail-open AND embedding-optional.** `chatOverNotes`
   accepts `recalledMemories` as a pre-rendered text block; it lives in the
   dynamic context block (never cached). Recall must never throw — chat must

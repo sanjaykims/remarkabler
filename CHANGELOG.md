@@ -1,5 +1,85 @@
 # Changelog
 
+## 2026-07-15 (MCP endpoint: enforce read-only literally — Codex review fix)
+
+Codex (P2) caught that the blanket auto-mirror of `CHAT_TOOLS` exposed a tool
+with side effects: `get_recent_locations` fires `warmCurrentLocationGeocode`,
+a background Nominatim lookup + `geocode_cache` write — so the endpoint's
+"read-only" promise wasn't strictly true (only reachable under the sensitive
+opt-in, but still a violation). Fixed by threading a `{ readOnly: true }`
+option through `executeTool` (`lib/chatTools.ts`) that side-effecting tools
+honor; `callMcpTool` (`lib/mcp.ts`) always passes it, so the location warm is
+skipped on the MCP path while the in-app chat keeps warming as before.
+`search_diary`'s Voyage query-embed is compute-only (no DB/fs write) and
+stays. New invariant + a test proving the in-app path warms but the MCP path
+does not. 27 MCP tests pass.
+
+## 2026-07-15 (MCP endpoint: sensitive tools fail-safe by default)
+
+War-gamed the worst case — claude.ai **account takeover** — and closed the
+sharpest edge. The MCP connector rides on the user's subscription account, so
+a compromised account can just *ask* for the diary. The most dangerous tool
+there is `get_recent_locations`: it returns a timestamped movement schedule
+(home/work, when the house is empty), turning an informational leak into a
+physical-safety risk. `search_chat_history` similarly exposes raw late-night
+chats.
+
+Both are now **excluded from the MCP surface by default** (`SENSITIVE_TOOL_NAMES`
+in `lib/mcp.ts`), hidden from `tools/list` AND refused on `tools/call`. They
+return only when the operator explicitly opts in with
+`MCP_ALLOW_SENSITIVE_TOOLS=true` — so forgetting a setting fails SAFE, matching
+the token's own fail-closed philosophy. `MCP_EXCLUDE_TOOLS` can add more
+exclusions but can never re-include a sensitive tool; the allow flag is the
+only door. The in-app chat is unaffected — it still uses both tools fully;
+only the subscription connector hides them. New "do not regress" invariant
+(5). Tests: 6 new (default-hidden list + refused call, opt-in exposes +
+executes, `"true"`-only gate, `MCP_EXCLUDE_TOOLS` composition).
+
+## 2026-07-15 (MCP endpoint: security hardening)
+
+Four layers on top of the bearer check, all fail-safe:
+
+- **Brute-force throttle** — per-IP sliding window (10 failures / 10 min);
+  once tripped, invalid attempts get 429. Deliberately failure-only: a valid
+  token is NEVER throttled, so failed-attempt spam from a shared egress IP
+  (Claude's connector proxy) can't lock the real user out.
+- **Audit trail** — new size-capped `mcp_audit` table records every tool call
+  (with tool name), handshake, failed attempt, and throttled hit, best-effort
+  (an audit failure never takes the endpoint down). Failed attempts also log
+  to console for Railway's log view.
+- **Zero-downtime token rotation** — `MCP_AUTH_TOKEN` accepts comma-separated
+  tokens; entries under 16 chars are ignored (all-short = disabled).
+- **Scope control** — `MCP_EXCLUDE_TOOLS` removes tools from the MCP surface
+  (filtered from tools/list AND refused on tools/call).
+
+Tests: 8 new (rotation matrix, throttle window + aging, valid-token-bypasses-
+throttle at the route level, audit rows, exclusion, client IP parsing).
+
+## 2026-07-15 (MCP endpoint: chat with the diary on the Claude subscription)
+
+Deep-research-verified path to zero-per-token diary chat: Remarkabler now
+serves a **remote MCP endpoint** at `/api/mcp` (Streamable HTTP, stateless,
+SSE disabled) exposing the in-app chat's read-only tools — `search_diary`,
+dates/summaries, entities, locations, insights — plus an MCP-only
+`get_profile` tool so external Claude can ground itself the way the in-app
+chat does. Add it to claude.ai as a **custom connector** (Settings →
+Connectors, `Authorization: Bearer <MCP_AUTH_TOKEN>` request header — OAuth
+not required) and it propagates automatically to Claude Code (CLI + web
+sessions), so one registration covers both. Chat about the diary then bills
+to the Claude subscription, not the pay-per-token API; the in-app chat is
+unchanged.
+
+Design notes: the MCP tool list is **derived from `CHAT_TOOLS` at runtime**
+(zero drift — a new chat tool automatically appears on MCP), dispatch reuses
+`executeTool`, and auth is a fail-closed, timing-safe bearer check
+(`MCP_AUTH_TOKEN` unset or <16 chars → endpoint disabled with 503, never
+open). Built on `mcp-handler` + `@modelcontextprotocol/sdk`, registered via
+raw `setRequestHandler` so the existing JSON schemas pass through verbatim.
+New "do not regress" rule: the endpoint stays read-only and fail-closed.
+Tests cover the tool mirror, the auth matrix, and a full MCP protocol round
+trip (initialize → tools/list → tools/call) through the real route handler.
+Setup guide (phone-friendly): `docs/mcp-setup.md`.
+
 ## 2026-07-15 (chat: widen the live window to fully close the gap)
 
 Follow-up to the rolling-memory tuning: rather than just shrinking the
