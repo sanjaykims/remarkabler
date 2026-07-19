@@ -26,7 +26,12 @@ export async function POST() {
         const { maybeExportDiaryToDropbox } = (await import(
           "@/lib/dropbox"
         )) as { maybeExportDiaryToDropbox: () => Promise<unknown> };
-        void maybeExportDiaryToDropbox();
+        // The outer try/catch only guards the synchronous dynamic import —
+        // .catch() below is what guards the returned promise, so an async
+        // failure here can't become an unhandled rejection.
+        void maybeExportDiaryToDropbox().catch((e) =>
+          console.warn("[mind/reparse-dates] dropbox export failed:", (e as Error).message)
+        );
       } catch {
         // best-effort — never fail the reparse because of the export
       }

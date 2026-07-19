@@ -26,7 +26,13 @@ export async function POST() {
         const stubPaths = result.entities.map((e) =>
           entityStubRelPathForName(e.kind, e.name)
         );
-        void maybeExportDiaryToDropbox({ onlyEntityStubs: stubPaths });
+        // The outer try/catch only guards the synchronous setup above —
+        // .catch() below is what guards the returned promise, so an async
+        // failure here can't become an unhandled rejection.
+        void maybeExportDiaryToDropbox({ onlyEntityStubs: stubPaths }).catch(
+          (e) =>
+            console.warn("[mind/build-wiki] dropbox export failed:", (e as Error).message)
+        );
       } catch {
         // best-effort — never fail the build because of the export
       }

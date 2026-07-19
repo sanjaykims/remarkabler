@@ -78,14 +78,19 @@ export async function PATCH(
   }
 
   // Push the corrected day file to the Obsidian/Dropbox export (best-effort,
-  // no-op unless the export is enabled + connected).
+  // no-op unless the export is enabled + connected). The outer try/catch only
+  // guards the synchronous dynamic import — .catch() below is what guards the
+  // returned promise, so an async failure here can't become an unhandled
+  // rejection.
   try {
     const { maybeExportDiaryToDropbox } = (await import("@/lib/dropbox")) as {
       maybeExportDiaryToDropbox: (opts?: {
         notebookId?: string;
       }) => Promise<unknown>;
     };
-    void maybeExportDiaryToDropbox({ notebookId: id });
+    void maybeExportDiaryToDropbox({ notebookId: id }).catch((e) =>
+      console.warn("[notebooks/pages] dropbox export failed:", (e as Error).message)
+    );
   } catch {
     // best-effort
   }

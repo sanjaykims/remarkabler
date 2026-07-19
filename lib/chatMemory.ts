@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { compressChatSession, modelChatMemory } from "./claude";
+import { compressChatSession } from "./claude";
 import type { ChatMemoryDraft } from "./claude";
 import {
   embed,

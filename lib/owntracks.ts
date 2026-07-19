@@ -17,9 +17,12 @@ export function owntracksConfigured(): boolean {
 export function checkOwntracksToken(token: string | null): boolean {
   const expected = process.env.OWNTRACKS_TOKEN || "";
   if (!expected || !token) return false;
-  const a = Buffer.from(token);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  // Hash both sides first so the timing-safe compare always runs on
+  // fixed-length digests — comparing raw buffer lengths first would leak
+  // the expected token's length via response timing.
+  const a = crypto.createHash("sha256").update(token).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
+  return crypto.timingSafeEqual(a, b);
 }
 
 export function addPoint(p: {

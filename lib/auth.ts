@@ -111,9 +111,11 @@ export function isAuthenticated(): boolean {
 export function checkPasscode(input: string): boolean {
   const expected = process.env.APP_PASSCODE || "";
   if (!expected || !input) return false;
-  const a = Buffer.from(input);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
+  // Hash both sides first so the timing-safe compare always runs on
+  // fixed-length digests — comparing raw buffer lengths first would leak
+  // the expected passcode's length via response timing.
+  const a = crypto.createHash("sha256").update(input).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
   return crypto.timingSafeEqual(a, b);
 }
 
