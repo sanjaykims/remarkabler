@@ -9,7 +9,11 @@ import {
   decodeEmbedding,
   encodeEmbedding,
 } from "@/lib/embeddings";
-import { DISCIPLINE_ID, disciplineExcludeIdForMind } from "@/lib/notes";
+import {
+  DISCIPLINE_ID,
+  disciplineExcludeIdForMind,
+  nonDiaryNotebookExcludeIdsForMind,
+} from "@/lib/notes";
 import { applyEntityAlias } from "@/lib/entityMerge";
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -94,7 +98,13 @@ function disciplineNotebookId(): string {
   return DISCIPLINE_ID;
 }
 
-function pendingPagesSql(excludeId: string, limit: number) {
+// Excludes BOTH the discipline notebook and the mcp-conversations synthetic
+// notebook (lib/conversationEntities.ts) — the latter's synthetic pages carry
+// a real, non-empty ocr_text (unlike discipline's) so without this they'd
+// get "analyzed" by Claude, wasting tokens on a placeholder AND transitively
+// polluting getThemes/getSentimentSeries/getEmbeddingMap (all keyed off the
+// entry_analysis rows this backfill produces).
+function pendingPagesSql(excludeIds: [string, string], limit: number) {
   return {
     sql: `SELECT p.id, p.ocr_text
             FROM pages p
@@ -102,10 +112,10 @@ function pendingPagesSql(excludeId: string, limit: number) {
             WHERE p.ocr_text IS NOT NULL
               AND p.ocr_text != ''
               AND a.page_id IS NULL
-              AND p.notebook_id != ?
+              AND p.notebook_id NOT IN (?, ?)
             ORDER BY p.entry_date IS NULL ASC, p.entry_date DESC, p.id DESC
             LIMIT ?`,
-    params: [excludeId, limit] as Array<string | number>,
+    params: [...excludeIds, limit] as Array<string | number>,
   };
 }
 
@@ -118,9 +128,9 @@ export function countPending(): number {
          WHERE p.ocr_text IS NOT NULL
            AND p.ocr_text != ''
            AND a.page_id IS NULL
-           AND p.notebook_id != ?`
+           AND p.notebook_id NOT IN (?, ?)`
     )
-    .get(disciplineNotebookId()) as { c: number };
+    .get(...nonDiaryNotebookExcludeIdsForMind()) as { c: number };
   return row.c;
 }
 
@@ -197,7 +207,7 @@ export async function analyzePending(
   analyzePendingInFlight = true;
   try {
     const n = Math.max(1, Math.min(ANALYZE_MAX_LIMIT, Math.floor(limit)));
-    const { sql, params } = pendingPagesSql(disciplineNotebookId(), n);
+    const { sql, params } = pendingPagesSql(nonDiaryNotebookExcludeIdsForMind(), n);
     const rows = db().prepare(sql).all(...params) as Array<{
       id: string;
       ocr_text: string;
@@ -332,6 +342,10 @@ const EFFECTIVE_DATE_SQL = `
   )`;
 
 export function getHeatmap(): HeatmapBucket[] {
+  // Unlike discipline (which never has an entry_date), the mcp-conversations
+  // synthetic notebook's pages DO carry one — so this needs an explicit
+  // exclusion it never previously needed, or conversation exports would show
+  // up as writing volume on the diary heatmap.
   return db()
     .prepare(
       `SELECT ${EFFECTIVE_DATE_SQL} AS date,
@@ -341,10 +355,11 @@ export function getHeatmap(): HeatmapBucket[] {
          JOIN notebooks n ON n.id = p.notebook_id
          WHERE p.ocr_text IS NOT NULL AND p.ocr_text != ''
            AND ${EFFECTIVE_DATE_SQL} IS NOT NULL
+           AND p.notebook_id NOT IN (?, ?)
          GROUP BY ${EFFECTIVE_DATE_SQL}
          ORDER BY date ASC`
     )
-    .all() as HeatmapBucket[];
+    .all(...nonDiaryNotebookExcludeIdsForMind()) as HeatmapBucket[];
 }
 
 export type ThemeBucket = {
@@ -576,11 +591,11 @@ export function getEmbeddingMap(limit: number = 500): MapPoint[] {
   // tooltip has something to show. The map is informative without analysis,
   // so we LEFT JOIN and just hide themes/summary when missing.
   //
-  // The discipline notebook (synced GitHub content) is excluded — exactly as
-  // it is in getThemes / getSentimentSeries / generateAxisLabels — so the map
-  // shows "your mind", and crucially so the map's point set matches the point
-  // set the axis labels were derived from. Without this filter the dots would
-  // include synced content the labels never saw.
+  // The discipline notebook (synced GitHub content) AND the mcp-conversations
+  // synthetic notebook are excluded — exactly as in getThemes / getSentimentSeries
+  // / generateAxisLabels — so the map shows "your mind", and crucially so the
+  // map's point set matches the point set the axis labels were derived from.
+  // Without this filter the dots would include content the labels never saw.
   const rows = db()
     .prepare(
       `SELECT p.id          AS page_id,
@@ -597,11 +612,14 @@ export function getEmbeddingMap(limit: number = 500): MapPoint[] {
          LEFT JOIN entry_analysis a ON a.page_id = p.id
          WHERE p.embedding IS NOT NULL
            AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
-           AND p.notebook_id != ?
+           AND p.notebook_id NOT IN (?, ?)
          ORDER BY p.entry_date IS NULL ASC, p.entry_date DESC, p.id DESC
          LIMIT ?`
     )
-    .all(disciplineNotebookId(), Math.max(1, Math.min(2000, limit))) as Array<{
+    .all(
+      ...nonDiaryNotebookExcludeIdsForMind(),
+      Math.max(1, Math.min(2000, limit))
+    ) as Array<{
     page_id: string;
     embedding: Buffer;
     entry_date: string | null;
@@ -735,9 +753,9 @@ export async function generateAxisLabels(): Promise<
            LEFT JOIN entry_analysis a ON a.page_id = p.id
            WHERE p.embedding IS NOT NULL
              AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
-             AND p.notebook_id != ?`
+             AND p.notebook_id NOT IN (?, ?)`
       )
-      .all(DISCIPLINE_ID) as Array<{
+      .all(...nonDiaryNotebookExcludeIdsForMind()) as Array<{
       page_id: string;
       embedding: Buffer;
       themes: string | null;

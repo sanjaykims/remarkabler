@@ -35,7 +35,9 @@ export function sanitizeFileName(s: string): string {
 }
 
 // "YYYY-MM-DD" from a sqlite datetime ("YYYY-MM-DD HH:MM:SS") or ISO string.
-function dateKey(createdAt: string): string {
+// Exported for lib/conversationEntities.ts, which needs the same day-key
+// logic for the synthetic conversation page's entry_date.
+export function dateKey(createdAt: string): string {
   const m = String(createdAt).match(/^(\d{4}-\d{2}-\d{2})/);
   return m ? m[1] : "undated";
 }
@@ -157,4 +159,49 @@ export function unfiledConversationKeys(): string[] {
       .prepare(`SELECT conversation_key FROM mcp_conversations WHERE filed_at IS NULL`)
       .all() as Array<{ conversation_key: string }>
   ).map((r) => r.conversation_key);
+}
+
+// --- Entity-linking status (the librarian agent's own progress marker) ---
+// Distinct from filed_at (Dropbox filing status): a conversation can be
+// filed long before it's linked, and re-filing a growing conversation (which
+// clears filed_at, see saveExportedConversation) must not force re-linking.
+
+export type UnlinkedConversation = {
+  conversation_key: string;
+  title: string | null;
+  created_at: string;
+};
+
+export function listUnlinkedConversations(limit = 20): UnlinkedConversation[] {
+  return db()
+    .prepare(
+      `SELECT conversation_key, title, created_at FROM mcp_conversations
+       WHERE linked_at IS NULL
+       ORDER BY created_at ASC
+       LIMIT ?`
+    )
+    .all(limit) as UnlinkedConversation[];
+}
+
+export function markConversationsLinked(keys: string[]): void {
+  if (keys.length === 0) return;
+  const placeholders = keys.map(() => "?").join(",");
+  db()
+    .prepare(
+      `UPDATE mcp_conversations SET linked_at = datetime('now') WHERE conversation_key IN (${placeholders})`
+    )
+    .run(...keys);
+}
+
+export function getConversationByKey(
+  conversationKey: string
+): ExportedConversationRow | null {
+  return (
+    (db()
+      .prepare(
+        `SELECT conversation_key, title, content, created_at FROM mcp_conversations
+         WHERE conversation_key = ?`
+      )
+      .get(conversationKey) as ExportedConversationRow | undefined) ?? null
+  );
 }

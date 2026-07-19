@@ -492,4 +492,46 @@ describe("buildEntityStubFiles", () => {
     expect(jin).toContain("## Mentions");
     expect(jin).toContain("- [[2026-06-19]]");
   });
+
+  it("renders a 'Recent conversations' section when conversationNotes is present", () => {
+    const files = buildEntityStubFiles({
+      stubs: [stub({ conversationNotes: "Talked about Jin's new job." })],
+      exportedAt: "x",
+    });
+    const jin = files.get("People/Jin.md") as string;
+    expect(jin).toContain("## Recent conversations");
+    expect(jin).toContain("Talked about Jin's new job.");
+    // Comes after the diary bio (absent here) and before Mentions.
+    expect(jin.indexOf("## Recent conversations")).toBeLessThan(jin.indexOf("## Mentions"));
+  });
+
+  it("renders identically to before when conversationNotes is absent/empty (additive only)", () => {
+    const withUndefined = buildEntityStubFiles({ stubs: [stub({})], exportedAt: "x" }).get(
+      "People/Jin.md"
+    );
+    const withEmpty = buildEntityStubFiles({
+      stubs: [stub({ conversationNotes: "" })],
+      exportedAt: "x",
+    }).get("People/Jin.md");
+    expect(withUndefined).not.toContain("## Recent conversations");
+    expect(withEmpty).not.toContain("## Recent conversations");
+    expect(withEmpty).toBe(withUndefined);
+  });
+
+  it("a conversation-only entity (zero days) skips Mentions and says so", () => {
+    const files = buildEntityStubFiles({
+      stubs: [
+        stub({
+          dates: [],
+          undated: false,
+          conversationNotes: "Only ever discussed in chat so far.",
+        }),
+      ],
+      exportedAt: "x",
+    });
+    const jin = files.get("People/Jin.md") as string;
+    expect(jin).toContain("mentioned only in conversations so far");
+    expect(jin).not.toContain("## Mentions");
+    expect(jin).toContain("## Recent conversations");
+  });
 });

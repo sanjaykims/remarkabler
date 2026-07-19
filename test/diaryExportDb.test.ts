@@ -32,6 +32,7 @@ beforeEach(() => {
   d.prepare(`DELETE FROM entry_entities`).run();
   d.prepare(`DELETE FROM entry_analysis`).run();
   d.prepare(`DELETE FROM entity_wiki`).run();
+  d.prepare(`DELETE FROM entity_conversation_notes`).run();
   d.prepare(`DELETE FROM pages`).run();
   d.prepare(`DELETE FROM notebooks`).run();
 });
@@ -163,6 +164,27 @@ describe("renderDiaryMarkdown", () => {
     expect(md).toContain("pages: 0");
     expect(md).toContain("_No transcribed diary pages yet._");
   });
+
+  it("excludes the mcp-conversations synthetic notebook (Phase C)", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    addPage("nb1", 0, "real diary entry", "2026-06-19");
+    addNotebook(
+      notesMod.CONVERSATIONS_NOTEBOOK_ID,
+      "Conversations (subscription Claude)",
+      "2026-06-20 00:00:00"
+    );
+    addPage(
+      notesMod.CONVERSATIONS_NOTEBOOK_ID,
+      0,
+      "[Conversation] Trip planning",
+      "2026-06-20"
+    );
+
+    const md = exportMod.renderDiaryMarkdown();
+    expect(md).toContain("real diary entry");
+    expect(md).not.toContain("[Conversation]");
+    expect(md).toContain("pages: 1");
+  });
 });
 
 describe("renderDiaryDayFiles", () => {
@@ -214,6 +236,18 @@ describe("affectedDayFileNames", () => {
     addNotebook(notesMod.DISCIPLINE_ID, "Discipline", "2026-06-21 00:00:00");
     addPage(notesMod.DISCIPLINE_ID, 0, "repo", "none");
     expect(exportMod.affectedDayFileNames(notesMod.DISCIPLINE_ID)).toEqual([]);
+  });
+
+  it("returns [] for the mcp-conversations notebook (Phase C — it gets its own note, not a day file)", () => {
+    addNotebook(
+      notesMod.CONVERSATIONS_NOTEBOOK_ID,
+      "Conversations (subscription Claude)",
+      "2026-06-21 00:00:00"
+    );
+    addPage(notesMod.CONVERSATIONS_NOTEBOOK_ID, 0, "[Conversation] X", "2026-06-21");
+    expect(
+      exportMod.affectedDayFileNames(notesMod.CONVERSATIONS_NOTEBOOK_ID)
+    ).toEqual([]);
   });
 });
 
@@ -335,6 +369,74 @@ describe("renderEntityStubFiles", () => {
     // ...and the stub's basename matches it exactly, so the link resolves.
     expect(stubFiles.has("People/Dr Kim MD.md")).toBe(true);
   });
+
+  it("INCLUDES entities tagged only via the mcp-conversations notebook (Phase C — deliberate, unlike discipline)", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "real", "2026-06-19");
+    addEntity(p0, "person", "Jin", "jin");
+    addNotebook(
+      notesMod.CONVERSATIONS_NOTEBOOK_ID,
+      "Conversations (subscription Claude)",
+      "2026-06-20 00:00:00"
+    );
+    const cp = addPage(
+      notesMod.CONVERSATIONS_NOTEBOOK_ID,
+      0,
+      "[Conversation] X",
+      "2026-06-20"
+    );
+    addEntity(cp, "person", "Suwon Friend", "suwon friend");
+
+    const files = exportMod.renderEntityStubFiles();
+    expect(files.has("People/Jin.md")).toBe(true);
+    // Unlike discipline, the conversations notebook is NOT excluded here.
+    expect(files.has("People/Suwon Friend.md")).toBe(true);
+  });
+
+  it("gives a conversation-only entity (no diary mention at all) a real stub page", () => {
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entity_conversation_notes(kind, name_norm, name, notes)
+         VALUES('person', 'chat only friend', 'Chat Only Friend', 'Came up while discussing weekend plans.')`
+      )
+      .run();
+
+    const files = exportMod.renderEntityStubFiles();
+    const stub = files.get("People/Chat Only Friend.md") as string;
+    expect(stub).toBeDefined();
+    expect(stub).toContain("mentioned only in conversations so far");
+    expect(stub).toContain("Came up while discussing weekend plans.");
+    expect(stub).not.toContain("## Mentions");
+  });
+
+  it("attaches a librarian conversation-notes section without disturbing the diary-written summary", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "entry", "2026-06-19");
+    addEntity(p0, "person", "Kim", "kim");
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entity_wiki(kind, name_norm, name, summary, source_hash)
+         VALUES('person','kim','Kim','Kim is the author''s mentor.','h1')`
+      )
+      .run();
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entity_conversation_notes(kind, name_norm, name, notes)
+         VALUES('person', 'kim', 'Kim', 'Recently talked about a new project.')`
+      )
+      .run();
+
+    const files = exportMod.renderEntityStubFiles();
+    const kim = files.get("People/Kim.md") as string;
+    expect(kim).toContain("Kim is the author's mentor.");
+    expect(kim).toContain("## Recent conversations");
+    expect(kim).toContain("Recently talked about a new project.");
+    expect(kim.indexOf("mentor")).toBeLessThan(kim.indexOf("## Recent conversations"));
+    expect(kim.indexOf("## Recent conversations")).toBeLessThan(kim.indexOf("## Mentions"));
+  });
 });
 
 describe("affectedEntityStubFileNames", () => {
@@ -368,5 +470,23 @@ describe("affectedEntityStubFileNames", () => {
     expect(exportMod.affectedEntityStubFileNames(notesMod.DISCIPLINE_ID)).toEqual(
       []
     );
+  });
+
+  it("INCLUDES the mcp-conversations notebook (Phase C — its stubs should still refresh)", () => {
+    addNotebook(
+      notesMod.CONVERSATIONS_NOTEBOOK_ID,
+      "Conversations (subscription Claude)",
+      "2026-06-21 00:00:00"
+    );
+    const cp = addPage(
+      notesMod.CONVERSATIONS_NOTEBOOK_ID,
+      0,
+      "[Conversation] X",
+      "2026-06-21"
+    );
+    addEntity(cp, "person", "Suwon Friend", "suwon friend");
+    expect(
+      exportMod.affectedEntityStubFileNames(notesMod.CONVERSATIONS_NOTEBOOK_ID)
+    ).toEqual(["People/Suwon Friend.md"]);
   });
 });

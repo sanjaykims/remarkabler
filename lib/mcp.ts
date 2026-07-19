@@ -5,8 +5,18 @@ import { getCurrentProfile } from "@/lib/profile";
 import { recallChatMemories } from "@/lib/chatMemory";
 import {
   saveExportedConversation,
+  getConversationByKey,
+  listUnlinkedConversations,
   MAX_CONVERSATION_CHARS,
 } from "@/lib/conversationWiki";
+import {
+  wikiLinkingEnabled,
+  tagConversationEntities,
+  updateConversationNotes,
+  recordLibrarianHeartbeat,
+  getCombinedEntityWiki,
+  MAX_ENTITY_NOTES_CHARS,
+} from "@/lib/conversationEntities";
 import { isValidAccessToken } from "@/lib/mcpOauth";
 
 // MCP bridge: exposes the SAME read-only diary tools the in-app chat uses
@@ -132,6 +142,138 @@ const EXPORT_TOOL: McpToolDef = {
   },
 };
 
+// MCP-only WRITE + READ tools (Phase C): the "librarian" surface. A recurring,
+// subscription-billed Claude Code agent (not this app's own ANTHROPIC_API_KEY)
+// links exported conversations into the diary's entity graph/wiki — tagging
+// who/what a conversation mentions, and keeping its own notes about an entity
+// SEPARATE from the in-app Claude-composed diary bio (entity_wiki.summary), so
+// the two authors can never clobber each other (see lib/conversationEntities.ts).
+// All six gate behind ONE flag: OFF by default keeps the endpoint exactly as
+// read-only/private as before this feature existed — including the read-back
+// tool, since it exposes full conversation content the endpoint could not
+// previously return. Same discipline as export_conversation throughout: the
+// agent decides content, this code decides destination — every write below
+// resolves its own target deterministically, never from an agent-supplied
+// id/path.
+export function librarianToolsEnabled(): boolean {
+  return wikiLinkingEnabled();
+}
+
+export const LIST_UNLINKED_TOOL_NAME = "list_unlinked_conversations";
+const LIST_UNLINKED_TOOL: McpToolDef = {
+  name: LIST_UNLINKED_TOOL_NAME,
+  description:
+    "List exported conversations that haven't been entity-tagged yet (oldest " +
+    "first). Returns conversation_key, title, and created_at for each — use " +
+    "get_conversation to read one's full text before tagging it.",
+  inputSchema: { type: "object", properties: {} },
+};
+
+export const GET_CONVERSATION_TOOL_NAME = "get_conversation";
+const GET_CONVERSATION_TOOL: McpToolDef = {
+  name: GET_CONVERSATION_TOOL_NAME,
+  description:
+    "Read back the full verbatim text of a conversation previously saved with " +
+    "export_conversation, so you can decide what it mentions. Only returns " +
+    "content already exported and filed into the person's own vault.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      conversation_key: {
+        type: "string",
+        description: "The conversation_key returned by export_conversation.",
+      },
+    },
+    required: ["conversation_key"],
+  },
+};
+
+export const GET_ENTITY_WIKI_TOOL_NAME = "get_entity_wiki";
+const GET_ENTITY_WIKI_TOOL: McpToolDef = {
+  name: GET_ENTITY_WIKI_TOOL_NAME,
+  description:
+    "Look up what's already recorded about a person/place/project before you " +
+    "add to it — the in-app diary-written bio AND your own prior conversation " +
+    "notes for that same entity. Call this before update_entity_conversation_notes " +
+    "so you append/revise instead of duplicating what's already there.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      kind: { type: "string", enum: ["person", "place", "project"] },
+      name: { type: "string", description: "The entity's name." },
+    },
+    required: ["kind", "name"],
+  },
+};
+
+export const TAG_ENTITIES_TOOL_NAME = "tag_conversation_entities";
+const TAG_ENTITIES_TOOL: McpToolDef = {
+  name: TAG_ENTITIES_TOOL_NAME,
+  description:
+    "Record which people/places/projects a conversation mentions, so they " +
+    "surface in the diary's entity graph and rankings alongside diary mentions. " +
+    "Pass the conversation_key from export_conversation and the entities you " +
+    "found (kind + name each, up to 30). An empty entities list is a valid, " +
+    "completing call if you decided nothing was worth tagging — it still marks " +
+    "the conversation as reviewed.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      conversation_key: { type: "string" },
+      entities: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            kind: { type: "string", enum: ["person", "place", "project"] },
+            name: { type: "string" },
+          },
+          required: ["kind", "name"],
+        },
+        description: "Up to 30 {kind, name} pairs. Can be empty.",
+      },
+    },
+    required: ["conversation_key", "entities"],
+  },
+};
+
+export const UPDATE_NOTES_TOOL_NAME = "update_entity_conversation_notes";
+const UPDATE_NOTES_TOOL: McpToolDef = {
+  name: UPDATE_NOTES_TOOL_NAME,
+  description:
+    "Write your own notes about a person/place/project, based on what's come " +
+    "up in conversation — kept separate from the diary's own bio, shown as a " +
+    "'Recent conversations' section on that entity's page. Full-text replace: " +
+    "call get_entity_wiki first and include what's still worth keeping, don't " +
+    `assume it's appended for you. Notes are capped at ${MAX_ENTITY_NOTES_CHARS} characters.`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      kind: { type: "string", enum: ["person", "place", "project"] },
+      name: { type: "string" },
+      notes: { type: "string" },
+    },
+    required: ["kind", "name", "notes"],
+  },
+};
+
+export const HEARTBEAT_TOOL_NAME = "record_librarian_heartbeat";
+const HEARTBEAT_TOOL: McpToolDef = {
+  name: HEARTBEAT_TOOL_NAME,
+  description:
+    "Call this LAST, every run, even if there was nothing to do — it's how the " +
+    "person can tell you're still running on schedule. ok defaults to true; " +
+    "pass ok:false and error if something failed partway through.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ok: { type: "boolean", description: "Defaults to true." },
+      note: { type: "string", description: "Short summary of what you did. Optional." },
+      error: { type: "string", description: "What went wrong, if ok is false." },
+    },
+  },
+};
+
 // Mirrors the in-app chat's persona contract (lib/claude.ts:staticGuidance),
 // adapted for an external Claude that pulls context via tools instead of having
 // it injected. Kept as advisory text — the model may or may not follow it.
@@ -222,6 +364,21 @@ export function mcpToolList(): McpToolDef[] {
   if (conversationExportEnabled() && !excluded.has(EXPORT_TOOL_NAME)) {
     tools.push(EXPORT_TOOL);
   }
+  // The librarian tools (Phase C) — all six gate behind one flag, including
+  // the reads, since get_conversation exposes full conversation content the
+  // endpoint could not previously return at all.
+  if (librarianToolsEnabled()) {
+    for (const [toolName, tool] of [
+      [LIST_UNLINKED_TOOL_NAME, LIST_UNLINKED_TOOL],
+      [GET_CONVERSATION_TOOL_NAME, GET_CONVERSATION_TOOL],
+      [GET_ENTITY_WIKI_TOOL_NAME, GET_ENTITY_WIKI_TOOL],
+      [TAG_ENTITIES_TOOL_NAME, TAG_ENTITIES_TOOL],
+      [UPDATE_NOTES_TOOL_NAME, UPDATE_NOTES_TOOL],
+      [HEARTBEAT_TOOL_NAME, HEARTBEAT_TOOL],
+    ] as const) {
+      if (!excluded.has(toolName)) tools.push(tool);
+    }
+  }
   return tools;
 }
 
@@ -271,6 +428,79 @@ export async function callMcpTool(
       key,
       note: "Saved this conversation to your diary wiki.",
     });
+  }
+  const librarianToolNames: string[] = [
+    LIST_UNLINKED_TOOL_NAME,
+    GET_CONVERSATION_TOOL_NAME,
+    GET_ENTITY_WIKI_TOOL_NAME,
+    TAG_ENTITIES_TOOL_NAME,
+    UPDATE_NOTES_TOOL_NAME,
+    HEARTBEAT_TOOL_NAME,
+  ];
+  if (librarianToolNames.includes(name)) {
+    if (!librarianToolsEnabled()) {
+      return JSON.stringify({ error: `Tool not available: ${name}` });
+    }
+    const a = (args ?? {}) as Record<string, unknown>;
+    if (name === LIST_UNLINKED_TOOL_NAME) {
+      const items = listUnlinkedConversations();
+      return JSON.stringify(
+        items.length > 0
+          ? { conversations: items }
+          : { conversations: [], note: "Nothing unlinked — everything exported so far has been tagged." }
+      );
+    }
+    if (name === GET_CONVERSATION_TOOL_NAME) {
+      const key = typeof a.conversation_key === "string" ? a.conversation_key : "";
+      if (!key) return JSON.stringify({ error: "conversation_key is required." });
+      const convo = getConversationByKey(key);
+      if (!convo) {
+        return JSON.stringify({ error: `Unknown conversation_key: ${key}` });
+      }
+      return JSON.stringify({ conversation: convo });
+    }
+    if (name === GET_ENTITY_WIKI_TOOL_NAME) {
+      const kind = typeof a.kind === "string" ? a.kind.trim().toLowerCase() : "";
+      const entityName = typeof a.name === "string" ? a.name.trim() : "";
+      if (!["person", "place", "project"].includes(kind) || !entityName) {
+        return JSON.stringify({ error: "kind (person|place|project) and name are required." });
+      }
+      return JSON.stringify(getCombinedEntityWiki(kind, entityName));
+    }
+    if (name === TAG_ENTITIES_TOOL_NAME) {
+      const conversationKey =
+        typeof a.conversation_key === "string" ? a.conversation_key : "";
+      if (!conversationKey) {
+        return JSON.stringify({ error: "conversation_key is required." });
+      }
+      const entities = Array.isArray(a.entities)
+        ? (a.entities as Array<{ kind?: unknown; name?: unknown }>).map((e) => ({
+            kind: typeof e?.kind === "string" ? e.kind : "",
+            name: typeof e?.name === "string" ? e.name : "",
+          }))
+        : [];
+      return JSON.stringify(
+        tagConversationEntities({ conversationKey, entities })
+      );
+    }
+    if (name === UPDATE_NOTES_TOOL_NAME) {
+      return JSON.stringify(
+        updateConversationNotes({
+          kind: typeof a.kind === "string" ? a.kind : "",
+          name: typeof a.name === "string" ? a.name : "",
+          notes: typeof a.notes === "string" ? a.notes : "",
+        })
+      );
+    }
+    if (name === HEARTBEAT_TOOL_NAME) {
+      return JSON.stringify(
+        recordLibrarianHeartbeat({
+          ok: typeof a.ok === "boolean" ? a.ok : undefined,
+          note: typeof a.note === "string" ? a.note : undefined,
+          error: typeof a.error === "string" ? a.error : undefined,
+        })
+      );
+    }
   }
   if (name === PROFILE_TOOL_NAME) {
     const profile = getCurrentProfile();

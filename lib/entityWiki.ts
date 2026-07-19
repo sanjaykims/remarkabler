@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { db, getSetting, setSetting } from "./db";
-import { DISCIPLINE_ID } from "./notes";
+import { DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID } from "./notes";
 import { composeEntityWiki, type EntityWikiExcerpt } from "./claude";
 
 // The "life wiki": a Claude-written profile per entity (kind, name_norm),
@@ -23,21 +23,26 @@ const PER_PAGE_CHARS = 1500; // per-mention cap sent to Claude
 const MAX_INPUT_CHARS = 60000; // ~20K tokens of history per profile
 const AUTO_SETTING = "entity_wiki_auto"; // "1" once the user builds the wiki
 
-// One (kind, name_norm) → its canonical display name, discipline excluded.
+// One (kind, name_norm) → its canonical display name, discipline AND
+// mcp-conversations excluded — this feeds the in-app Claude-composed diary
+// bio (entity_wiki.summary), which must stay diary-only so it never fights
+// the librarian agent's separate entity_conversation_notes writes (see
+// lib/conversationEntities.ts).
 function candidates(kind: Kind): Array<{ norm: string; name: string }> {
   return db()
     .prepare(
       `SELECT e.name_norm AS norm, MIN(e.name) AS name
        FROM entry_entities e JOIN pages p ON p.id = e.page_id
-       WHERE e.kind = ? AND p.notebook_id != ?
+       WHERE e.kind = ? AND p.notebook_id NOT IN (?, ?)
        GROUP BY e.name_norm
        ORDER BY COUNT(DISTINCT e.page_id) DESC, name ASC`
     )
-    .all(kind, DISCIPLINE_ID) as Array<{ norm: string; name: string }>;
+    .all(kind, DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID) as Array<{ norm: string; name: string }>;
 }
 
 // ALL mentioning pages for one entity, in CHRONOLOGICAL order (oldest first,
-// undated last), discipline excluded — the entity's whole diary history.
+// undated last), discipline AND mcp-conversations excluded — the entity's
+// whole DIARY history, same ownership-separation reasoning as candidates().
 function mentions(
   kind: Kind,
   norm: string
@@ -46,12 +51,12 @@ function mentions(
     .prepare(
       `SELECT p.id AS page_id, NULLIF(p.entry_date, 'none') AS date, p.ocr_text AS text
        FROM entry_entities e JOIN pages p ON p.id = e.page_id
-       WHERE e.kind = ? AND e.name_norm = ? AND p.notebook_id != ?
+       WHERE e.kind = ? AND e.name_norm = ? AND p.notebook_id NOT IN (?, ?)
          AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
        ORDER BY COALESCE(NULLIF(p.entry_date, 'none'), '9999-99-99') ASC,
                 p.page_index ASC`
     )
-    .all(kind, norm, DISCIPLINE_ID) as Array<{
+    .all(kind, norm, DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID) as Array<{
     page_id: string;
     date: string | null;
     text: string;

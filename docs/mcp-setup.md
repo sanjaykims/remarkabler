@@ -144,6 +144,63 @@ Requirements + how it behaves:
   vault. That's the opposite of the read-only default's privacy; enable it only
   if you want that permanent record.
 
+## Linking conversations into your entity wiki (OFF by default)
+
+Once conversations are being saved (above), a second optional piece can link
+them into the same wiki your diary already builds — so a person or place you
+discussed with Claude shows up connected to your diary's people/places/
+projects, not sitting in an isolated note.
+
+This is **not something the app runs itself**. It's a small "librarian" job
+you set up as a *separate*, recurring Claude Code session — billed to your
+Claude subscription, not Remarkabler's own API costs. Each time it runs, it
+reads conversations you haven't linked yet, decides who/what they mention,
+and records that.
+
+**Step 1 — turn on the tools.** In Railway, set:
+
+```
+MCP_ALLOW_WIKI_LINKING=true
+```
+
+Off by default — the endpoint has no extra exposure until you set this.
+
+**Step 2 — set up the recurring session.** Using whatever scheduling your
+Claude Code environment offers (e.g. a Routine / scheduled task), create one
+that fires periodically (every few hours is reasonable to start) with a
+prompt along these lines:
+
+> You are the diary librarian. Using the Remarkabler MCP connector: call
+> `list_unlinked_conversations`. For each one, call `get_conversation` to
+> read its full text, decide which people/places/projects it mentions, call
+> `get_entity_wiki` for each to see what's already recorded, then call
+> `tag_conversation_entities` with what you found (an empty list is fine if
+> nothing applies) and, only if there's something new worth keeping,
+> `update_entity_conversation_notes`. Always finish by calling
+> `record_librarian_heartbeat`, even if there was nothing to do.
+
+You can check whether it's actually running on `/memory`, under "Conversation
+librarian" — it shows the last time it reported in.
+
+Requirements + how it behaves:
+- The session needs the Remarkabler MCP connector available — same connector
+  as Step 2 in this guide. If you've already added it for the app/Claude Code,
+  a new session under the same account should already have access to it.
+- **Deterministic destination, agent-supplied content only**: the tools let
+  the agent tag entities and write its own notes, but the actual database
+  row/file each write lands in is always computed by Remarkabler, never
+  chosen by the agent — the same discipline `export_conversation` follows.
+- Its notes are kept in a **separate section** from your diary's own
+  Claude-written bio for that person/place/project ("Recent conversations"),
+  so the two never overwrite each other.
+- ⚠️ **`get_conversation` re-exposes full conversation content** you already
+  chose to export — this is the one MCP read gated behind the same flag as
+  the write tools, since it's new exposure the endpoint couldn't previously
+  provide.
+- If the connector ever seems to stop seeing a newly-deployed tool, a manual
+  disconnect/reconnect of the Remarkabler connector (Step 2's dialog) forces
+  a refresh — this is a platform behavior, not something Remarkabler controls.
+
 ## Sensitive tools are OFF by default
 
 Two tools are **excluded from this connector by default** — the in-app chat

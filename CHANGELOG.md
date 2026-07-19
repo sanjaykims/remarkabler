@@ -1,5 +1,63 @@
 # Changelog
 
+## 2026-07-19 (MCP Phase C: the conversation "librarian" — a subscription-billed Claude Code agent)
+
+Closes Phase B's own follow-up note: conversation notes now link into the
+diary's existing entity graph/wiki, instead of sitting in isolation. Compared
+running this in-app (a Claude API call) against a recurring, subscription-billed
+Claude Code agent; chose the latter, accepting an occasional manual
+MCP-connector reconnect after a tool deploy (a platform behavior, not
+something this app can fix) in exchange for using Claude subscription
+headroom instead of metered API spend, plus a genuinely agentic reader that
+can check what's already recorded before deciding what to add.
+
+- **Six new MCP tools** (`lib/mcp.ts`), all gated behind one new flag
+  `MCP_ALLOW_WIKI_LINKING=true` (OFF by default, hidden from `tools/list` and
+  refused on `tools/call` otherwise — including the reads, since
+  `get_conversation` exposes full previously-exported content the endpoint
+  couldn't return before): read tools `list_unlinked_conversations`,
+  `get_conversation`, `get_entity_wiki`; write tools
+  `tag_conversation_entities`, `update_entity_conversation_notes`,
+  `record_librarian_heartbeat`.
+- **New data layer** (`lib/conversationEntities.ts`) — a synthetic
+  `CONVERSATIONS_NOTEBOOK_ID` notebook (mirrors the existing `DISCIPLINE_ID`
+  pattern) gives each exported conversation one lightweight `pages` row, so
+  the librarian's entity tags flow through the SAME `entry_entities`/
+  co-occurrence-graph pipeline diary content already uses — a person only
+  ever discussed in a subscription chat now shows up in `related_entities`,
+  `top_entities`, and gets a real Obsidian stub page.
+- **Ownership-separated wiki content**: a new `entity_conversation_notes`
+  table, kept structurally separate from `entity_wiki` (the in-app
+  Claude-composed diary bio), so the librarian and the existing
+  content-addressed bio regen can never overwrite each other. Entity stub
+  notes now render both, in their own sections ("## Recent conversations"
+  alongside the existing diary bio).
+- **Notebook-exclusion audit**: unlike discipline, the conversations notebook
+  carries a real `ocr_text`/`entry_date`, so it needed EXPLICIT exclusion
+  from surfaces that assume real diary content (`analyzePending`'s pending
+  query — which transitively protects `getThemes`/`getSentimentSeries`/
+  `getEmbeddingMap` too, since none of them filter by notebook directly —
+  plus `getHeatmap`, day-file export, `entityWiki.ts`'s bio composer,
+  date/recency chat lookups) while staying deliberately INCLUDED everywhere
+  the entity graph/rankings/stubs read (`top_entities`, `pages_for_entity`,
+  `related_entities`, `getTopEntities`, entity dedup, canonical-name
+  resolution, stub generation).
+- **Heartbeat**: `GET /api/librarian` + a status section on `/memory`
+  (mirrors the existing Backup section) — the app itself never runs the
+  agent, so this only surfaces its last self-reported run.
+- Caught and fixed a real bug during implementation: the existing entity-stub
+  accumulator keys pages internally with a `\0` separator (not a space) to
+  keep kind/name unambiguous — a new pass using a plain space silently
+  created unmatched duplicate keys and made diary-sourced stubs lose their
+  `## Mentions` section whenever the same entity also had librarian notes.
+
+Honest tradeoffs (as designed): this app never runs the librarian — the user
+sets up the recurring session themselves (a cron Routine) and it needs to
+actually inherit the Remarkabler MCP connector, which is a platform behavior
+to verify at setup time, not something the code guarantees. 27 new tests
+(entity tagging/notes/heartbeat, stub rendering, notebook-exclusion pins);
+502 pass, build clean.
+
 ## 2026-07-18 (MCP Phase B: export a full conversation into the Obsidian wiki)
 
 The first WRITE on the (otherwise read-only) MCP endpoint, built to the user's

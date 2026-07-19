@@ -249,6 +249,15 @@ export function db(): Database.Database {
   } catch {
     // column already exists
   }
+  // Tracks whether the librarian agent has tagged/linked this conversation's
+  // entities yet — distinct from filed_at (Dropbox filing status). A
+  // conversation can be filed long before it's linked, and re-filing a
+  // growing conversation must not force re-linking. NULL = needs linking.
+  try {
+    _db.exec(`ALTER TABLE mcp_conversations ADD COLUMN linked_at TEXT`);
+  } catch {
+    // column already exists
+  }
   // Life-wiki: a Claude-written profile per entity (kind, name_norm), embedded
   // atop that entity's stub note in the Obsidian export. `source_hash` is a
   // digest of the mentioning pages the summary was written from — when it no
@@ -598,6 +607,21 @@ CREATE TABLE IF NOT EXISTS mcp_conversations (
   created_at       TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
   filed_at         TEXT                 -- when last filed to the vault; NULL = needs filing
+);
+
+-- The "librarian" agent's own notes about an entity, distinct from
+-- entity_wiki.summary (the in-app Claude-composed diary bio). Two disjoint
+-- tables so the in-app content-addressed regen (lib/entityWiki.ts) and the
+-- subscription-side librarian (lib/mcp.ts's update_entity_conversation_notes
+-- tool) can never clobber each other's writes. Keyed like entity_wiki so it
+-- survives casing variants and rides entity merges the same way.
+CREATE TABLE IF NOT EXISTS entity_conversation_notes (
+  kind       TEXT NOT NULL CHECK (kind IN ('person', 'place', 'project')),
+  name_norm  TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  notes      TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (kind, name_norm)
 );
 `;
 

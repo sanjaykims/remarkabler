@@ -5,6 +5,7 @@ import {
   isDisciplineEnabled,
   DISCIPLINE_ID,
   disciplineExcludeIdForChat,
+  nonDiaryNotebookExcludeIdsForChat,
 } from "./notes";
 import { normaliseEntityName } from "./mind";
 import { isDatedEntry } from "./diaryExport";
@@ -477,7 +478,10 @@ function getEntriesByDate(input: { date?: string }): unknown {
   if (patterns.length === 0) {
     return { excerpts: [], note: `Couldn't parse "${raw}" as a date.` };
   }
-  const excludeId = disciplineExcludeIdForChat();
+  // Excludes discipline (per the sharing toggle) AND the mcp-conversations
+  // synthetic notebook — its placeholder ocr_text/entry_date aren't a real
+  // diary entry, so "what did I write on X?" must never surface it.
+  const excludeIds = nonDiaryNotebookExcludeIdsForChat();
   const results: Array<{ notebook: string; page: number; text: string }> = [];
   const seen = new Set<string>();
   try {
@@ -495,10 +499,10 @@ function getEntriesByDate(input: { date?: string }): unknown {
            WHERE (p.ocr_text LIKE ? OR n.name LIKE ?
                   OR (p.entry_date IS NOT NULL AND p.entry_date != 'none'
                       AND p.entry_date LIKE ?))
-             AND p.notebook_id != ?
+             AND p.notebook_id NOT IN (?, ?)
            ORDER BY n.synced_at DESC, p.page_index`
         )
-        .all(`%${pattern}%`, `%${pattern}%`, `%${pattern}%`, excludeId) as Array<{
+        .all(`%${pattern}%`, `%${pattern}%`, `%${pattern}%`, ...excludeIds) as Array<{
           notebook_name: string;
           page_index: number;
           text: string;
@@ -521,17 +525,19 @@ function getEntriesByDate(input: { date?: string }): unknown {
 }
 
 function listNotebooks(): unknown {
-  const excludeId = disciplineExcludeIdForChat();
+  // Keeps the mcp-conversations synthetic notebook out of the notebook
+  // picker shown to chat/the librarian — it's not a real uploaded notebook.
+  const excludeIds = nonDiaryNotebookExcludeIdsForChat();
   try {
     const rows = db()
       .prepare(
         `SELECT n.id, n.name, n.synced_at AS uploaded, COUNT(p.id) AS pages
          FROM notebooks n LEFT JOIN pages p ON p.notebook_id = n.id
-         WHERE n.id != ?
+         WHERE n.id NOT IN (?, ?)
          GROUP BY n.id
          ORDER BY n.synced_at DESC NULLS LAST`
       )
-      .all(excludeId) as Array<{
+      .all(...excludeIds) as Array<{
         id: string;
         name: string;
         uploaded: string | null;
@@ -570,18 +576,21 @@ function getNotebook(input: { notebook_id?: string }): unknown {
 
 function getRecentEntries(input: { days?: number }): unknown {
   const days = Math.max(1, Math.min(30, Number(input.days) || 7));
-  const excludeId = disciplineExcludeIdForChat();
+  // Excludes the mcp-conversations notebook too — the librarian's writes
+  // keep bumping its synced_at "recent," which would otherwise leak
+  // conversation placeholders into "what did I write lately?".
+  const excludeIds = nonDiaryNotebookExcludeIdsForChat();
   try {
     const rows = db()
       .prepare(
         `SELECT n.name AS notebook_name, p.page_index, p.ocr_text AS text
          FROM pages p JOIN notebooks n ON n.id = p.notebook_id
          WHERE p.ocr_text IS NOT NULL AND p.ocr_text != ''
-           AND p.notebook_id != ?
+           AND p.notebook_id NOT IN (?, ?)
            AND datetime(n.synced_at) >= datetime('now', ?)
          ORDER BY n.synced_at DESC, p.page_index`
       )
-      .all(excludeId, `-${days} days`) as Array<{
+      .all(...excludeIds, `-${days} days`) as Array<{
         notebook_name: string;
         page_index: number;
         text: string;
