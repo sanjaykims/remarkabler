@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-19 (Zero-tap sync actually runs zero-tap: a real background timer)
+
+Every existing call site of `runMaintenanceSweep()` (`lib/notes.ts`) —
+which fires reMarkable-cloud polling, Dropbox ingest, and everything else
+in the background cascade — lived inside an HTTP request handler. Nothing
+in the app ran on a real wall-clock timer, so "zero-tap" sync only ever
+actually happened as a side effect of someone opening the app: writing on
+the reMarkable and closing the cover did nothing until the next page load.
+
+`instrumentation.ts` (the one place that runs once at server boot,
+independent of any request) now also calls a new
+`startBackgroundMaintenanceScheduler` (`lib/notes.ts`) — fires the sweep
+once immediately, then on a real `setInterval` at the same
+`MAINTENANCE_INTERVAL_MS` cadence the sweep already self-throttles to
+internally. No changes needed to the sweep's own guard logic (in-flight
+flag, interval/backoff, idempotent by design) — it was already safe to
+call this often, nothing was actually driving it. Deploy-note: this only
+delivers "no need to open the app" if the Railway service stays running
+continuously rather than sleeping/scaling to zero when idle.
+
 ## 2026-07-19 (Whole-app code review fixes: OAuth cap, dedup SQL, Button consolidation, /mind stuck-page bug)
 
 A whole-app review (Standards axis: Fowler smells + this repo's documented

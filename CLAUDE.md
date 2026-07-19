@@ -357,17 +357,28 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   (`lib/auth.ts` also gates the passcode itself with a brute-force lockout —
   `passcodeLockRemainingMs`/`recordFailedPasscodeAttempt`/
   `recordSuccessfulAuth`, DB-persisted so it survives a cold restart mid-attack).
-- `instrumentation.ts` — process-level `unhandledRejection`/`uncaughtException`
-  safety net (log, don't crash). Needed because the app fires a lot of
-  never-awaited background work (`runMaintenanceSweep` in `lib/notes.ts` and
-  friends); an unguarded async failure anywhere in that chain would otherwise
-  be a fatal unhandled rejection under modern Node and take the whole server
-  down for the one person using it. Requires `experimental.instrumentationHook:
-  true` in `next.config.mjs` on Next 14.2 (default-on from Next 15 — remove
-  the flag on that upgrade, don't remove the file). Every fire-and-forget
-  call site in `lib/notes.ts`/`lib/entityWiki.ts`/`app/api/chat/route.ts`
-  still has its own `.catch()` too — this is defense in depth, not a
-  replacement for handling errors at the call site.
+- `instrumentation.ts` — two jobs, both because this is the ONE place in the
+  app that runs once at server boot, independent of any HTTP request. (1)
+  Process-level `unhandledRejection`/`uncaughtException` safety net (log,
+  don't crash). Needed because the app fires a lot of never-awaited
+  background work (`runMaintenanceSweep` in `lib/notes.ts` and friends); an
+  unguarded async failure anywhere in that chain would otherwise be a fatal
+  unhandled rejection under modern Node and take the whole server down for
+  the one person using it. Every fire-and-forget call site in
+  `lib/notes.ts`/`lib/entityWiki.ts`/`app/api/chat/route.ts` still has its
+  own `.catch()` too — this is defense in depth, not a replacement for
+  handling errors at the call site. (2) Calls
+  `startBackgroundMaintenanceScheduler` (`lib/notes.ts`) — a real
+  `setInterval`, fired once immediately then every `MAINTENANCE_INTERVAL_MS`.
+  Without this, `runMaintenanceSweep` (and therefore reMarkable-cloud polling
+  + Dropbox ingest — the "zero-tap" sync) only ever ran as a side effect of
+  someone loading a page; a notebook wouldn't actually sync until the user
+  opened the app, defeating the "write, close the cover, done" promise. The
+  scheduler is a thin wrapper — `runMaintenanceSweep` is already
+  self-throttled internally, so calling it on a clock needed no changes to
+  its own guard logic. Requires `experimental.instrumentationHook: true` in
+  `next.config.mjs` on Next 14.2 (default-on from Next 15 — remove the flag
+  on that upgrade, don't remove the file).
 - API routes (`app/api/*`): `auth`, `notebooks`, `chat`, `insights`, `usage`,
   `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
   `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities`,

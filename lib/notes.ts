@@ -1195,6 +1195,22 @@ export function runMaintenanceSweep(): void {
   }
 }
 
+// Every existing call site of runMaintenanceSweep() is inside an HTTP
+// request handler — meaning the whole background cascade (reMarkable sync,
+// Dropbox ingest, etc.) previously only ran as a side effect of someone
+// opening the app. That defeats the point of "zero-tap" sync: writing on
+// the reMarkable and closing the cover should be enough on its own. This
+// starts a real wall-clock timer, independent of any request, from
+// instrumentation.ts's register() (runs once at server boot). Safe to call
+// this frequently — runMaintenanceSweep is already self-throttled to
+// MAINTENANCE_INTERVAL_MS internally, so this is just what actually drives
+// that clock instead of leaving it to chance HTTP traffic.
+export function startBackgroundMaintenanceScheduler(): void {
+  runMaintenanceSweep(); // fire once immediately so a fresh boot doesn't
+  // wait up to 5 minutes for the first sync.
+  setInterval(runMaintenanceSweep, MAINTENANCE_INTERVAL_MS);
+}
+
 let _maybeSyncRemarkable: (() => Promise<unknown>) | null = null;
 function getMaybeSyncRemarkable(): () => Promise<unknown> {
   if (_maybeSyncRemarkable) return _maybeSyncRemarkable;
