@@ -9,6 +9,7 @@ import {
   listUnlinkedConversations,
   MAX_CONVERSATION_CHARS,
 } from "@/lib/conversationWiki";
+import { saveReflection, MAX_REFLECTION_CHARS } from "@/lib/reflectionWiki";
 import {
   wikiLinkingEnabled,
   tagConversationEntities,
@@ -136,6 +137,55 @@ const EXPORT_TOOL: McpToolDef = {
         type: "string",
         description:
           "Stable id for this conversation; re-export with the same id to update it. Optional.",
+      },
+    },
+    required: ["content"],
+  },
+};
+
+// MCP-only WRITE tool: a standalone, one-sided reflection Claude writes about
+// the person — distinct from export_conversation, which saves a verbatim
+// human<->Claude transcript. This is for "give me an honest, independent
+// take on who I am" style asks (from subscription-Claude, Claude Code, or a
+// scheduled Routine), filed into its own Reflections/ folder so it's never
+// confused with a real conversation. Gated behind its OWN flag, separate
+// from MCP_ALLOW_CONVERSATION_EXPORT: exporting a real conversation verbatim
+// and saving Claude-generated reflective content are different privacy
+// tradeoffs, and a user may want one without the other. OFF by default —
+// forgetting config keeps the endpoint fully read-only (fail-safe). See the
+// do-not-regress rule in CLAUDE.md.
+export const REFLECTION_TOOL_NAME = "save_reflection";
+
+export function reflectionSavingEnabled(): boolean {
+  return process.env.MCP_ALLOW_REFLECTION_SAVE === "true";
+}
+
+const REFLECTION_TOOL: McpToolDef = {
+  name: REFLECTION_TOOL_NAME,
+  description:
+    "Save a standalone, independent reflection you've written about this " +
+    "person — NOT a conversation transcript (use export_conversation for " +
+    "that). Use this when asked for an honest/independent take on who they " +
+    "are, grounded in their diary (get_profile, search_diary, and friends). " +
+    "The standard to hold yourself to: ground every claim in specific " +
+    "diary evidence, never pad with empty flattery, and name the limits of " +
+    "diary-based inference rather than overclaiming (a diary is self-selected " +
+    "evidence, not a complete account of a person). Pass `content` = the " +
+    "full reflection text, an optional `title`, and an optional stable " +
+    "`reflection_id` (re-saving with the same id updates the same record). " +
+    `Capped at ${MAX_REFLECTION_CHARS} characters.`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      content: {
+        type: "string",
+        description: "The full reflection text (required).",
+      },
+      title: { type: "string", description: "Short title for the reflection. Optional." },
+      reflection_id: {
+        type: "string",
+        description:
+          "Stable id for this reflection; re-save with the same id to update it. Optional.",
       },
     },
     required: ["content"],
@@ -377,6 +427,10 @@ export function mcpToolList(): McpToolDef[] {
       : "";
     tools.push({ ...EXPORT_TOOL, description: EXPORT_TOOL.description + nudge });
   }
+  // Standalone reflections — its own flag, independent of conversation export.
+  if (reflectionSavingEnabled() && !excluded.has(REFLECTION_TOOL_NAME)) {
+    tools.push(REFLECTION_TOOL);
+  }
   // The librarian tools (Phase C) — all six gate behind one flag, including
   // the reads, since get_conversation exposes full conversation content the
   // endpoint could not previously return at all.
@@ -440,6 +494,44 @@ export async function callMcpTool(
       ok: true,
       key,
       note: "Saved this conversation to your diary wiki.",
+    });
+  }
+  if (name === REFLECTION_TOOL_NAME) {
+    // Refused unless opted in (fail-safe) — separate flag from export_conversation.
+    if (!reflectionSavingEnabled()) {
+      return JSON.stringify({ error: `Tool not available: ${name}` });
+    }
+    const a = (args ?? {}) as {
+      content?: unknown;
+      title?: unknown;
+      reflection_id?: unknown;
+    };
+    const content = typeof a.content === "string" ? a.content : "";
+    if (!content.trim()) {
+      return JSON.stringify({ error: "content is required (the reflection text)." });
+    }
+    if (content.length > MAX_REFLECTION_CHARS) {
+      return JSON.stringify({
+        error: `content too large — ${content.length} chars, max ${MAX_REFLECTION_CHARS}.`,
+      });
+    }
+    // Add-only: writes exactly one row in mcp_reflections (upsert by id),
+    // never anything else. Then fire the filing job so it lands in the vault
+    // promptly (fire-and-forget with .catch; no-ops if Dropbox export is off).
+    const { key } = saveReflection({
+      content,
+      title: typeof a.title === "string" ? a.title : undefined,
+      reflectionId: typeof a.reflection_id === "string" ? a.reflection_id : undefined,
+    });
+    import("@/lib/dropbox")
+      .then((m) => m.maybeExportReflectionsToDropbox())
+      .catch((e) =>
+        console.warn("[mcp] reflection filing failed:", (e as Error).message)
+      );
+    return JSON.stringify({
+      ok: true,
+      key,
+      note: "Saved this reflection to your diary wiki.",
     });
   }
   const librarianToolNames: string[] = [

@@ -609,6 +609,25 @@ CREATE TABLE IF NOT EXISTS mcp_conversations (
   filed_at         TEXT                 -- when last filed to the vault; NULL = needs filing
 );
 
+-- Standalone AI-written reflections, saved via the MCP save_reflection write
+-- tool (opt-in, add-only — see lib/mcp.ts and the "do not regress" rule in
+-- CLAUDE.md). Distinct from mcp_conversations: this is one-sided reflective
+-- content Claude wrote about the person, not a verbatim human<->Claude
+-- transcript, so it gets its own table and its own vault folder
+-- (Reflections/, vs Conversations/) rather than being mixed in — never
+-- confusable with a real exported chat. Filed into the Obsidian/Dropbox
+-- vault as one Markdown note each (lib/reflectionWiki.ts). Upsert by
+-- reflection_key so re-saving under the same key keeps ONE record; filed_at
+-- is cleared on update so it re-files.
+CREATE TABLE IF NOT EXISTS mcp_reflections (
+  reflection_key TEXT PRIMARY KEY,      -- client-supplied id, or generated
+  title           TEXT,
+  content         TEXT NOT NULL,        -- the reflection text
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  filed_at        TEXT                  -- when last filed to the vault; NULL = needs filing
+);
+
 -- The "librarian" agent's own notes about an entity, distinct from
 -- entity_wiki.summary (the in-app Claude-composed diary bio). Two disjoint
 -- tables so the in-app content-addressed regen (lib/entityWiki.ts) and the

@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-07-19 (MCP: save_reflection — a standalone reflection tool, shared across every Claude surface)
+
+New opt-in MCP write tool, `save_reflection`, for "give me an honest,
+independent take on who I am" style asks — distinct from `export_conversation`
+(which saves a verbatim human<->Claude transcript): this saves a standalone,
+one-sided reflection Claude wrote about the user, filed into its own
+`Reflections/` vault folder so it's never confused with a real conversation.
+
+- **New table + module**: `mcp_reflections` + `lib/reflectionWiki.ts`,
+  mirroring `lib/conversationWiki.ts`'s shape (store, pure note renderer,
+  filing helpers) but deliberately kept separate — different content type,
+  different folder.
+- **New MCP tool** (`lib/mcp.ts`): gated behind its own flag,
+  `MCP_ALLOW_REFLECTION_SAVE=true`, independent of
+  `MCP_ALLOW_CONVERSATION_EXPORT` — a user can enable one without the other.
+  Add-only, deterministic destination, size-capped, same discipline as every
+  other MCP write tool. The tool's own description holds the quality bar
+  observed to matter in practice: ground every claim in specific diary
+  evidence, no empty flattery, name the limits of diary-based inference.
+- **Filed automatically**: `maybeExportReflectionsToDropbox` (`lib/dropbox.ts`)
+  fires inline on save (same fire-and-forget-with-`.catch()` pattern as
+  conversations) plus a maintenance-sweep safety net for anything missed.
+- **Available on every surface for free**: because this is a normal MCP tool
+  (not Routine-specific logic), subscription-Claude in the claude.ai app,
+  Claude Code, and any scheduled Routine using the same Remarkabler MCP
+  connector can all call it identically — no separate integration needed
+  per surface.
+- 5 new MCP-gating tests + 7 new `lib/reflectionWiki.ts` pure-logic tests;
+  520 pass, build clean.
+
 ## 2026-07-19 (Zero-tap sync actually runs zero-tap: a real background timer)
 
 Every existing call site of `runMaintenanceSweep()` (`lib/notes.ts`) —

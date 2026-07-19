@@ -1193,6 +1193,18 @@ export function runMaintenanceSweep(): void {
   } catch {
     // best-effort
   }
+  // Same safety net for standalone reflections (MCP save_reflection tool) —
+  // files any the inline fire missed. No-op unless Dropbox export is on and
+  // there are unfiled reflections.
+  try {
+    void import("./dropbox")
+      .then((m) => m.maybeExportReflectionsToDropbox())
+      .catch((e) =>
+        console.warn("[sweep] reflection export failed:", (e as Error).message)
+      );
+  } catch {
+    // best-effort
+  }
 }
 
 // Every existing call site of runMaintenanceSweep() is inside an HTTP
