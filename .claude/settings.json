@@ -1,0 +1,16 @@
+{
+  "extraKnownMarketplaces": {
+    "sanjaykims-skills": {
+      "source": {
+        "source": "github",
+        "repo": "sanjaykims/skills"
+      }
+    }
+  },
+  "enabledPlugins": [
+    {
+      "marketplace": "sanjaykims-skills",
+      "plugin": "mattpocock-skills"
+    }
+  ]
+}
