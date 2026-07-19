@@ -144,6 +144,38 @@ Requirements + how it behaves:
   vault. That's the opposite of the read-only default's privacy; enable it only
   if you want that permanent record.
 
+## Saving an independent reflection (OFF by default)
+
+A second, separate optional **write** tool, `save_reflection`, lets Claude save
+a **standalone reflection it wrote about you** — not a conversation transcript.
+Use it for asks like *"give me an honest, independent take on who I am"*: any
+Claude with this connector (subscription-Claude in the app, Claude Code, or a
+scheduled Routine) can read your diary and file its own written reflection,
+landing under a separate `Reflections/` folder so it's never confused with a
+real exported chat.
+
+It has **its own flag**, independent of `MCP_ALLOW_CONVERSATION_EXPORT` — saving
+a verbatim conversation and saving Claude-generated reflective content are
+different privacy tradeoffs, and you may want one without the other. To enable
+it, set in Railway:
+
+```
+MCP_ALLOW_REFLECTION_SAVE=true
+```
+
+Requirements + how it behaves:
+- Same Dropbox prerequisite as conversation export (`files.content.write`
+  scope). Notes land under `Reflections/` in your export folder, filed within
+  seconds of being saved (fire-and-forget, same as `export_conversation`).
+- **Add-only**: it can only *add* a reflection record and *create* a note.
+- **Not automatic**: Claude has to *choose* to call it — just ask for a
+  reflection and tell it to save it.
+- The tool's own instructions hold Claude to a standard: ground every claim in
+  specific diary evidence, no empty flattery, and name the limits of
+  diary-based inference rather than overclaiming.
+- ⚠️ Same privacy tradeoff as conversation export: this content becomes a
+  permanent record in your vault, not an ephemeral chat.
+
 ## Linking conversations into your entity wiki (OFF by default)
 
 Once conversations are being saved (above), a second optional piece can link

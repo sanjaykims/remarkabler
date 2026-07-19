@@ -73,7 +73,13 @@ and generate an accumulating record of "insights" about themselves.
   write tool `export_conversation` — subscription-Claude saves a full
   conversation, filed verbatim into the Obsidian/Dropbox vault as one note
   (Phase B); OFF by default keeps the endpoint read-only. Optional
-  `MCP_ALLOW_WIKI_LINKING=true` enables the six Phase C "librarian" tools
+  `MCP_ALLOW_REFLECTION_SAVE=true` enables a separate write tool,
+  `save_reflection` — any connected Claude (subscription-Claude, Claude
+  Code, or a scheduled Routine) can save a standalone independent
+  reflection it wrote about the user (not a conversation transcript),
+  filed into its own `Reflections/` folder (`lib/reflectionWiki.ts`); its
+  own flag, independent of `MCP_ALLOW_CONVERSATION_EXPORT`. OFF by default.
+  Optional `MCP_ALLOW_WIKI_LINKING=true` enables the six Phase C "librarian" tools
   (`lib/conversationEntities.ts`) so a SEPARATE, recurring Claude Code agent
   — set up by the user as a cron Routine, billed to their own Claude
   subscription rather than this app's `ANTHROPIC_API_KEY` — can tag which
@@ -135,7 +141,13 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   from `filed_at`'s Dropbox-filing progress; see `lib/conversationWiki.ts`),
   `entity_conversation_notes` (the librarian agent's own notes about an
   entity — kept in a table SEPARATE from `entity_wiki` so the two authors
-  can never clobber each other's writes; see `lib/conversationEntities.ts`).
+  can never clobber each other's writes; see `lib/conversationEntities.ts`),
+  `mcp_reflections` (standalone AI-written reflections saved via the
+  `save_reflection` write tool — deliberately a SEPARATE table from
+  `mcp_conversations`: a reflection is Claude's own one-sided writing about
+  the person, not a verbatim transcript, so it gets its own table and its
+  own vault folder (`Reflections/`, vs `Conversations/`) rather than being
+  mixed in; see `lib/reflectionWiki.ts`).
   Some durable state also lives in
   `settings` rows, e.g.
   `mind_pca_axes` (persisted PCA mean + PC vectors + axis labels) and the
@@ -201,8 +213,8 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   Served by `app/api/mcp/route.ts` (mcp-handler, Streamable HTTP, stateless,
   SSE disabled) so Claude on the user's subscription (claude.ai custom
   connector / Claude Code) can query the diary. Read-only by default (the
-  sanctioned writes are `export_conversation` and the three librarian write
-  tools, see the do-not-regress rule).
+  sanctioned writes are `export_conversation`, `save_reflection`, and the
+  three librarian write tools, see the do-not-regress rule).
 - `lib/conversationWiki.ts` — Phase B store + renderer for full
   subscription-conversation transcripts (`mcp_conversations`): `saveExportedConversation`
   (upsert by key, add-only), pure `renderConversationNote`/`conversationNoteFileName`
@@ -213,6 +225,19 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   librarian's own progress). Filed into the Obsidian/Dropbox vault by
   `maybeExportConversationsToDropbox` (`lib/dropbox.ts`), fired from the
   `export_conversation` tool + the maintenance sweep.
+- `lib/reflectionWiki.ts` — store + renderer for standalone AI-written
+  reflections (`mcp_reflections`), saved via the `save_reflection` MCP
+  write tool. Mirrors `lib/conversationWiki.ts`'s shape exactly
+  (`saveReflection`, pure `renderReflectionNote`/`reflectionNoteFileName`,
+  `renderReflectionNoteFiles`/`unfiledReflectionKeys`/`markReflectionsFiled`)
+  but is a deliberately SEPARATE module/table/folder (`Reflections/`, not
+  `Conversations/`) — a reflection is Claude's own one-sided writing about
+  the person, never a verbatim transcript, so the two content types must
+  stay visually and structurally distinct in the vault. No entity-linking
+  section (unlike conversations, reflections aren't tagged into the entity
+  graph). Filed by `maybeExportReflectionsToDropbox` (`lib/dropbox.ts`,
+  shares the same `exportInFlight` guard as the diary/conversation
+  exporters), fired from the `save_reflection` tool + the maintenance sweep.
 - `lib/conversationEntities.ts` — Phase C: the "librarian" data layer. A
   recurring, autonomous Claude Code agent (a cron Routine, billed to the
   user's Claude subscription, NOT this app's `ANTHROPIC_API_KEY`) links
@@ -506,28 +531,35 @@ features need the deployed instance to fully verify.
   under readOnly; `search_diary`'s Voyage query-embed is compute-only, no DB/fs
   write, and stays). Diary text is OCR'd handwriting and chat is outside our
   system prompt, so treat every request as hostile and keep the blast radius at
-  "read". **The sanctioned writes are `export_conversation` (Phase B) and the
-  three Phase C librarian write tools** (`tag_conversation_entities`,
-  `update_entity_conversation_notes`, `record_librarian_heartbeat`): all four
-  are MCP-only, handled directly in `callMcpTool` (not via `executeTool`), and
-  are (a) OFF by default — `export_conversation` behind
-  `MCP_ALLOW_CONVERSATION_EXPORT=true`, the three librarian tools (PLUS the
-  three librarian READ tools — see below) behind ONE flag
-  `MCP_ALLOW_WIKI_LINKING=true` — hidden from `tools/list` AND refused on
-  `tools/call` when off; (b) DETERMINISTIC-DESTINATION — the agent supplies
-  only content (and, for the librarian tools, a `conversation_key`/entity
-  name it doesn't get to invent a row for), never a path or id; this code
-  always computes the actual DB row/file target itself. `export_conversation`
-  is literally add-only (upserts exactly one row in its own table);
-  `tag_conversation_entities` is a SCOPED REPLACE of exactly one page's own
-  `entry_entities` rows (the same delete+reinsert shape `analyzePending`
-  already uses on that table) — narrower blast radius than a general write,
-  but not literally add-only, so don't describe it that way; (c) size-capped
-  (`MAX_CONVERSATION_CHARS`, `MAX_ENTITY_NOTES_CHARS`). `export_conversation`'s
+  "read". **The sanctioned writes are `export_conversation` (Phase B),
+  `save_reflection`, and the three Phase C librarian write tools**
+  (`tag_conversation_entities`, `update_entity_conversation_notes`,
+  `record_librarian_heartbeat`): all five are MCP-only, handled directly in
+  `callMcpTool` (not via `executeTool`), and are (a) OFF by default —
+  `export_conversation` behind `MCP_ALLOW_CONVERSATION_EXPORT=true`,
+  `save_reflection` behind its OWN separate `MCP_ALLOW_REFLECTION_SAVE=true`
+  (deliberately independent of the conversation-export flag — saving a real
+  conversation verbatim and saving Claude-generated reflective content are
+  different privacy tradeoffs, so a user can enable one without the other),
+  the three librarian tools (PLUS the three librarian READ tools — see
+  below) behind ONE flag `MCP_ALLOW_WIKI_LINKING=true` — hidden from
+  `tools/list` AND refused on `tools/call` when off; (b)
+  DETERMINISTIC-DESTINATION — the agent supplies only content (and, for the
+  librarian tools, a `conversation_key`/entity name it doesn't get to
+  invent a row for), never a path or id; this code always computes the
+  actual DB row/file target itself. `export_conversation` and
+  `save_reflection` are both literally add-only (each upserts exactly one
+  row in its own table — `mcp_conversations` / `mcp_reflections`, never
+  mixed); `tag_conversation_entities` is a SCOPED REPLACE of exactly one
+  page's own `entry_entities` rows (the same delete+reinsert shape
+  `analyzePending` already uses on that table) — narrower blast radius than
+  a general write, but not literally add-only, so don't describe it that
+  way; (c) size-capped (`MAX_CONVERSATION_CHARS`, `MAX_REFLECTION_CHARS`,
+  `MAX_ENTITY_NOTES_CHARS`). `export_conversation`'s and `save_reflection`'s
   content is filed into the vault VERBATIM as quoted markdown by a
-  deterministic exporter — no Claude call ever reads the raw transcript
-  inside THIS process, so there is no prompt-injection-into-summarizer
-  surface in our own server. The Phase C librarian is a genuinely agentic
+  deterministic exporter — no Claude call ever reads the raw content inside
+  THIS process, so there is no prompt-injection-into-summarizer surface in
+  our own server. The Phase C librarian is a genuinely agentic
   reader of that same content, but it runs as a SEPARATE, user-controlled
   Claude Code agent (a cron Routine on the user's own subscription) — not
   code in this repo — and it can only ever act through these narrow,

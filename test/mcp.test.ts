@@ -38,6 +38,7 @@ afterEach(() => {
   delete process.env.MCP_EXCLUDE_TOOLS;
   delete process.env.MCP_ALLOW_SENSITIVE_TOOLS;
   delete process.env.MCP_ALLOW_CONVERSATION_EXPORT;
+  delete process.env.MCP_ALLOW_REFLECTION_SAVE;
   delete process.env.MCP_ALLOW_WIKI_LINKING;
   mcp.resetMcpThrottle();
 });
@@ -193,6 +194,76 @@ describe("export_conversation write tool (Phase B — opt-in, add-only)", () => 
       .find((t) => t.name === mcp.EXPORT_TOOL_NAME)!;
     expect(withLibrarian.description).toContain("tag_conversation_entities");
     expect(withLibrarian.description).toContain("get_entity_wiki");
+  });
+});
+
+describe("save_reflection write tool (opt-in, add-only, own flag)", () => {
+  it("is HIDDEN and REFUSED by default (endpoint stays read-only)", async () => {
+    const names = mcp.mcpToolList().map((t) => t.name);
+    expect(names).not.toContain(mcp.REFLECTION_TOOL_NAME);
+    const out = JSON.parse(
+      await mcp.callMcpTool(mcp.REFLECTION_TOOL_NAME, { content: "hi" })
+    );
+    expect(out.error).toContain("not available");
+  });
+
+  it("appears and writes ONLY when MCP_ALLOW_REFLECTION_SAVE=true", async () => {
+    process.env.MCP_ALLOW_REFLECTION_SAVE = "true";
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM mcp_reflections").run();
+
+    expect(mcp.mcpToolList().map((t) => t.name)).toContain(mcp.REFLECTION_TOOL_NAME);
+
+    const out = JSON.parse(
+      await mcp.callMcpTool(mcp.REFLECTION_TOOL_NAME, {
+        content: "You're a builder by nature...",
+        title: "Who am I?",
+        reflection_id: "r1",
+      })
+    );
+    expect(out.ok).toBe(true);
+    expect(out.key).toBe("r1");
+    const row = db()
+      .prepare("SELECT content, title FROM mcp_reflections WHERE reflection_key = 'r1'")
+      .get() as { content: string; title: string };
+    expect(row.content).toContain("builder by nature");
+    expect(row.title).toBe("Who am I?");
+  });
+
+  it("requires content and rejects oversize input", async () => {
+    process.env.MCP_ALLOW_REFLECTION_SAVE = "true";
+    const empty = JSON.parse(await mcp.callMcpTool(mcp.REFLECTION_TOOL_NAME, {}));
+    expect(empty.error).toContain("required");
+    const big = "x".repeat(30_000);
+    const over = JSON.parse(
+      await mcp.callMcpTool(mcp.REFLECTION_TOOL_NAME, { content: big })
+    );
+    expect(over.error).toContain("too large");
+  });
+
+  it("MCP_EXCLUDE_TOOLS still blocks it even when opted in", async () => {
+    process.env.MCP_ALLOW_REFLECTION_SAVE = "true";
+    process.env.MCP_EXCLUDE_TOOLS = "save_reflection";
+    expect(mcp.mcpToolList().map((t) => t.name)).not.toContain(mcp.REFLECTION_TOOL_NAME);
+    const out = JSON.parse(
+      await mcp.callMcpTool(mcp.REFLECTION_TOOL_NAME, { content: "hi" })
+    );
+    expect(out.error).toContain("not available");
+  });
+
+  it("is independent of MCP_ALLOW_CONVERSATION_EXPORT (separate flags, separate tools)", async () => {
+    // Conversation export on, reflection save NOT on -> only export appears.
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    let names = mcp.mcpToolList().map((t) => t.name);
+    expect(names).toContain(mcp.EXPORT_TOOL_NAME);
+    expect(names).not.toContain(mcp.REFLECTION_TOOL_NAME);
+
+    // Flip it around: reflection save on, conversation export off.
+    delete process.env.MCP_ALLOW_CONVERSATION_EXPORT;
+    process.env.MCP_ALLOW_REFLECTION_SAVE = "true";
+    names = mcp.mcpToolList().map((t) => t.name);
+    expect(names).not.toContain(mcp.EXPORT_TOOL_NAME);
+    expect(names).toContain(mcp.REFLECTION_TOOL_NAME);
   });
 });
 
