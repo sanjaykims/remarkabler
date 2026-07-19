@@ -28,7 +28,16 @@ async function postMergeDropbox(changed: boolean) {
       entityStubRelPathForName(a.kind, a.alias_name)
     );
     if (stalePaths.length > 0) await dropbox.deleteDiaryExportFiles(stalePaths);
-    if (changed) void dropbox.maybeExportDiaryToDropbox();
+    // The outer try/catch only guards the synchronous import + the awaited
+    // delete above — .catch() below is what guards this returned promise,
+    // so an async failure here can't become an unhandled rejection.
+    if (changed) {
+      void dropbox
+        .maybeExportDiaryToDropbox()
+        .catch((e) =>
+          console.warn("[mind/merge-entities] dropbox export failed:", (e as Error).message)
+        );
+    }
   } catch {
     // best-effort
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { Eyebrow } from "@/components/Eyebrow";
+import { Button } from "@/components/Button";
 
 import { useEffect, useRef, useState } from "react";
 import { setPickingFile } from "../lockState";
@@ -426,13 +427,9 @@ export default function ChatPage() {
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">Chat with your notes</h1>
           {messages.length > 0 && (
-            <button
-              onClick={clearChat}
-              disabled={busy}
-              className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm disabled:opacity-50"
-            >
+            <Button onClick={clearChat} disabled={busy} variant="secondary" size="xs" className="text-sm">
               Clear
-            </button>
+            </Button>
           )}
         </div>
       </div>

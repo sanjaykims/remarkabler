@@ -1,6 +1,7 @@
 "use client";
 
 import { Eyebrow } from "@/components/Eyebrow";
+import { Button } from "@/components/Button";
 
 import { useEffect, useRef, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
@@ -847,20 +848,24 @@ export default function MemoryPage() {
           )}
 
           <div className="flex flex-wrap gap-2">
-            <button
+            <Button
               onClick={save}
               disabled={busy !== null || !dirty || !content.trim()}
-              className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
+              variant="solid"
+              size="xs"
+              className="px-4 py-2 text-sm"
             >
               {busy === "save" ? "Saving…" : "Save edits"}
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={rebuild}
               disabled={busy !== null || !hasNotes}
-              className="rounded border border-slate-300 dark:border-slate-700 px-4 py-2 text-sm disabled:opacity-50"
+              variant="secondary"
+              size="xs"
+              className="px-4 py-2 text-sm"
             >
               {busy === "rebuild" ? "Rebuilding…" : "Rebuild from notes"}
-            </button>
+            </Button>
           </div>
 
           {status && <p className="text-sm opacity-70">{status}</p>}
@@ -902,13 +907,15 @@ export default function MemoryPage() {
               </button>
             </div>
 
-            <button
+            <Button
               onClick={syncDiscipline}
               disabled={discBusy || discEnabled === false}
-              className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
+              variant="solid"
+              size="xs"
+              className="px-4 py-2 text-sm"
             >
               {discBusy ? "Syncing…" : "Sync now"}
-            </button>
+            </Button>
             {disc.fileList && disc.fileList.length > 0 && (
               <details className="text-xs">
                 <summary className="cursor-pointer opacity-70">
@@ -964,13 +971,15 @@ export default function MemoryPage() {
           recent places are fed to chat. The app can&rsquo;t track you in the
           background, so nothing is recorded unless you tap.
         </p>
-        <button
+        <Button
           onClick={logLocation}
           disabled={locBusy || locEnabled === false}
-          className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
+          variant="solid"
+          size="xs"
+          className="px-4 py-2 text-sm"
         >
           {locBusy ? "Getting location…" : "Log my location"}
-        </button>
+        </Button>
         {locMsg && <p className="text-sm opacity-70">{locMsg}</p>}
         {locs.length > 0 && (
           <details className="text-xs">
@@ -1200,13 +1209,15 @@ export default function MemoryPage() {
                   background sweep runs (triggered by chat or upload). If the
                   count looks stuck, tap below to run it now.
                 </p>
-                <button
+                <Button
                   onClick={runEmbedBackfill}
                   disabled={embedBusy}
-                  className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
+                  variant="solid"
+                  size="xs"
+                  className="px-4 py-2 text-sm"
                 >
                   {embedBusy ? "Embedding…" : "Backfill now"}
-                </button>
+                </Button>
               </>
             )}
             {embedMsg && (
@@ -1355,17 +1366,19 @@ export default function MemoryPage() {
                     className="min-w-0 flex-1 rounded border border-slate-300 dark:border-slate-700 bg-transparent px-2 py-1 text-xs font-mono"
                     placeholder="/Remarkabler/diary"
                   />
-                  <button
+                  <Button
                     onClick={saveExportFolder}
                     disabled={
                       exportBusy ||
                       folderDraft === null ||
                       folderDraft.trim() === dropbox.exportFolder
                     }
-                    className="shrink-0 rounded border border-slate-300 dark:border-slate-700 px-3 py-1 text-xs disabled:opacity-40"
+                    variant="secondary"
+                    size="xs"
+                    className="shrink-0"
                   >
                     Save
-                  </button>
+                  </Button>
                 </div>
                 <p className="text-[11px] opacity-50">
                   Using Remotely Save in Obsidian? Set this to{" "}
@@ -1375,13 +1388,14 @@ export default function MemoryPage() {
               </div>
               {dropbox.exportEnabled && (
                 <div className="flex items-center gap-3">
-                  <button
+                  <Button
                     onClick={runDropboxExportNow}
                     disabled={exportBusy}
-                    className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1 text-xs disabled:opacity-50"
+                    variant="secondary"
+                    size="xs"
                   >
                     Export now
-                  </button>
+                  </Button>
                   {dropbox.exportLastAt && (
                     <span className="text-[11px] opacity-60">
                       Last saved {formatLocalTime(dropbox.exportLastAt)}
@@ -1399,13 +1413,15 @@ export default function MemoryPage() {
               )}
             </div>
 
-            <button
+            <Button
               onClick={disconnectDropbox}
               disabled={dropboxBusy}
-              className="rounded border border-slate-300 dark:border-slate-700 px-4 py-2 text-sm disabled:opacity-50"
+              variant="secondary"
+              size="xs"
+              className="px-4 py-2 text-sm"
             >
               {dropboxBusy ? "Disconnecting…" : "Disconnect Dropbox"}
-            </button>
+            </Button>
           </>
         )}
       </section>
@@ -1459,27 +1475,15 @@ export default function MemoryPage() {
             )}
             {rmMsg && <p className="text-xs opacity-80 break-words">{rmMsg}</p>}
             <div className="flex items-center gap-2">
-              <button
-                onClick={syncRemarkableNow}
-                disabled={rmAutosyncBusy || rmBusy}
-                className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-xs disabled:opacity-50"
-              >
+              <Button onClick={syncRemarkableNow} disabled={rmAutosyncBusy || rmBusy} variant="solid" size="xs">
                 {rmAutosyncBusy ? "Syncing…" : "Sync now"}
-              </button>
-              <button
-                onClick={refreshRemarkableCloud}
-                disabled={rmBusy}
-                className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs disabled:opacity-50"
-              >
+              </Button>
+              <Button onClick={refreshRemarkableCloud} disabled={rmBusy} variant="secondary" size="xs">
                 {rmBusy ? "Checking…" : "Check again"}
-              </button>
-              <button
-                onClick={disconnectRemarkableCloud}
-                disabled={rmBusy}
-                className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs disabled:opacity-50"
-              >
+              </Button>
+              <Button onClick={disconnectRemarkableCloud} disabled={rmBusy} variant="secondary" size="xs">
                 Disconnect
-              </button>
+              </Button>
             </div>
             {remarkable.notebooks && remarkable.notebooks.length > 0 ? (
               <div className="space-y-1.5">
@@ -1593,21 +1597,23 @@ export default function MemoryPage() {
                                 </p>
                               </div>
                               <div className="shrink-0 flex items-center gap-1.5">
-                                <button
+                                <Button
                                   onClick={() => compareRemarkableNotebook(nb)}
                                   disabled={rmComparingId !== null || rmImportingId !== null}
-                                  className="rounded border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-xs disabled:opacity-50"
                                   title="Compare this import's transcription to your existing entries for the same dates"
+                                  variant="secondary"
+                                  size="xs"
                                 >
                                   {rmComparingId === nb.id ? "Comparing…" : "Compare"}
-                                </button>
-                                <button
+                                </Button>
+                                <Button
                                   onClick={() => importRemarkableNotebook(nb)}
                                   disabled={rmImportingId !== null || rmComparingId !== null}
-                                  className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-xs disabled:opacity-50"
+                                  variant="solid"
+                                  size="xs"
                                 >
                                   {rmImportingId === nb.id ? "Importing…" : "Import"}
-                                </button>
+                                </Button>
                               </div>
                             </div>
                             {rmImportMsg[nb.id] && (
@@ -1616,13 +1622,14 @@ export default function MemoryPage() {
                               </p>
                             )}
                             {rmReimportOffer[nb.id] && (
-                              <button
+                              <Button
                                 onClick={() => importRemarkableNotebook(nb, true)}
                                 disabled={rmImportingId !== null || rmComparingId !== null}
-                                className="rounded border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-xs disabled:opacity-50"
+                                variant="secondary"
+                                size="xs"
                               >
                                 Re-import anyway (re-render + re-transcribe)
-                              </button>
+                              </Button>
                             )}
                           </li>
                         ))}
@@ -1674,13 +1681,15 @@ export default function MemoryPage() {
                 maxLength={8}
                 className="w-32 rounded border border-slate-300 dark:border-slate-700 px-3 py-2 bg-transparent tracking-widest"
               />
-              <button
+              <Button
                 onClick={pairRemarkableCloud}
                 disabled={rmBusy || rmCode.trim().length !== 8}
-                className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
+                variant="solid"
+                size="xs"
+                className="px-4 py-2 text-sm"
               >
                 {rmBusy ? "Pairing…" : "Pair"}
-              </button>
+              </Button>
             </div>
             {rmMsg && <p className="text-xs opacity-80 break-words">{rmMsg}</p>}
           </>
@@ -1716,13 +1725,15 @@ export default function MemoryPage() {
                 Last error: {backup.lastError}
               </p>
             )}
-            <button
+            <Button
               onClick={runManualBackup}
               disabled={backupBusy}
-              className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
+              variant="solid"
+              size="xs"
+              className="px-4 py-2 text-sm"
             >
               {backupBusy ? "Backing up…" : "Backup now"}
-            </button>
+            </Button>
           </>
         ) : (
           <p className="text-xs opacity-70 break-words">
@@ -1828,13 +1839,15 @@ export default function MemoryPage() {
             Takes a minute or two; costs about <strong>$1–2</strong> per
             run on Opus (visible on the Cost tab).
           </p>
-          <button
+          <Button
             onClick={composeBookDraft}
             disabled={bookBusy}
-            className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm disabled:opacity-50"
+            variant="solid"
+            size="xs"
+            className="px-4 py-2 text-sm"
           >
             {bookBusy ? "Composing…" : "Compose with Claude"}
-          </button>
+          </Button>
           {bookMsg && <p className="text-sm opacity-70">{bookMsg}</p>}
         </div>
       </section>
@@ -2101,28 +2114,20 @@ function ChatMemorySection() {
                   ? ` Last error: ${status.last_extraction_error}`
                   : ""}
               </p>
-              <button
-                onClick={retryStuck}
-                disabled={retryBusy}
-                className="rounded border border-red-300 dark:border-red-800 px-3 py-1 text-xs text-red-700 dark:text-red-300 disabled:opacity-50"
-              >
+              <Button onClick={retryStuck} disabled={retryBusy} variant="danger" size="xs">
                 {retryBusy ? "Retrying…" : "Retry stuck batches"}
-              </button>
+              </Button>
               {retryMsg && (
                 <p className="text-xs opacity-70">{retryMsg}</p>
               )}
             </div>
           )}
           <div className="space-y-1.5 pt-1">
-            <button
-              onClick={backfillAll}
-              disabled={backfillBusy}
-              className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs disabled:opacity-50"
-            >
+            <Button onClick={backfillAll} disabled={backfillBusy} variant="secondary" size="xs">
               {backfillBusy
                 ? "Processing…"
                 : "Re-process all chat history (clean)"}
-            </button>
+            </Button>
             {backfillMsg && (
               <p className="text-xs opacity-70">{backfillMsg}</p>
             )}
@@ -2252,13 +2257,15 @@ function OwnTracksDiagnoseButton() {
   const summary: Summary | null = (data as Summary) ?? null;
   return (
     <div className="space-y-2">
-      <button
+      <Button
         onClick={run}
         disabled={busy}
-        className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+        variant="secondary"
+        size="xs"
+        className="opacity-80 hover:opacity-100"
       >
         {busy ? "Diagnosing…" : "Diagnose location pipeline"}
-      </button>
+      </Button>
       {err && <p className="text-xs text-red-600">{err}</p>}
       {data !== null && summary && (
         <div className="space-y-1 text-xs opacity-80">

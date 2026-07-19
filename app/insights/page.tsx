@@ -1,6 +1,7 @@
 "use client";
 
 import { Eyebrow } from "@/components/Eyebrow";
+import { Button } from "@/components/Button";
 
 import { useEffect, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
@@ -122,27 +123,23 @@ export default function InsightsPage() {
         <div className="flex gap-2">
           {insights.length > 0 && (
             <>
-              <button
-                onClick={copy}
-                className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm"
-              >
+              <Button onClick={copy} variant="secondary" size="xs" className="text-sm">
                 {copied ? "Copied" : "Copy"}
-              </button>
-              <button
-                onClick={download}
-                className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm"
-              >
+              </Button>
+              <Button onClick={download} variant="secondary" size="xs" className="text-sm">
                 Export
-              </button>
+              </Button>
             </>
           )}
-          <button
+          <Button
             onClick={generate}
             disabled={generating}
-            className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-sm disabled:opacity-50"
+            variant="solid"
+            size="xs"
+            className="text-sm"
           >
             {generating ? "Reflecting…" : "Generate insights"}
-          </button>
+          </Button>
           </div>
         </div>
       </div>

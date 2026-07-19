@@ -110,7 +110,7 @@ function pendingPagesSql(excludeIds: [string, string], limit: number) {
             FROM pages p
             LEFT JOIN entry_analysis a ON a.page_id = p.id
             WHERE p.ocr_text IS NOT NULL
-              AND p.ocr_text != ''
+              AND TRIM(p.ocr_text, ' ' || char(9) || char(10) || char(13)) != ''
               AND a.page_id IS NULL
               AND p.notebook_id NOT IN (?, ?)
             ORDER BY p.entry_date IS NULL ASC, p.entry_date DESC, p.id DESC
@@ -126,7 +126,7 @@ export function countPending(): number {
          FROM pages p
          LEFT JOIN entry_analysis a ON a.page_id = p.id
          WHERE p.ocr_text IS NOT NULL
-           AND p.ocr_text != ''
+           AND TRIM(p.ocr_text, ' ' || char(9) || char(10) || char(13)) != ''
            AND a.page_id IS NULL
            AND p.notebook_id NOT IN (?, ?)`
     )

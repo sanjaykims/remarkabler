@@ -1,5 +1,60 @@
 # Changelog
 
+## 2026-07-19 (Whole-app code review fixes: OAuth cap, dedup SQL, Button consolidation, /mind stuck-page bug)
+
+A whole-app review (Standards axis: Fowler smells + this repo's documented
+conventions; Spec axis: audit against every "Hard-won rule" in `CLAUDE.md`)
+surfaced several findings, all fixed:
+
+- Five `maybeExportDiaryToDropbox()` fire-and-forget calls had no `.catch()`
+  on the returned promise — one was the exact `try { void asyncFn() }
+  catch {}` anti-pattern the hard-won rules name by name. Fixed all five.
+- `checkOwntracksToken`/`checkPasscode` compared raw buffer lengths before
+  the timing-safe compare (a length-leak). Switched both to hash-first
+  (SHA-256) compares, matching `lib/mcp.ts`'s existing pattern.
+- `createRollingBatch` and `createBatchForChunk` duplicated the same
+  batch-insert/stamp/stats SQL; `createRollingBatch` now calls the shared
+  helper instead.
+- `/api/mcp/oauth/register` had no rate limit and `mcp_oauth_clients` had no
+  row cap. Added a per-bucket rate limit (won't share budget with real auth
+  failures) and eviction that only ever removes client rows with zero
+  issued tokens — a live connector's refresh token can never be evicted.
+- `Button` (`primary`/`secondary`/`ghost`) was used on Home only; six other
+  pages hand-rolled ~60 button instances. Added `solid`/`danger` variants +
+  an `xs` size and consolidated ~34 of them, leaving icon-only buttons,
+  toggle/pill controls, and genuinely bespoke bare-text links out of scope.
+- Fixed a real live bug: `/mind`'s "Analyse next N" could get permanently
+  stuck on a whitespace-only OCR'd page — the pending-query filter and the
+  analyzer's own blank-check disagreed (SQLite's `TRIM()` only strips plain
+  spaces by default, not tabs/newlines, unlike JS's `.trim()`), so such a
+  page failed deterministically forever. Fixed the SQL filter to agree with
+  the analyzer.
+
+479 tests pass (2 new), build clean.
+
+## 2026-07-19 (Vendor Matt Pocock's engineering skills)
+
+Brought in [`sanjaykims/skills`](https://github.com/sanjaykims/skills) (a
+fork of [`mattpocock/skills`](https://github.com/mattpocock/skills), MIT) —
+22 engineering + productivity Claude Code skills for alignment-first,
+disciplined development (grill-with-docs, tdd, diagnosing-bugs, implement,
+domain-modeling, triage, research, resolving-merge-conflicts, handoff, and
+more), following the same live-vendoring pattern already used for
+`kepano/obsidian-skills`.
+
+- Installed all 22 skills under `.claude/skills/`, renaming the upstream
+  `code-review` skill to `deep-code-review` (and its cross-references) to
+  avoid colliding with this session's built-in `code-review` skill.
+- Ran the one-time `setup-matt-pocock-skills` configuration: GitHub Issues
+  as the issue tracker (`docs/agents/issue-tracker.md`, with a note that
+  environments lacking the `gh` CLI should use the GitHub MCP tools
+  instead), default triage labels (`docs/agents/triage-labels.md`), and a
+  single-context domain-docs layout (`docs/agents/domain.md` — `CONTEXT.md`/
+  `docs/adr/` are created lazily by `/domain-modeling`, not upfront). Logged
+  in a new `## Agent skills` section in `CLAUDE.md`.
+- Documented the source and the rename in `docs/reference/README.md`,
+  alongside the existing `kepano/obsidian-skills` entry.
+
 ## 2026-07-19 (MCP Phase C follow-up: nudge inline tagging instead of polling)
 
 Found that the "recurring Claude Code session" scheduling mechanism assumed

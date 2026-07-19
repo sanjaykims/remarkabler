@@ -52,7 +52,9 @@ export async function POST(req: NextRequest) {
       // process, so fire-and-forget survives the response). Not awaited so
       // a multi-year diary can't blow the 60s route budget.
       fullSyncStarted = true;
-      void maybeExportDiaryToDropbox();
+      void maybeExportDiaryToDropbox().catch((e) =>
+        console.warn("[dropbox/export] full sync failed:", (e as Error).message)
+      );
     }
   }
 

@@ -617,13 +617,28 @@ export const THROTTLE_WINDOW_MS = 10 * 60 * 1000;
 export const THROTTLE_MAX_FAILURES = 10;
 const MAX_TRACKED_IPS = 10_000;
 
+// Bucketed so unrelated counters don't share one budget — e.g. registration
+// spam on /api/mcp/oauth/register (see REGISTER_THROTTLE_BUCKET below)
+// shouldn't eat into the same budget as real auth failures on /authorize and
+// /api/mcp. Existing callers that don't pass a bucket keep using "auth",
+// so this is additive, not a behavior change for them.
+const DEFAULT_THROTTLE_BUCKET = "auth";
 const authFailures = new Map<string, number[]>();
 
-export function recordAuthFailure(ip: string, now = Date.now()): void {
+function throttleKey(bucket: string, ip: string): string {
+  return `${bucket}:${ip}`;
+}
+
+export function recordAuthFailure(
+  ip: string,
+  now = Date.now(),
+  bucket: string = DEFAULT_THROTTLE_BUCKET
+): void {
+  const key = throttleKey(bucket, ip);
   const cutoff = now - THROTTLE_WINDOW_MS;
-  const list = (authFailures.get(ip) ?? []).filter((t) => t > cutoff);
+  const list = (authFailures.get(key) ?? []).filter((t) => t > cutoff);
   list.push(now);
-  authFailures.set(ip, list);
+  authFailures.set(key, list);
   // Bound memory under an IP-spraying scan: drop the stalest entries.
   if (authFailures.size > MAX_TRACKED_IPS) {
     let oldestKey: string | null = null;
@@ -639,22 +654,33 @@ export function recordAuthFailure(ip: string, now = Date.now()): void {
   }
 }
 
-export function isThrottled(ip: string, now = Date.now()): boolean {
+export function isThrottled(
+  ip: string,
+  now = Date.now(),
+  bucket: string = DEFAULT_THROTTLE_BUCKET
+): boolean {
+  const key = throttleKey(bucket, ip);
   const cutoff = now - THROTTLE_WINDOW_MS;
-  const list = authFailures.get(ip);
+  const list = authFailures.get(key);
   if (!list) return false;
   const recent = list.filter((t) => t > cutoff);
   if (recent.length === 0) {
-    authFailures.delete(ip);
+    authFailures.delete(key);
     return false;
   }
-  authFailures.set(ip, recent);
+  authFailures.set(key, recent);
   return recent.length >= THROTTLE_MAX_FAILURES;
 }
 
 export function resetMcpThrottle(): void {
   authFailures.clear();
 }
+
+// Bucket for /api/mcp/oauth/register — DCR is intentionally unauthenticated
+// (see CLAUDE.md), so this isn't a "failure" throttle like the others; it's
+// a plain per-IP rate limit on registration attempts, kept in its own
+// bucket so it can't starve or be starved by real auth-failure throttling.
+export const REGISTER_THROTTLE_BUCKET = "register";
 
 // First value of X-Forwarded-For (Railway's proxy sets it), else "unknown".
 export function clientIp(headers: Headers): string {
