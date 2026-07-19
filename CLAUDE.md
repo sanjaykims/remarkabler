@@ -70,10 +70,18 @@ and generate an accumulating record of "insights" about themselves.
   accepts the raw bearer token directly. Optional `APP_BASE_URL` fixes the
   public origin used in OAuth metadata/redirects (else derived from
   `X-Forwarded-*`). Optional `MCP_ALLOW_CONVERSATION_EXPORT=true` enables the
-  ONE write tool (`export_conversation`) — subscription-Claude saves a full
+  write tool `export_conversation` — subscription-Claude saves a full
   conversation, filed verbatim into the Obsidian/Dropbox vault as one note
-  (Phase B); OFF by default keeps the endpoint read-only. Setup guide:
-  `docs/mcp-setup.md`.
+  (Phase B); OFF by default keeps the endpoint read-only. Optional
+  `MCP_ALLOW_WIKI_LINKING=true` enables the six Phase C "librarian" tools
+  (`lib/conversationEntities.ts`) so a SEPARATE, recurring Claude Code agent
+  — set up by the user as a cron Routine, billed to their own Claude
+  subscription rather than this app's `ANTHROPIC_API_KEY` — can tag which
+  people/places/projects a conversation mentions and keep its own notes
+  about them, linking conversations into the same entity graph/Obsidian
+  wiki the diary builds. This app never runs that agent itself; it only
+  exposes the tools and a status heartbeat (`GET /api/librarian`, surfaced
+  on `/memory`). OFF by default. Setup guide: `docs/mcp-setup.md`.
 - Optional automatic location (OwnTracks): set `OWNTRACKS_TOKEN` to enable the
   `/api/owntracks` ingestion endpoint (the phone app posts there with
   `?token=`). Points are clustered into stays (place + dwell), reverse-geocoded
@@ -123,7 +131,11 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   clients + issued access/refresh tokens stored HASHED; see `lib/mcpOauth.ts`),
   `mcp_conversations` (full subscription-conversation transcripts exported via
   the `export_conversation` write tool, filed verbatim into the Obsidian vault;
-  see `lib/conversationWiki.ts`).
+  `linked_at` tracks the librarian agent's separate tagging progress, distinct
+  from `filed_at`'s Dropbox-filing progress; see `lib/conversationWiki.ts`),
+  `entity_conversation_notes` (the librarian agent's own notes about an
+  entity — kept in a table SEPARATE from `entity_wiki` so the two authors
+  can never clobber each other's writes; see `lib/conversationEntities.ts`).
   Some durable state also lives in
   `settings` rows, e.g.
   `mind_pca_axes` (persisted PCA mean + PC vectors + axis labels) and the
@@ -174,23 +186,54 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `recall_memories` (the durable `chat_memories` layer, via `recallChatMemories`),
   and `get_guidance` (the companion tone/anti-confabulation contract) — so the
   two surfaces can never drift; these three exist ONLY on MCP because the in-app
-  chat gets the same content via its system prompt + auto-recall — plus the ONE
-  opt-in WRITE tool `export_conversation` (Phase B, off unless
-  `MCP_ALLOW_CONVERSATION_EXPORT=true`)), `callMcpTool`
+  chat gets the same content via its system prompt + auto-recall — plus the
+  write tool `export_conversation` (Phase B, off unless
+  `MCP_ALLOW_CONVERSATION_EXPORT=true`) — plus the six "librarian" tools
+  (Phase C, all gated behind ONE flag `MCP_ALLOW_WIKI_LINKING=true`, via
+  `librarianToolsEnabled`): reads `list_unlinked_conversations`,
+  `get_conversation` (full verbatim read-back — the one MCP read that exposes
+  raw conversation content, so it shares the write tools' opt-in gate rather
+  than being ungated like the other reads), `get_entity_wiki`; writes
+  `tag_conversation_entities`, `update_entity_conversation_notes`,
+  `record_librarian_heartbeat` — see `lib/conversationEntities.ts`), `callMcpTool`
   (special-cases the MCP-only tools, else dispatch via `executeTool`), and
   the fail-closed bearer auth (`checkMcpAuth`, timing-safe, `MIN_TOKEN_LENGTH`).
   Served by `app/api/mcp/route.ts` (mcp-handler, Streamable HTTP, stateless,
   SSE disabled) so Claude on the user's subscription (claude.ai custom
-  connector / Claude Code) can query the diary. Read-only by default (the one
-  write is `export_conversation`, see the do-not-regress rule).
+  connector / Claude Code) can query the diary. Read-only by default (the
+  sanctioned writes are `export_conversation` and the three librarian write
+  tools, see the do-not-regress rule).
 - `lib/conversationWiki.ts` — Phase B store + renderer for full
   subscription-conversation transcripts (`mcp_conversations`): `saveExportedConversation`
   (upsert by key, add-only), pure `renderConversationNote`/`conversationNoteFileName`
-  (verbatim note, no summarizing), and `renderConversationNoteFiles`/
-  `unfiledConversationKeys`/`markConversationsFiled` for the filing cycle. Filed
-  into the Obsidian/Dropbox vault by `maybeExportConversationsToDropbox`
-  (`lib/dropbox.ts`), fired from the `export_conversation` tool + the maintenance
-  sweep.
+  (verbatim note, no summarizing), `renderConversationNoteFiles`/
+  `unfiledConversationKeys`/`markConversationsFiled` for the Dropbox filing
+  cycle, and `getConversationByKey`/`listUnlinkedConversations`/
+  `markConversationsLinked` (the separate `linked_at` tracking the Phase C
+  librarian's own progress). Filed into the Obsidian/Dropbox vault by
+  `maybeExportConversationsToDropbox` (`lib/dropbox.ts`), fired from the
+  `export_conversation` tool + the maintenance sweep.
+- `lib/conversationEntities.ts` — Phase C: the "librarian" data layer. A
+  recurring, autonomous Claude Code agent (a cron Routine, billed to the
+  user's Claude subscription, NOT this app's `ANTHROPIC_API_KEY`) links
+  exported conversations into the diary's existing entity graph/wiki.
+  `ensureConversationPage`/`tagConversationEntities` create one synthetic
+  `pages` row per conversation under the `CONVERSATIONS_NOTEBOOK_ID`
+  notebook (`lib/notes.ts`, mirrors the `DISCIPLINE_ID` synthetic-notebook
+  pattern) so tags flow through the same `entry_entities`/co-occurrence-graph
+  pipeline diary content uses — `ocr_text` is a short bounded placeholder
+  (never the full transcript), reused ONLY so the day-membership query has
+  the non-empty text it requires. `resolveConversationEntityName` folds
+  through `applyEntityAlias` and prefers an already-existing canonical
+  casing over the agent's freshly supplied one. `updateConversationNotes`/
+  `getConversationNotes`/`allConversationNotesRows` read/write
+  `entity_conversation_notes` — kept in a table separate from `entity_wiki`
+  (owned by the in-app `refreshEntityWiki`) specifically so the two authors
+  can never overwrite each other; `getCombinedEntityWiki` reads both
+  together for the agent. `recordLibrarianHeartbeat`/`librarianStatus`
+  mirror `lib/backup.ts`'s status pattern, surfaced via `GET /api/librarian`
+  and a status section on `/memory` (no "run now" — the app doesn't run the
+  agent itself).
 - `lib/mcpOauth.ts` — minimal OAuth 2.1 authorization server backing the
   claude.ai connector (its web UI has no static-header field, so it requires
   the OAuth discovery → DCR → authorize → token dance). `publicOrigin`
@@ -339,7 +382,9 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `export/book` Opus editor pass), `settings`,
   `chat/memories` (GET list+status / DELETE soft-delete /
   `retry/[batchId]` reset stuck / `backfill-all` chunked re-process
-  with optional `?reset=true`).
+  with optional `?reset=true`), `librarian` (GET-only status for the Phase C
+  librarian agent's heartbeat — see `lib/conversationEntities.ts`; no POST,
+  the app doesn't run the agent itself).
 - UI pages (`app/*`): `notebooks`, `chat`, `insights`, `mind` (heatmap, theme
   cloud, mood timeline, 3D embedding map — `app/mind/Map3D.tsx`), `memory`,
   `usage` (cost calendar).
@@ -450,17 +495,41 @@ features need the deployed instance to fully verify.
   under readOnly; `search_diary`'s Voyage query-embed is compute-only, no DB/fs
   write, and stays). Diary text is OCR'd handwriting and chat is outside our
   system prompt, so treat every request as hostile and keep the blast radius at
-  "read". **The ONE sanctioned write is `export_conversation`** (Phase B): it
-  is MCP-only, handled directly in `callMcpTool` (not via `executeTool`), and
-  is (a) OFF unless `MCP_ALLOW_CONVERSATION_EXPORT=true` — default keeps the
-  endpoint read-only (fail-safe), hidden from `tools/list` AND refused on
-  `tools/call`; (b) ADD-ONLY — it upserts exactly one row in `mcp_conversations`
-  (its own table) and touches nothing else; (c) size-capped
-  (`MAX_CONVERSATION_CHARS`). The content is filed into the vault VERBATIM as
-  quoted markdown by a deterministic exporter (no Claude "librarian" call, so no
-  prompt-injection-into-summarizer surface). Any OTHER new write tool must
-  follow the same three properties AND gate behind `!opts?.readOnly` if it rides
-  `executeTool`; (2) never make a missing/short token fall back
+  "read". **The sanctioned writes are `export_conversation` (Phase B) and the
+  three Phase C librarian write tools** (`tag_conversation_entities`,
+  `update_entity_conversation_notes`, `record_librarian_heartbeat`): all four
+  are MCP-only, handled directly in `callMcpTool` (not via `executeTool`), and
+  are (a) OFF by default — `export_conversation` behind
+  `MCP_ALLOW_CONVERSATION_EXPORT=true`, the three librarian tools (PLUS the
+  three librarian READ tools — see below) behind ONE flag
+  `MCP_ALLOW_WIKI_LINKING=true` — hidden from `tools/list` AND refused on
+  `tools/call` when off; (b) DETERMINISTIC-DESTINATION — the agent supplies
+  only content (and, for the librarian tools, a `conversation_key`/entity
+  name it doesn't get to invent a row for), never a path or id; this code
+  always computes the actual DB row/file target itself. `export_conversation`
+  is literally add-only (upserts exactly one row in its own table);
+  `tag_conversation_entities` is a SCOPED REPLACE of exactly one page's own
+  `entry_entities` rows (the same delete+reinsert shape `analyzePending`
+  already uses on that table) — narrower blast radius than a general write,
+  but not literally add-only, so don't describe it that way; (c) size-capped
+  (`MAX_CONVERSATION_CHARS`, `MAX_ENTITY_NOTES_CHARS`). `export_conversation`'s
+  content is filed into the vault VERBATIM as quoted markdown by a
+  deterministic exporter — no Claude call ever reads the raw transcript
+  inside THIS process, so there is no prompt-injection-into-summarizer
+  surface in our own server. The Phase C librarian is a genuinely agentic
+  reader of that same content, but it runs as a SEPARATE, user-controlled
+  Claude Code agent (a cron Routine on the user's own subscription) — not
+  code in this repo — and it can only ever act through these narrow,
+  destination-fixed tools, so the "AI decides content, code decides
+  destination" discipline still holds even though an AI now reads
+  previously-exported content. **`get_conversation` is the one MCP read that
+  is NOT ungated**: reading back a full stored transcript is new exposure
+  this endpoint couldn't previously provide, so it (and its sibling reads
+  `list_unlinked_conversations`/`get_entity_wiki`) share the write tools'
+  `MCP_ALLOW_WIKI_LINKING` gate rather than being always-on like
+  `get_profile`/`recall_memories`/`get_guidance`. Any OTHER new write tool
+  must follow the same properties AND gate behind `!opts?.readOnly` if it
+  rides `executeTool`; (2) never make a missing/short token fall back
   to "open" — `checkMcpAuth` returns `disabled` (503), and that must stay the
   no-config behavior; (3) the per-IP brute-force throttle applies to FAILED
   auth only — a valid token must never be throttled (Claude's connector
@@ -497,6 +566,42 @@ features need the deployed instance to fully verify.
   Registration
   is open (public clients) ON PURPOSE — it grants nothing without passing the
   consent gate. Don't relax any of these.
+- **The librarian's synthetic notebook needs BOTH an inclusion and an
+  exclusion list — getting either backwards is the likely bug class here.**
+  `CONVERSATIONS_NOTEBOOK_ID` (`lib/notes.ts`) is a second synthetic notebook
+  alongside `DISCIPLINE_ID`, but with the OPPOSITE default posture: its pages
+  carry a real, non-empty `ocr_text`/`entry_date` (unlike discipline's), so it
+  needs explicit exclusion from surfaces that assume "this is real diary
+  content" — `analyzePending`'s pending-query (`lib/mind.ts`; this one fix
+  also transitively protects `getThemes`/`getSentimentSeries`/
+  `getEmbeddingMap`, since none of them have any other notebook filter and
+  rely entirely on `entry_analysis` never containing this notebook's rows),
+  `getHeatmap`, `entityWiki.ts`'s `candidates`/`mentions` (protects the
+  ownership separation below), `diaryExportDb.ts`'s `fetchDiaryData` (day
+  files — a conversation already gets its own note, a day file would
+  duplicate it) and `affectedDayFileNames`, and `chatTools.ts`'s
+  `getEntriesByDate`/`getRecentEntries`/`listNotebooks`. But UNLIKE
+  discipline, it must stay INCLUDED (never added to an exclusion list) in
+  `chatTools.ts`'s `topEntities`/`pagesForEntity`/`relatedEntities`,
+  `mind.ts`'s `getTopEntities`, `entityMerge.ts`'s dedup candidates,
+  `diaryExportDb.ts`'s `fetchCanonicalEntityNames`/`renderEntityStubFiles`/
+  `affectedEntityStubFileNames` — that inclusion is what makes a person only
+  ever discussed in a subscription conversation still show up in the entity
+  graph, rankings, and get a real Obsidian stub page. Do not "clean up" by
+  excluding it everywhere discipline is excluded, and do not forget the
+  exclusions above just because the graph/stub side stays inclusive.
+- **`entity_wiki.summary` (in-app diary bio) and `entity_conversation_notes`
+  (librarian's own notes) are DISJOINT tables on purpose — never merge them
+  into one column.** `refreshEntityWiki` (`lib/entityWiki.ts`) regenerates
+  `entity_wiki.summary` via content-addressed hashing over diary mentions
+  only; the librarian's `update_entity_conversation_notes` MCP tool
+  (`lib/conversationEntities.ts`) writes `entity_conversation_notes.notes`
+  via a full-text replace with no hash at all. If these ever shared one
+  field, whichever wrote second would silently clobber the other's work on
+  its next regen. `renderEntityStubFiles` (`lib/diaryExportDb.ts`) reads both
+  and renders them as separate sections (the diary bio, then a "## Recent
+  conversations" heading) on the same stub note — that's the only place they
+  ever appear together, and it's read-only composition, not a merge.
 - **Chat memory recall is fail-open AND embedding-optional.** `chatOverNotes`
   accepts `recalledMemories` as a pre-rendered text block; it lives in the
   dynamic context block (never cached). Recall must never throw — chat must

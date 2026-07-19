@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-07-19 (Whole-app code review fixes: OAuth cap, dedup SQL, Button consolidation, /mind stuck-page bug)
+
+A whole-app review (Standards axis: Fowler smells + this repo's documented
+conventions; Spec axis: audit against every "Hard-won rule" in `CLAUDE.md`)
+surfaced several findings, all fixed:
+
+- Five `maybeExportDiaryToDropbox()` fire-and-forget calls had no `.catch()`
+  on the returned promise — one was the exact `try { void asyncFn() }
+  catch {}` anti-pattern the hard-won rules name by name. Fixed all five.
+- `checkOwntracksToken`/`checkPasscode` compared raw buffer lengths before
+  the timing-safe compare (a length-leak). Switched both to hash-first
+  (SHA-256) compares, matching `lib/mcp.ts`'s existing pattern.
+- `createRollingBatch` and `createBatchForChunk` duplicated the same
+  batch-insert/stamp/stats SQL; `createRollingBatch` now calls the shared
+  helper instead.
+- `/api/mcp/oauth/register` had no rate limit and `mcp_oauth_clients` had no
+  row cap. Added a per-bucket rate limit (won't share budget with real auth
+  failures) and eviction that only ever removes client rows with zero
+  issued tokens — a live connector's refresh token can never be evicted.
+- `Button` (`primary`/`secondary`/`ghost`) was used on Home only; six other
+  pages hand-rolled ~60 button instances. Added `solid`/`danger` variants +
+  an `xs` size and consolidated ~34 of them, leaving icon-only buttons,
+  toggle/pill controls, and genuinely bespoke bare-text links out of scope.
+- Fixed a real live bug: `/mind`'s "Analyse next N" could get permanently
+  stuck on a whitespace-only OCR'd page — the pending-query filter and the
+  analyzer's own blank-check disagreed (SQLite's `TRIM()` only strips plain
+  spaces by default, not tabs/newlines, unlike JS's `.trim()`), so such a
+  page failed deterministically forever. Fixed the SQL filter to agree with
+  the analyzer.
+
+479 tests pass (2 new), build clean.
+
 ## 2026-07-19 (Vendor Matt Pocock's engineering skills)
 
 Brought in [`sanjaykims/skills`](https://github.com/sanjaykims/skills) (a
@@ -22,6 +54,79 @@ more), following the same live-vendoring pattern already used for
   in a new `## Agent skills` section in `CLAUDE.md`.
 - Documented the source and the rename in `docs/reference/README.md`,
   alongside the existing `kepano/obsidian-skills` entry.
+
+## 2026-07-19 (MCP Phase C follow-up: nudge inline tagging instead of polling)
+
+Found that the "recurring Claude Code session" scheduling mechanism assumed
+during Phase C isn't durable in this environment (session-scoped, expires),
+and — separately — polling on a schedule wastes tokens checking for work that
+usually isn't there yet. Better default: the `export_conversation` tool's own
+description now nudges whichever Claude just exported a conversation to tag
+it immediately afterward, while the content is still in its context — zero
+polling, zero re-fetch, fires exactly once per real export. The nudge only
+appears when `MCP_ALLOW_WIKI_LINKING=true` is also set (mcpToolList builds
+`export_conversation`'s description dynamically), so it says nothing about
+tools that don't exist when librarian linking is off. `list_unlinked_conversations`
+etc. remain available for an occasional manual or Routine-driven catch-up
+sweep. One new test pins the conditional nudge; 503 pass, build clean.
+
+## 2026-07-19 (MCP Phase C: the conversation "librarian" — a subscription-billed Claude Code agent)
+
+Closes Phase B's own follow-up note: conversation notes now link into the
+diary's existing entity graph/wiki, instead of sitting in isolation. Compared
+running this in-app (a Claude API call) against a recurring, subscription-billed
+Claude Code agent; chose the latter, accepting an occasional manual
+MCP-connector reconnect after a tool deploy (a platform behavior, not
+something this app can fix) in exchange for using Claude subscription
+headroom instead of metered API spend, plus a genuinely agentic reader that
+can check what's already recorded before deciding what to add.
+
+- **Six new MCP tools** (`lib/mcp.ts`), all gated behind one new flag
+  `MCP_ALLOW_WIKI_LINKING=true` (OFF by default, hidden from `tools/list` and
+  refused on `tools/call` otherwise — including the reads, since
+  `get_conversation` exposes full previously-exported content the endpoint
+  couldn't return before): read tools `list_unlinked_conversations`,
+  `get_conversation`, `get_entity_wiki`; write tools
+  `tag_conversation_entities`, `update_entity_conversation_notes`,
+  `record_librarian_heartbeat`.
+- **New data layer** (`lib/conversationEntities.ts`) — a synthetic
+  `CONVERSATIONS_NOTEBOOK_ID` notebook (mirrors the existing `DISCIPLINE_ID`
+  pattern) gives each exported conversation one lightweight `pages` row, so
+  the librarian's entity tags flow through the SAME `entry_entities`/
+  co-occurrence-graph pipeline diary content already uses — a person only
+  ever discussed in a subscription chat now shows up in `related_entities`,
+  `top_entities`, and gets a real Obsidian stub page.
+- **Ownership-separated wiki content**: a new `entity_conversation_notes`
+  table, kept structurally separate from `entity_wiki` (the in-app
+  Claude-composed diary bio), so the librarian and the existing
+  content-addressed bio regen can never overwrite each other. Entity stub
+  notes now render both, in their own sections ("## Recent conversations"
+  alongside the existing diary bio).
+- **Notebook-exclusion audit**: unlike discipline, the conversations notebook
+  carries a real `ocr_text`/`entry_date`, so it needed EXPLICIT exclusion
+  from surfaces that assume real diary content (`analyzePending`'s pending
+  query — which transitively protects `getThemes`/`getSentimentSeries`/
+  `getEmbeddingMap` too, since none of them filter by notebook directly —
+  plus `getHeatmap`, day-file export, `entityWiki.ts`'s bio composer,
+  date/recency chat lookups) while staying deliberately INCLUDED everywhere
+  the entity graph/rankings/stubs read (`top_entities`, `pages_for_entity`,
+  `related_entities`, `getTopEntities`, entity dedup, canonical-name
+  resolution, stub generation).
+- **Heartbeat**: `GET /api/librarian` + a status section on `/memory`
+  (mirrors the existing Backup section) — the app itself never runs the
+  agent, so this only surfaces its last self-reported run.
+- Caught and fixed a real bug during implementation: the existing entity-stub
+  accumulator keys pages internally with a `\0` separator (not a space) to
+  keep kind/name unambiguous — a new pass using a plain space silently
+  created unmatched duplicate keys and made diary-sourced stubs lose their
+  `## Mentions` section whenever the same entity also had librarian notes.
+
+Honest tradeoffs (as designed): this app never runs the librarian — the user
+sets up the recurring session themselves (a cron Routine) and it needs to
+actually inherit the Remarkabler MCP connector, which is a platform behavior
+to verify at setup time, not something the code guarantees. 27 new tests
+(entity tagging/notes/heartbeat, stub rendering, notebook-exclusion pins);
+502 pass, build clean.
 
 ## 2026-07-18 (MCP Phase B: export a full conversation into the Obsidian wiki)
 

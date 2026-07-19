@@ -74,6 +74,15 @@ export default function MemoryPage() {
   const [backup, setBackup] = useState<BackupStatus | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
 
+  type LibrarianStatus = {
+    configured: boolean;
+    lastRunAt: string | null;
+    lastRunNote: string | null;
+    lastRunError: string | null;
+    lastWriteAt: string | null;
+  };
+  const [librarian, setLibrarian] = useState<LibrarianStatus | null>(null);
+
   type DropboxStatus = {
     configured: boolean;
     connected: boolean;
@@ -288,6 +297,14 @@ export default function MemoryPage() {
       setBackup(await fetch("/api/backup").then((r) => r.json()));
     } catch {
       setBackup(null);
+    }
+  }
+
+  async function loadLibrarian() {
+    try {
+      setLibrarian(await fetch("/api/librarian").then((r) => r.json()));
+    } catch {
+      setLibrarian(null);
     }
   }
 
@@ -666,6 +683,7 @@ export default function MemoryPage() {
     loadDiscSettings();
     loadModels();
     loadBackup();
+    loadLibrarian();
     loadEmbed();
     loadDropbox();
     loadRemarkable();
@@ -1724,6 +1742,51 @@ export default function MemoryPage() {
             <code>you/remarkabler-backup</code>) and a fine-grained{" "}
             <code>BACKUP_GITHUB_TOKEN</code> with write access to just that
             repo. Add them and redeploy; this section will switch on.
+          </p>
+        )}
+      </section>
+
+      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-3">
+        <h2 className="font-medium">Conversation librarian</h2>
+        {librarian === null ? (
+          <p className="text-xs opacity-60">Loading…</p>
+        ) : librarian.configured ? (
+          <>
+            <p className="text-xs opacity-70">
+              A recurring Claude Code agent (billed to your Claude
+              subscription, not this app&rsquo;s API key) links your exported
+              conversations into the diary&rsquo;s entity wiki — tagging who
+              and what they mention, and keeping its own notes about a person,
+              place, or project separate from the diary&rsquo;s own written
+              bio. This app doesn&rsquo;t run it; it only shows its last
+              heartbeat below.
+            </p>
+            <p className="text-xs opacity-70">
+              {librarian.lastRunAt ? (
+                <>Last run: {formatLocalTime(librarian.lastRunAt)}</>
+              ) : (
+                <>Hasn&rsquo;t run yet.</>
+              )}
+              {librarian.lastRunNote && <> · {librarian.lastRunNote}</>}
+            </p>
+            {librarian.lastRunAt &&
+              Date.now() - new Date(librarian.lastRunAt).getTime() >
+                7 * 24 * 60 * 60 * 1000 && (
+                <p className="text-xs text-amber-600">
+                  Hasn&rsquo;t run in over a week — check the Routine.
+                </p>
+              )}
+            {librarian.lastRunError && (
+              <p className="text-xs text-red-600">
+                Last error: {librarian.lastRunError}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-xs opacity-70 break-words">
+            Not configured. Set <code>MCP_ALLOW_WIKI_LINKING=true</code> in
+            Railway, then set up a recurring Claude Code agent connected to
+            the Remarkabler MCP connector.
           </p>
         )}
       </section>
