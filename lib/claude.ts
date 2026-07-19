@@ -533,7 +533,14 @@ export async function analyzeEntryContent(text: string): Promise<{
 
   const resp = await client().messages.create({
     model: modelChat(),
-    max_tokens: 500,
+    // 500 was too tight for content-rich pages (many entities + CJK names,
+    // which tokenize less efficiently than English) — the model would get
+    // cut off mid-JSON, producing an invalid response that failed to parse
+    // EVERY time (same input -> same truncation), so the page could never
+    // succeed no matter how many times it was retried. 1500 gives real
+    // headroom above the schema's worst case (5 themes + summary + 12
+    // entities) while still being a small, cheap cap.
+    max_tokens: 1500,
     system: [
       "You analyse one diary entry and return STRICT JSON, nothing else.",
       "No preamble, no Markdown fence, no explanation — just the JSON object.",
@@ -571,8 +578,23 @@ export async function analyzeEntryContent(text: string): Promise<{
 
   const block = resp.content.find((b) => b.type === "text");
   const raw = block && block.type === "text" ? block.text.trim() : "";
-  if (!raw) return null;
-  return parseAnalyzeEntryContent(raw);
+  if (!raw) throw new Error("Claude returned no text content");
+
+  const parsed = parseAnalyzeEntryContent(raw);
+  if (!parsed) {
+    // Surface WHY, not just that it failed — a page that fails deterministically
+    // on every retry (same input -> same bad output) is otherwise undiagnosable
+    // without API logs. stop_reason "max_tokens" means the response was cut off
+    // mid-JSON before this function's caller ever wrote a byte to entry_analysis.
+    const truncated = resp.stop_reason === "max_tokens";
+    const preview = raw.length > 200 ? raw.slice(0, 200) + "…" : raw;
+    throw new Error(
+      truncated
+        ? `Response was cut off (hit the token limit) before it finished: ${preview}`
+        : `Response wasn't valid JSON: ${preview}`
+    );
+  }
+  return parsed;
 }
 
 /**
