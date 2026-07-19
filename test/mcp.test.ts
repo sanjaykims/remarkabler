@@ -179,6 +179,21 @@ describe("export_conversation write tool (Phase B — opt-in, add-only)", () => 
     );
     expect(out.error).toContain("not available");
   });
+
+  it("nudges inline tagging in its description ONLY when the librarian tools are also enabled", () => {
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    const withoutLibrarian = mcp
+      .mcpToolList()
+      .find((t) => t.name === mcp.EXPORT_TOOL_NAME)!;
+    expect(withoutLibrarian.description).not.toContain("tag_conversation_entities");
+
+    process.env.MCP_ALLOW_WIKI_LINKING = "true";
+    const withLibrarian = mcp
+      .mcpToolList()
+      .find((t) => t.name === mcp.EXPORT_TOOL_NAME)!;
+    expect(withLibrarian.description).toContain("tag_conversation_entities");
+    expect(withLibrarian.description).toContain("get_entity_wiki");
+  });
 });
 
 describe("librarian tools (Phase C — opt-in, one flag for all six)", () => {

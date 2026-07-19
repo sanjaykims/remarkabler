@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-19 (MCP Phase C follow-up: nudge inline tagging instead of polling)
+
+Found that the "recurring Claude Code session" scheduling mechanism assumed
+during Phase C isn't durable in this environment (session-scoped, expires),
+and — separately — polling on a schedule wastes tokens checking for work that
+usually isn't there yet. Better default: the `export_conversation` tool's own
+description now nudges whichever Claude just exported a conversation to tag
+it immediately afterward, while the content is still in its context — zero
+polling, zero re-fetch, fires exactly once per real export. The nudge only
+appears when `MCP_ALLOW_WIKI_LINKING=true` is also set (mcpToolList builds
+`export_conversation`'s description dynamically), so it says nothing about
+tools that don't exist when librarian linking is off. `list_unlinked_conversations`
+etc. remain available for an occasional manual or Routine-driven catch-up
+sweep. One new test pins the conditional nudge; 503 pass, build clean.
+
 ## 2026-07-19 (MCP Phase C: the conversation "librarian" — a subscription-billed Claude Code agent)
 
 Closes Phase B's own follow-up note: conversation notes now link into the

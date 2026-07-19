@@ -362,7 +362,20 @@ export function mcpToolList(): McpToolDef[] {
   // The write tool appears ONLY when explicitly opted in (and not manually
   // excluded) — default OFF keeps the surface read-only.
   if (conversationExportEnabled() && !excluded.has(EXPORT_TOOL_NAME)) {
-    tools.push(EXPORT_TOOL);
+    // When the librarian tools are ALSO enabled, nudge inline tagging right
+    // in this description — the calling session already has the full
+    // conversation in context, so tagging right after export (rather than a
+    // separate session re-fetching it later) is the cheapest possible way to
+    // link it: zero polling, zero re-fetch, fires exactly once per export.
+    const nudge = librarianToolsEnabled()
+      ? " After saving, while you still have this conversation in mind: call " +
+        "get_entity_wiki for anyone/anywhere/anything worth remembering it " +
+        "mentioned, then tag_conversation_entities (and update_entity_" +
+        "conversation_notes if there's something new worth keeping). Doing " +
+        "this now, while the content is already in front of you, is much " +
+        "cheaper than a separate pass re-reading it later."
+      : "";
+    tools.push({ ...EXPORT_TOOL, description: EXPORT_TOOL.description + nudge });
   }
   // The librarian tools (Phase C) — all six gate behind one flag, including
   // the reads, since get_conversation exposes full conversation content the
