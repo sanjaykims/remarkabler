@@ -151,11 +151,10 @@ them into the same wiki your diary already builds — so a person or place you
 discussed with Claude shows up connected to your diary's people/places/
 projects, not sitting in an isolated note.
 
-This is **not something the app runs itself**. It's a small "librarian" job
-you set up as a *separate*, recurring Claude Code session — billed to your
-Claude subscription, not Remarkabler's own API costs. Each time it runs, it
-reads conversations you haven't linked yet, decides who/what they mention,
-and records that.
+This is **not something the app runs itself**, and it does not poll on a
+schedule by default — the cheapest way to link a conversation is to have the
+*same* session that just exported it tag it immediately, while the content is
+already in its context, instead of a separate session re-fetching it later.
 
 **Step 1 — turn on the tools.** In Railway, set:
 
@@ -163,12 +162,21 @@ and records that.
 MCP_ALLOW_WIKI_LINKING=true
 ```
 
-Off by default — the endpoint has no extra exposure until you set this.
+Off by default — the endpoint has no extra exposure until you set this. Once
+it's on, `export_conversation`'s own instructions automatically nudge Claude
+to tag entities right after saving — no extra setup needed for this to start
+happening on new exports.
 
-**Step 2 — set up the recurring session.** Using whatever scheduling your
-Claude Code environment offers (e.g. a Routine / scheduled task), create one
-that fires periodically (every few hours is reasonable to start) with a
-prompt along these lines:
+You can check it's working on `/memory`, under "Conversation librarian" — it
+shows the last time a tag/note write happened.
+
+**Optional — a periodic catch-up sweep.** The inline nudge only fires when
+Claude actually follows it, so some conversations may go unlinked (e.g. ones
+exported before you turned this on, or a session that didn't follow the
+nudge). To catch up, either just ask any connected Claude "catch up on
+unlinked conversations" occasionally, or — if your Claude plan has persistent
+Routines/scheduled tasks in its own Settings (a claude.ai account feature,
+separate from anything Remarkabler runs) — set one up with a prompt like:
 
 > You are the diary librarian. Using the Remarkabler MCP connector: call
 > `list_unlinked_conversations`. For each one, call `get_conversation` to
@@ -179,8 +187,8 @@ prompt along these lines:
 > `update_entity_conversation_notes`. Always finish by calling
 > `record_librarian_heartbeat`, even if there was nothing to do.
 
-You can check whether it's actually running on `/memory`, under "Conversation
-librarian" — it shows the last time it reported in.
+A low frequency (once a day, or even manually) is enough for a catch-up
+sweep — the inline nudge above should handle most conversations already.
 
 Requirements + how it behaves:
 - The session needs the Remarkabler MCP connector available — same connector
