@@ -10,6 +10,7 @@ import {
   cosineSimilarity,
 } from "./embeddings";
 import { getCurrentProfile } from "./profile";
+import { createBatchForChunk } from "./chatMemoryBackfill";
 
 // Knobs. Tunable in one place so a sweep parameter doesn't drift between
 // the extractor and the recall path.
@@ -637,36 +638,12 @@ export function createRollingBatch(conversationId: string): number | null {
     ).uc;
     if (userChars < MIN_USER_CHARS_FOR_COMPRESSION) return null;
 
-    const ins = db()
-      .prepare(`INSERT INTO chat_archive_batches(conversation_id) VALUES(?)`)
-      .run(conversationId);
-    const batchId = Number(ins.lastInsertRowid);
     // Stamp the batch id but DELIBERATELY leave archived_at NULL — the messages
     // stay in the user's visible conversation. This is the one thing that makes
-    // rolling memory additive rather than a mid-chat Clear.
-    db()
-      .prepare(
-        `UPDATE chat_messages SET archive_batch_id = ?
-         WHERE id IN (${placeholders})`
-      )
-      .run(batchId, ...ids);
-
-    const stats = db()
-      .prepare(
-        `SELECT MIN(id) AS s, MAX(id) AS e, COUNT(*) AS c,
-                COALESCE(SUM(CASE WHEN role='user' THEN LENGTH(content) ELSE 0 END), 0) AS uc
-           FROM chat_messages WHERE archive_batch_id = ?`
-      )
-      .get(batchId) as { s: number | null; e: number | null; c: number; uc: number };
-    db()
-      .prepare(
-        `UPDATE chat_archive_batches
-           SET message_start_id = ?, message_end_id = ?,
-               message_count = ?, user_char_count = ?
-         WHERE id = ?`
-      )
-      .run(stats.s, stats.e, stats.c, stats.uc, batchId);
-    return batchId;
+    // rolling memory additive rather than a mid-chat Clear. Shared with the
+    // backfill path via createBatchForChunk so the insert/stamp/stats SQL
+    // can't drift between the two (see that helper's own header comment).
+    return createBatchForChunk(db(), conversationId, ids);
   })();
 }
 
