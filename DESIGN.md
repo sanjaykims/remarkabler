@@ -127,7 +127,11 @@ a greppable name for the accent; pick whichever reads better in context.
 Server-safe, hook-free, in `components/`:
 
 - `cn` — class-concatenation helper (6 lines, no deps).
-- `Button` (`primary` / `secondary` / `ghost` × `sm` / `md`).
+- `Button` (`primary` / `secondary` / `ghost` / `solid` / `danger` / `text`
+  × `xs` / `sm` / `md`). `solid` is a high-contrast slate CTA for
+  primary-feeling actions that deliberately aren't the one amber `primary`
+  (see the "yellow is sacred" rule above); `danger` is bordered red-tinted
+  for destructive actions; `text` is a bare underlined link-style trigger.
 - `Card` — `rounded border border-slate-200 dark:border-slate-800 p-…`
   with an `as` prop.
 - `Section` — H2 + optional subtitle + bordered body (lifted from the
