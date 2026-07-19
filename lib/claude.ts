@@ -518,6 +518,44 @@ const ENTITY_STOPWORDS = new Set([
   "home", "work", "here", "there",
 ]);
 
+// Shared entity-kind taxonomy text, used by both analyzeEntryContent (diary
+// pages) and extractTaggingEntities (exported conversations/reflections) so
+// the two prompts can't drift apart on what counts as a named entity.
+export const ENTITY_KIND_GUIDANCE = [
+  "Entity guidance:",
+  "- person: a specific named individual (\"Pastor Kim\", \"Mom\", \"Sanjay\").",
+  "- place: a specific named location (\"Seoul Iris Garden\", \"Costco\", \"Shenzhen\").",
+  "- project: use this BROADLY for any specific NAMED subject/thing the",
+  "  writer engages with — a work project, a book/movie/media, a company or",
+  "  organization, a named concept/method/course, an event, a product, or a",
+  "  notable recurring object (e.g. \"Project Hail Mary\", \"NVidia\",",
+  "  \"Psycho-Cybernetics\", \"the 2026 book project\", \"WWDC\").",
+  "Capture every specific named thing across these three kinds — but keep it",
+  "NAMED and specific: never generic words (\"work\", \"reading\", \"the",
+  "meeting\", \"coffee\"). If uncertain whether something is a real named",
+  "entity, skip it.",
+].join("\n");
+
+// Shared validator for a raw `entities` JSON array — kind/length/stopword
+// filtering, capped at maxCount. Used by both parseAnalyzeEntryContent and
+// parseExtractTaggingEntities so the two parsers can't drift.
+function parseEntityArray(entitiesRaw: unknown, maxCount: number): EntryEntity[] {
+  const arr = Array.isArray(entitiesRaw) ? entitiesRaw : [];
+  const entities: EntryEntity[] = [];
+  for (const raw of arr) {
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as Record<string, unknown>;
+    const kind = typeof e.kind === "string" ? e.kind.trim().toLowerCase() : "";
+    if (kind !== "person" && kind !== "place" && kind !== "project") continue;
+    const name = typeof e.name === "string" ? e.name.trim() : "";
+    if (!name || name.length > 60) continue;
+    if (ENTITY_STOPWORDS.has(name.toLowerCase())) continue;
+    entities.push({ kind, name });
+    if (entities.length >= maxCount) break;
+  }
+  return entities;
+}
+
 export async function analyzeEntryContent(text: string): Promise<{
   themes: string[];
   sentiment: number | null;
@@ -556,18 +594,7 @@ export async function analyzeEntryContent(text: string): Promise<{
       '  ]',
       "}",
       "",
-      "Entity guidance:",
-      "- person: a specific named individual (\"Pastor Kim\", \"Mom\", \"Sanjay\").",
-      "- place: a specific named location (\"Seoul Iris Garden\", \"Costco\", \"Shenzhen\").",
-      "- project: use this BROADLY for any specific NAMED subject/thing the",
-      "  writer engages with — a work project, a book/movie/media, a company or",
-      "  organization, a named concept/method/course, an event, a product, or a",
-      "  notable recurring object (e.g. \"Project Hail Mary\", \"NVidia\",",
-      "  \"Psycho-Cybernetics\", \"the 2026 book project\", \"WWDC\").",
-      "Capture every specific named thing across these three kinds — but keep it",
-      "NAMED and specific: never generic words (\"work\", \"reading\", \"the",
-      "meeting\", \"coffee\"). If uncertain whether something is a real named",
-      "entity, skip it.",
+      ENTITY_KIND_GUIDANCE,
       "",
       "If the entry is too short or empty to analyse, return:",
       '{"themes": [], "sentiment": null, "summary": "", "entities": []}',
@@ -638,21 +665,99 @@ export function parseAnalyzeEntryContent(raw: string): {
   const summaryRaw = typeof p.summary === "string" ? p.summary.trim() : "";
   const summary = summaryRaw.length > 400 ? summaryRaw.slice(0, 400) : summaryRaw;
 
-  const entitiesRaw = Array.isArray(p.entities) ? p.entities : [];
-  const entities: EntryEntity[] = [];
-  for (const raw of entitiesRaw) {
-    if (!raw || typeof raw !== "object") continue;
-    const e = raw as Record<string, unknown>;
-    const kind = typeof e.kind === "string" ? e.kind.trim().toLowerCase() : "";
-    if (kind !== "person" && kind !== "place" && kind !== "project") continue;
-    const name = typeof e.name === "string" ? e.name.trim() : "";
-    if (!name || name.length > 60) continue;
-    if (ENTITY_STOPWORDS.has(name.toLowerCase())) continue;
-    entities.push({ kind, name });
-    if (entities.length >= 12) break;
-  }
+  const entities = parseEntityArray(p.entities, 12);
 
   return { themes, sentiment, summary, entities };
+}
+
+/**
+ * Lightweight, entities-ONLY extraction for exported conversations/
+ * reflections — NOT diary-page analysis. Deliberately not a reuse of
+ * analyzeEntryContent: that function's 8000-char flat truncation would only
+ * ever see a long transcript's opening exchanges, and it always computes
+ * themes/sentiment/summary we'd have to discard (and must never persist —
+ * these are synthetic pages, not real diary content, see the notebook
+ * exclusion rules in lib/notes.ts). The caller is responsible for bounding
+ * input size (lib/entityTagging.ts's sampleForTagging) with a sampling
+ * strategy appropriate for a long transcript, not a flat truncation.
+ *
+ * Runs on the chat (cheap) model — this is shallow structured extraction,
+ * not synthesis, so it doesn't need CLAUDE_MODEL/Opus reasoning.
+ *
+ * Returns [] for "found nothing" (a valid, completing result — mirrors
+ * tagConversationEntities' own "empty list is a valid completing call"
+ * semantics) and THROWS only on genuinely unparseable output, so the caller
+ * can tell "nothing to tag" apart from "extraction failed".
+ */
+export async function extractTaggingEntities(text: string): Promise<EntryEntity[]> {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  const resp = await client().messages.create({
+    model: modelChat(),
+    // Higher than analyzeEntryContent's 1500: up to 30 entities (vs 12),
+    // possibly CJK names, with no themes/sentiment/summary sharing the budget.
+    max_tokens: 2000,
+    system: [
+      "You extract NAMED entities from a piece of writing (an exported",
+      "conversation or reflection about someone, not a diary page) and return",
+      "STRICT JSON, nothing else. No preamble, no Markdown fence, no",
+      "explanation — just the JSON object.",
+      "",
+      "Schema:",
+      "{",
+      '  "entities": [             // 0 to 30 concrete NAMED items the text actually mentions. Do NOT extract generic words ("coffee", "meeting", "the team"). Only specific named items.',
+      '    { "kind": "person|place|project",',
+      '      "name": "short proper noun, ≤60 chars, ORIGINAL CASING preserved (do NOT translate names)" }',
+      '  ]',
+      "}",
+      "",
+      ENTITY_KIND_GUIDANCE,
+      "",
+      "If nothing worth tagging is mentioned, return:",
+      '{"entities": []}',
+    ].join("\n"),
+    messages: [{ role: "user", content: trimmed }],
+  });
+  recordUsage("entity_tagging", modelChat(), resp.usage);
+
+  const block = resp.content.find((b) => b.type === "text");
+  const raw = block && block.type === "text" ? block.text.trim() : "";
+  if (!raw) throw new Error("Claude returned no text content");
+
+  const parsed = parseExtractTaggingEntities(raw);
+  if (parsed === null) {
+    const truncated = resp.stop_reason === "max_tokens";
+    const preview = raw.length > 200 ? raw.slice(0, 200) + "…" : raw;
+    throw new Error(
+      truncated
+        ? `Tagging extraction was cut off (hit the token limit) before it finished: ${preview}`
+        : `Tagging extraction wasn't valid JSON: ${preview}`
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Pure parser for extractTaggingEntities' JSON output, unit-testable without
+ * an API call. Returns null only for genuinely unparseable output (the
+ * caller then throws); a well-formed-but-empty entities array parses to [].
+ */
+export function parseExtractTaggingEntities(raw: string): EntryEntity[] | null {
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripped);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const p = parsed as Record<string, unknown>;
+  return parseEntityArray(p.entities, 30);
 }
 
 // ── Entity duplicate detection ─────────────────────────────────────────────

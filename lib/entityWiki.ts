@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { db, getSetting, setSetting } from "./db";
-import { DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID } from "./notes";
+import { DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID, REFLECTIONS_NOTEBOOK_ID } from "./notes";
 import { composeEntityWiki, type EntityWikiExcerpt } from "./claude";
 
 // The "life wiki": a Claude-written profile per entity (kind, name_norm),
@@ -33,15 +33,15 @@ function candidates(kind: Kind): Array<{ norm: string; name: string }> {
     .prepare(
       `SELECT e.name_norm AS norm, MIN(e.name) AS name
        FROM entry_entities e JOIN pages p ON p.id = e.page_id
-       WHERE e.kind = ? AND p.notebook_id NOT IN (?, ?)
+       WHERE e.kind = ? AND p.notebook_id NOT IN (?, ?, ?)
        GROUP BY e.name_norm
        ORDER BY COUNT(DISTINCT e.page_id) DESC, name ASC`
     )
-    .all(kind, DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID) as Array<{ norm: string; name: string }>;
+    .all(kind, DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID, REFLECTIONS_NOTEBOOK_ID) as Array<{ norm: string; name: string }>;
 }
 
 // ALL mentioning pages for one entity, in CHRONOLOGICAL order (oldest first,
-// undated last), discipline AND mcp-conversations excluded — the entity's
+// undated last), discipline, mcp-conversations AND mcp-reflections excluded — the entity's
 // whole DIARY history, same ownership-separation reasoning as candidates().
 function mentions(
   kind: Kind,
@@ -51,12 +51,12 @@ function mentions(
     .prepare(
       `SELECT p.id AS page_id, NULLIF(p.entry_date, 'none') AS date, p.ocr_text AS text
        FROM entry_entities e JOIN pages p ON p.id = e.page_id
-       WHERE e.kind = ? AND e.name_norm = ? AND p.notebook_id NOT IN (?, ?)
+       WHERE e.kind = ? AND e.name_norm = ? AND p.notebook_id NOT IN (?, ?, ?)
          AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
        ORDER BY COALESCE(NULLIF(p.entry_date, 'none'), '9999-99-99') ASC,
                 p.page_index ASC`
     )
-    .all(kind, norm, DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID) as Array<{
+    .all(kind, norm, DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID, REFLECTIONS_NOTEBOOK_ID) as Array<{
     page_id: string;
     date: string | null;
     text: string;

@@ -1,5 +1,60 @@
 # Changelog
 
+## 2026-07-19 (Guaranteed entity-tagging + bidirectional Obsidian links for conversations & reflections)
+
+Until now, linking an exported conversation into the diary's entity graph
+was **entirely opportunistic**: it only happened if the external Claude
+session that exported it also chose to call the Phase C librarian tools —
+nothing in the app itself ever tagged anything. Reflections had zero linking
+at all. This closes both gaps and adds a new bidirectional-linking feature.
+
+- **Guaranteed, app-initiated tagging** (`lib/entityTagging.ts`, new): right
+  after `export_conversation`/`save_reflection` saves, the app itself calls
+  Claude (its own `ANTHROPIC_API_KEY`, not the external agent's subscription)
+  to extract entities and tag them — immediate and reliable, mirroring how
+  diary pages already get tagged on upload. Gated behind
+  `MCP_AUTO_TAG_EXPORTS=true`, layered on top of the existing
+  `MCP_ALLOW_WIKI_LINKING` (not a peer flag — a user with wiki-linking off
+  gets a safe no-op even if auto-tag is mistakenly set). In-flight guarded
+  per key, backstopped by a maintenance-sweep retry for anything the inline
+  fire missed. A new `extractTaggingEntities` (`lib/claude.ts`) is a
+  lightweight, entities-only extraction on the cheap chat model — bounded
+  via a new `sampleForTagging` (evenly-sampled chunks, not a flat
+  truncation, so a long conversation's middle/end entities aren't lost).
+- **Reflections now get linked, symmetrically with conversations**: a new
+  `REFLECTIONS_NOTEBOOK_ID` synthetic notebook + `lib/reflectionEntities.ts`
+  (`ensureReflectionPage`/`tagReflectionEntities`) mirror the existing
+  conversation-side Phase C machinery. Every notebook-exclusion call site
+  that already special-cased `CONVERSATIONS_NOTEBOOK_ID` (the `/mind`
+  pending-query, heatmap, axis labels, entity-wiki bio composition, day-file
+  export, chat-tool date surfaces) now excludes both; every inclusion
+  surface (entity rankings, dedup, canonical-name resolution, entity stubs)
+  already worked automatically since those filter on the discipline
+  notebook alone.
+- **Reinforced external-agent nudge, extended to reflections**:
+  `save_reflection`'s tool description now nudges any connected Claude
+  toward `get_entity_wiki`/`update_entity_conversation_notes` for
+  enrichment — framed as optional judgment on top of guaranteed base
+  tagging, not a mandatory follow-up call. Both tools are already fully
+  generic (kind+name only), so no reflection-specific write tool was needed.
+- **Killer feature — bidirectional Obsidian wikilinks**: once tagged, a
+  conversation/reflection note gets a `## Connects to` section linking to
+  every entity it mentions; the reverse direction — each entity's stub page
+  now gets a `## Conversations & reflections` section linking back to every
+  tagged note. Real, clickable graph edges in Obsidian, not just an internal
+  ranking. Fixed a pre-existing gap along the way: nothing previously
+  re-exported an entity's stub after a librarian tag, so a freshly-tagged
+  entity sat stale in Dropbox until an unrelated full sync — now both the
+  auto-tag path and the external `tag_conversation_entities` MCP call fire
+  a scoped re-export immediately.
+- 46 new/extended tests across `test/entityTagging.test.ts`,
+  `test/reflectionEntities.test.ts`, `test/entityWikiExclude.test.ts` (new —
+  closes a pre-existing gap: the diary-bio notebook exclusion had no test
+  coverage before, for either synthetic notebook), plus extensions to
+  `test/conversationWiki.test.ts`, `test/reflectionWiki.test.ts`,
+  `test/mcp.test.ts`, `test/diaryExportDb.test.ts`, `test/mind.test.ts`;
+  566 pass, build clean.
+
 ## 2026-07-19 (MCP: save_reflection — a standalone reflection tool, shared across every Claude surface)
 
 New opt-in MCP write tool, `save_reflection`, for "give me an honest,

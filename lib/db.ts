@@ -258,6 +258,14 @@ export function db(): Database.Database {
   } catch {
     // column already exists
   }
+  // Same tracking for reflections (lib/reflectionEntities.ts) — mcp_reflections
+  // shipped without this column, so it needs the same post-hoc ALTER as
+  // mcp_conversations.linked_at above. NULL = needs linking.
+  try {
+    _db.exec(`ALTER TABLE mcp_reflections ADD COLUMN linked_at TEXT`);
+  } catch {
+    // column already exists
+  }
   // Life-wiki: a Claude-written profile per entity (kind, name_norm), embedded
   // atop that entity's stub note in the Obsidian export. `source_hash` is a
   // digest of the mentioning pages the summary was written from — when it no

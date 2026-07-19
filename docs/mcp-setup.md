@@ -175,37 +175,56 @@ Requirements + how it behaves:
   diary-based inference rather than overclaiming.
 - ⚠️ Same privacy tradeoff as conversation export: this content becomes a
   permanent record in your vault, not an ephemeral chat.
+- Can be linked into your entity wiki the same way conversations can — see
+  the next section.
 
-## Linking conversations into your entity wiki (OFF by default)
+## Linking conversations and reflections into your entity wiki (OFF by default)
 
-Once conversations are being saved (above), a second optional piece can link
-them into the same wiki your diary already builds — so a person or place you
-discussed with Claude shows up connected to your diary's people/places/
-projects, not sitting in an isolated note.
+Once conversations/reflections are being saved (above), a second optional
+piece links them into the same wiki your diary already builds — so a person
+or place you discussed with Claude, or that came up in a reflection, shows up
+connected to your diary's people/places/projects, not sitting in an isolated
+note.
 
-This is **not something the app runs itself**, and it does not poll on a
-schedule by default — the cheapest way to link a conversation is to have the
-*same* session that just exported it tag it immediately, while the content is
-already in its context, instead of a separate session re-fetching it later.
-
-**Step 1 — turn on the tools.** In Railway, set:
+**Step 1 — turn on linking.** In Railway, set:
 
 ```
 MCP_ALLOW_WIKI_LINKING=true
 ```
 
-Off by default — the endpoint has no extra exposure until you set this. Once
-it's on, `export_conversation`'s own instructions automatically nudge Claude
-to tag entities right after saving — no extra setup needed for this to start
-happening on new exports.
+Off by default — the endpoint has no extra exposure until you set this.
+
+**Step 2 (recommended) — make tagging guaranteed, not opportunistic.** Also set:
+
+```
+MCP_AUTO_TAG_EXPORTS=true
+```
+
+With both flags on, Remarkabler tags every export **itself** — it calls
+Claude (its own API budget, not your subscription) right after
+`export_conversation`/`save_reflection` saves, so a conversation or
+reflection is linked within seconds, every time, with nothing for any Claude
+session to remember to do. This mirrors how your diary's own pages already
+get tagged on upload. Leave `MCP_AUTO_TAG_EXPORTS` off and only
+`MCP_ALLOW_WIKI_LINKING=true` set if you'd rather keep tagging entirely on
+your own Claude subscription (see the librarian below) instead of this app's
+API budget — that's the previous, fully-opportunistic behavior.
 
 You can check it's working on `/memory`, under "Conversation librarian" — it
 shows the last time a tag/note write happened.
 
-**Optional — a periodic catch-up sweep.** The inline nudge only fires when
-Claude actually follows it, so some conversations may go unlinked (e.g. ones
-exported before you turned this on, or a session that didn't follow the
-nudge). To catch up, either just ask any connected Claude "catch up on
+**Optional — the librarian agent, for enrichment beyond a mechanical tag.**
+Once `MCP_ALLOW_WIKI_LINKING=true` is on, `export_conversation`'s and
+`save_reflection`'s own instructions nudge any connected Claude to look up
+`get_entity_wiki` and add its own notes via `update_entity_conversation_notes`
+for anything worth *remembering*, not just tagging — the judgment a re-read
+gives you that a mechanical extraction can't. This is genuinely optional now
+that auto-tag guarantees the base case; skip it if you don't want an extra
+tool call per export.
+
+If you want a periodic catch-up pass too (useful mainly for conversations
+exported before you turned any of this on, or if you're running WITHOUT
+`MCP_AUTO_TAG_EXPORTS`), either just ask any connected Claude "catch up on
 unlinked conversations" occasionally, or — if your Claude plan has persistent
 Routines/scheduled tasks in its own Settings (a claude.ai account feature,
 separate from anything Remarkabler runs) — set one up with a prompt like:
@@ -220,7 +239,9 @@ separate from anything Remarkabler runs) — set one up with a prompt like:
 > `record_librarian_heartbeat`, even if there was nothing to do.
 
 A low frequency (once a day, or even manually) is enough for a catch-up
-sweep — the inline nudge above should handle most conversations already.
+sweep. (This catch-up prompt only covers conversations — reflections are
+tagged automatically when `MCP_AUTO_TAG_EXPORTS` is on, which is why that
+flag is the recommended default.)
 
 Requirements + how it behaves:
 - The session needs the Remarkabler MCP connector available — same connector
@@ -240,6 +261,11 @@ Requirements + how it behaves:
 - If the connector ever seems to stop seeing a newly-deployed tool, a manual
   disconnect/reconnect of the Remarkabler connector (Step 2's dialog) forces
   a refresh — this is a platform behavior, not something Remarkabler controls.
+- Once linked, a conversation/reflection's own note gets a "## Connects to"
+  section linking to the People/Places/Projects it mentions, and each of
+  those entity pages gets a "## Conversations & reflections" section linking
+  back — real, clickable Obsidian graph edges in both directions, not just an
+  internal ranking.
 
 ## Sensitive tools are OFF by default
 

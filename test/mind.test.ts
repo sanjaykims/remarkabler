@@ -121,3 +121,62 @@ describe("getTopEntities INCLUDES conversation-derived entities (deliberate)", (
     expect(people.map((p) => p.name)).toContain("Suwon Friend");
   });
 });
+
+// The mcp-reflections synthetic notebook (lib/reflectionEntities.ts) needs
+// the SAME dual inclusion/exclusion treatment as mcp-conversations above.
+
+describe("countPending excludes the mcp-reflections notebook", () => {
+  it("a synthetic reflection page never counts as pending analysis", () => {
+    addNotebook("nb1", "Diary", "2026-06-19 00:00:00");
+    addPage("nb1", 0, "real diary text", "2026-06-19");
+    addNotebook(
+      notesMod.REFLECTIONS_NOTEBOOK_ID,
+      "Reflections (subscription Claude)",
+      "2026-06-20 00:00:00"
+    );
+    addPage(notesMod.REFLECTIONS_NOTEBOOK_ID, 0, "[Reflection] X", "2026-06-20");
+
+    expect(mindMod.countPending()).toBe(1);
+  });
+});
+
+describe("getHeatmap excludes the mcp-reflections notebook", () => {
+  it("reflection placeholder pages never appear as diary writing volume", () => {
+    addNotebook("nb1", "Diary", "2026-06-19 00:00:00");
+    addPage("nb1", 0, "real diary text", "2026-06-19");
+    addNotebook(
+      notesMod.REFLECTIONS_NOTEBOOK_ID,
+      "Reflections (subscription Claude)",
+      "2026-06-20 00:00:00"
+    );
+    addPage(notesMod.REFLECTIONS_NOTEBOOK_ID, 0, "[Reflection] X", "2026-06-20");
+
+    const buckets = mindMod.getHeatmap();
+    expect(buckets.map((b) => b.date)).toEqual(["2026-06-19"]);
+  });
+});
+
+describe("getTopEntities INCLUDES reflection-derived entities (deliberate)", () => {
+  it("a person tagged only via a reflection page still ranks", () => {
+    addNotebook(
+      notesMod.REFLECTIONS_NOTEBOOK_ID,
+      "Reflections (subscription Claude)",
+      "2026-06-20 00:00:00"
+    );
+    const rp = addPage(
+      notesMod.REFLECTIONS_NOTEBOOK_ID,
+      0,
+      "[Reflection] X",
+      "2026-06-20"
+    );
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES(?,?,?,?)`
+      )
+      .run(rp, "person", "Reflection Friend", "reflection friend");
+
+    const { people } = mindMod.getTopEntities();
+    expect(people.map((p) => p.name)).toContain("Reflection Friend");
+  });
+});

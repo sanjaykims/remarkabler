@@ -40,6 +40,7 @@ afterEach(() => {
   delete process.env.MCP_ALLOW_CONVERSATION_EXPORT;
   delete process.env.MCP_ALLOW_REFLECTION_SAVE;
   delete process.env.MCP_ALLOW_WIKI_LINKING;
+  delete process.env.MCP_AUTO_TAG_EXPORTS;
   mcp.resetMcpThrottle();
 });
 
@@ -249,6 +250,25 @@ describe("save_reflection write tool (opt-in, add-only, own flag)", () => {
       await mcp.callMcpTool(mcp.REFLECTION_TOOL_NAME, { content: "hi" })
     );
     expect(out.error).toContain("not available");
+  });
+
+  it("nudges enrichment (not mandatory tagging) in its description ONLY when the librarian tools are also enabled", () => {
+    process.env.MCP_ALLOW_REFLECTION_SAVE = "true";
+    const withoutLibrarian = mcp
+      .mcpToolList()
+      .find((t) => t.name === mcp.REFLECTION_TOOL_NAME)!;
+    expect(withoutLibrarian.description).not.toContain("update_entity_conversation_notes");
+
+    process.env.MCP_ALLOW_WIKI_LINKING = "true";
+    const withLibrarian = mcp
+      .mcpToolList()
+      .find((t) => t.name === mcp.REFLECTION_TOOL_NAME)!;
+    expect(withLibrarian.description).toContain("get_entity_wiki");
+    expect(withLibrarian.description).toContain("update_entity_conversation_notes");
+    // Framed as enrichment, not a mandatory follow-up — base tagging is
+    // guaranteed automatically (lib/entityTagging.ts), unlike
+    // export_conversation's nudge which predates that guarantee.
+    expect(withLibrarian.description).toContain("happens automatically");
   });
 
   it("is independent of MCP_ALLOW_CONVERSATION_EXPORT (separate flags, separate tools)", async () => {

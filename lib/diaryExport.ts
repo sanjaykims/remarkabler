@@ -418,6 +418,12 @@ export type EntityStub = {
   // the two authors (in-app diary bio vs. the librarian) never clobber each
   // other. See lib/conversationEntities.ts.
   conversationNotes?: string | null;
+  // Bare-basename wikilink targets (no folder, no .md) to every tagged
+  // conversation/reflection note that mentions this entity — the reverse
+  // direction of renderConversationNote/renderReflectionNote's own
+  // "## Connects to" section. Sorted; a note's leading YYYY-MM-DD gives
+  // chronological order for free. See lib/diaryExportDb.ts.
+  relatedNoteLinks?: string[];
 };
 
 const ENTITY_STUB_FOLDER: Record<EntityStub["kind"], string> = {
@@ -476,6 +482,16 @@ function renderEntityStub(stub: EntityStub, exportedAt: string): string {
     lines.push("## Recent conversations");
     lines.push("");
     lines.push(conversationNotes);
+    lines.push("");
+  }
+  // Direct backlinks to every tagged conversation/reflection note — the
+  // reverse of that note's own "## Connects to" section, so either side of
+  // the link is a real clickable Obsidian graph edge, not just a derived
+  // ranking inside the app's own /mind or chat tools.
+  if (stub.relatedNoteLinks && stub.relatedNoteLinks.length > 0) {
+    lines.push("## Conversations & reflections");
+    lines.push("");
+    for (const link of stub.relatedNoteLinks) lines.push(`- [[${link}]]`);
     lines.push("");
   }
   if (dayCount > 0) {

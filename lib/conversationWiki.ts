@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { db } from "@/lib/db";
+import { CONVERSATIONS_NOTEBOOK_ID } from "@/lib/notes";
+import { entityStubFileName } from "@/lib/diaryExport";
 
 // Phase B: full subscription-conversation transcripts, exported by the MCP
 // `export_conversation` write tool (lib/mcp.ts) and filed VERBATIM (no
@@ -64,16 +66,31 @@ export function conversationNoteFileName(row: {
   return `${CONVERSATION_FOLDER}/${dateKey(row.created_at)}-${base}-${keyHash}.md`;
 }
 
+// The synthetic pages.id lib/conversationEntities.ts writes an entity-tagged
+// page under. Extracted here (not left inline there) so lib/entityTagging.ts
+// and Part C's stub back-link lookup can derive the same id without
+// depending on the Phase C module.
+export function conversationPageId(conversationKey: string): string {
+  return `${CONVERSATIONS_NOTEBOOK_ID}:${conversationKey}`;
+}
+
 // The Markdown note: frontmatter + the full transcript verbatim. Content is
 // emitted as-is (it is already the model's own formatting) but never as
 // executable directives — it's plain body text under a heading.
-export function renderConversationNote(row: {
-  title: string | null;
-  content: string;
-  created_at: string;
-}): string {
+//
+// `entities` (kind+name, from entry_entities once this conversation has been
+// tagged — lib/entityTagging.ts / lib/conversationEntities.ts) renders as a
+// "## Connects to" section of bare-basename [[Name]] wikilinks, matching the
+// vault's existing bare `[[YYYY-MM-DD]]`/`[[Name]]` convention (no folder
+// prefix — Obsidian resolves wikilinks by basename vault-wide). Omitted
+// entirely when empty (tagging never ran, or found nothing) — no new flag
+// needed, this just degrades to the note's previous shape.
+export function renderConversationNote(
+  row: { title: string | null; content: string; created_at: string },
+  entities: Array<{ kind: string; name: string }> = []
+): string {
   const title = row.title?.trim() || `Conversation ${dateKey(row.created_at)}`;
-  return [
+  const lines = [
     "---",
     `title: ${yamlQuote(title)}`,
     "type: claude-conversation",
@@ -87,7 +104,17 @@ export function renderConversationNote(row: {
     "",
     row.content.trimEnd(),
     "",
-  ].join("\n");
+  ];
+  const links = entities
+    .filter((e) => e.kind === "person" || e.kind === "place" || e.kind === "project")
+    .map((e) => entityStubFileName(e.kind as "person" | "place" | "project", e.name))
+    .map((f) => f.replace(/^[^/]+\//, "").replace(/\.md$/, ""));
+  if (links.length > 0) {
+    lines.push("## Connects to", "");
+    for (const link of links) lines.push(`- [[${link}]]`);
+    lines.push("");
+  }
+  return lines.join("\n");
 }
 
 // --- Store (the write path) ----------------------------------------------
@@ -136,8 +163,17 @@ export function renderConversationNoteFiles(onlyUnfiled = true): Map<string, str
        ORDER BY created_at ASC`
     )
     .all() as ExportedConversationRow[];
+  const entityStmt = db().prepare(
+    `SELECT kind, name FROM entry_entities WHERE page_id = ? ORDER BY kind, name`
+  );
   const map = new Map<string, string>();
-  for (const r of rows) map.set(conversationNoteFileName(r), renderConversationNote(r));
+  for (const r of rows) {
+    const entities = entityStmt.all(conversationPageId(r.conversation_key)) as Array<{
+      kind: string;
+      name: string;
+    }>;
+    map.set(conversationNoteFileName(r), renderConversationNote(r, entities));
+  }
   return map;
 }
 
@@ -204,4 +240,17 @@ export function getConversationByKey(
       )
       .get(conversationKey) as ExportedConversationRow | undefined) ?? null
   );
+}
+
+// conversation_key -> the note's vault-relative file name, for every exported
+// conversation. Used by Part C's entity-stub back-link rendering
+// (lib/diaryExportDb.ts) to turn a tagged conversation's synthetic page id
+// back into a wikilink target, without re-deriving the filename logic there.
+export function allConversationFileNames(): Map<string, string> {
+  const rows = db()
+    .prepare(`SELECT conversation_key, title, created_at FROM mcp_conversations`)
+    .all() as Array<{ conversation_key: string; title: string | null; created_at: string }>;
+  const map = new Map<string, string>();
+  for (const r of rows) map.set(r.conversation_key, conversationNoteFileName(r));
+  return map;
 }
