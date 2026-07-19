@@ -359,3 +359,51 @@ describe("secret rotation revokes issued OAuth tokens", () => {
     expect(mcp.checkMcpAuth(`Bearer ${legacy}`)).toBe("unauthorized");
   });
 });
+
+describe("registration rate limit + client-table cap", () => {
+  it("throttles repeated registration attempts from the same IP, in its own bucket", async () => {
+    const req = () =>
+      registerRoute.POST(
+        new Request(`${ORIGIN}/api/mcp/oauth/register`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-forwarded-for": "198.51.100.9" },
+          body: JSON.stringify({ redirect_uris: [REDIRECT] }),
+        })
+      );
+    for (let i = 0; i < mcp.THROTTLE_MAX_FAILURES; i++) {
+      const res = await req();
+      expect(res.status).toBe(201);
+    }
+    const throttled = await req();
+    expect(throttled.status).toBe(429);
+    expect(throttled.headers.get("retry-after")).toBeTruthy();
+
+    // The register throttle is its own bucket — a real auth failure on
+    // /api/mcp from the SAME ip must not be affected by registration spam,
+    // and vice versa (that's the whole point of bucketing).
+    expect(mcp.isThrottled("198.51.100.9")).toBe(false);
+  });
+
+  it("caps spam client rows (never issued a token) but never evicts a client with a live token", () => {
+    // Seed one client that completed the OAuth dance (has a live token).
+    const protectedId = oauth.registerClient([REDIRECT], "protected").client_id;
+    oauth.issueTokens(protectedId, sha256hex(TOKEN));
+
+    // Flood pure DCR spam — registered, never used — well past the cap.
+    // Calling registerClient() directly (not the route) so this exercises
+    // only the row-cap logic, not the separate HTTP rate limit above.
+    const spamCap = 2000; // mirrors CLIENT_KEEP_ROWS in lib/mcpOauth.ts
+    for (let i = 0; i < spamCap + 10; i++) {
+      oauth.registerClient([REDIRECT], `spam-${i}`);
+    }
+
+    const rows = dbMod
+      .db()
+      .prepare(`SELECT COUNT(*) AS n FROM mcp_oauth_clients`)
+      .get() as { n: number };
+    // Capped: the protected client + at most spamCap surviving spam rows.
+    expect(rows.n).toBeLessThanOrEqual(spamCap + 1);
+    // The token-bearing client survives eviction regardless of age.
+    expect(oauth.getClient(protectedId)).not.toBeNull();
+  });
+});

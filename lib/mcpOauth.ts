@@ -120,6 +120,15 @@ export function consentSecretValid(presented: string): boolean {
 // --- Clients (Dynamic Client Registration) --------------------------------
 export type RegisteredClient = { client_id: string; redirect_uris: string[] };
 
+// Cap on client rows that never completed the OAuth dance (no row in
+// mcp_oauth_tokens). Unlike mcp_audit's pure log, a client row can be
+// *live-referenced* — /authorize and /token's refresh-token grant both look
+// it up, and refresh tokens never expire — so evicting by age alone risks
+// breaking a real, still-active connector. The eviction below therefore
+// never touches a client that ever issued a token; it only bounds pure
+// registration spam (registered, then abandoned before finishing consent).
+const CLIENT_KEEP_ROWS = 2000;
+
 export function registerClient(redirectUris: string[], clientName?: string): RegisteredClient {
   const clientId = `mcpc_${randomBytes(16).toString("hex")}`;
   db()
@@ -127,6 +136,22 @@ export function registerClient(redirectUris: string[], clientName?: string): Reg
       `INSERT INTO mcp_oauth_clients(client_id, redirect_uris, client_name) VALUES(?,?,?)`
     )
     .run(clientId, JSON.stringify(redirectUris), clientName ?? null);
+  try {
+    db()
+      .prepare(
+        `DELETE FROM mcp_oauth_clients
+         WHERE client_id NOT IN (SELECT DISTINCT client_id FROM mcp_oauth_tokens WHERE client_id IS NOT NULL)
+           AND client_id NOT IN (
+             SELECT client_id FROM mcp_oauth_clients
+             WHERE client_id NOT IN (SELECT DISTINCT client_id FROM mcp_oauth_tokens WHERE client_id IS NOT NULL)
+             ORDER BY created_at DESC, rowid DESC
+             LIMIT ?
+           )`
+      )
+      .run(CLIENT_KEEP_ROWS);
+  } catch (e) {
+    console.warn("[mcp] client-table eviction failed:", (e as Error).message);
+  }
   return { client_id: clientId, redirect_uris: redirectUris };
 }
 
