@@ -19,6 +19,7 @@ import {
   MAX_ENTITY_NOTES_CHARS,
 } from "@/lib/conversationEntities";
 import { isValidAccessToken } from "@/lib/mcpOauth";
+import { CONVERSATIONS_NOTEBOOK_ID } from "@/lib/notes";
 
 // MCP bridge: exposes the SAME read-only diary tools the in-app chat uses
 // (lib/chatTools.ts) over the Model Context Protocol, so Claude on the user's
@@ -429,7 +430,22 @@ export function mcpToolList(): McpToolDef[] {
   }
   // Standalone reflections — its own flag, independent of conversation export.
   if (reflectionSavingEnabled() && !excluded.has(REFLECTION_TOOL_NAME)) {
-    tools.push(REFLECTION_TOOL);
+    // Unlike export_conversation's nudge above, base entity-tagging for a
+    // reflection is guaranteed automatically when MCP_AUTO_TAG_EXPORTS is on
+    // (lib/entityTagging.ts) — so this nudge is framed as ENRICHMENT, not a
+    // mandatory follow-up call: a re-read gives judgment a mechanical tag
+    // can't, so it's worth the calling agent doing when it has something
+    // worth adding.
+    const nudge = librarianToolsEnabled()
+      ? " Base entity-tagging for this reflection happens automatically, so " +
+        "there's no need to call anything else just to record who/where/what " +
+        "it mentions. But if it surfaced something worth REMEMBERING about " +
+        "someone/somewhere/something — beyond just noting they exist — call " +
+        "get_entity_wiki for that entity, then update_entity_conversation_notes " +
+        "with what's newly worth keeping (kind + name only; no reflection-" +
+        "specific tool needed)."
+      : "";
+    tools.push({ ...REFLECTION_TOOL, description: REFLECTION_TOOL.description + nudge });
   }
   // The librarian tools (Phase C) — all six gate behind one flag, including
   // the reads, since get_conversation exposes full conversation content the
@@ -490,6 +506,13 @@ export async function callMcpTool(
       .catch((e) =>
         console.warn("[mcp] conversation filing failed:", (e as Error).message)
       );
+    // Guaranteed entity-tagging (lib/entityTagging.ts) — no-ops internally
+    // unless MCP_AUTO_TAG_EXPORTS is on, so this fire is unconditional here.
+    import("@/lib/entityTagging")
+      .then((m) => m.autoTagConversation(key))
+      .catch((e) =>
+        console.warn("[mcp] auto-tag conversation failed:", (e as Error).message)
+      );
     return JSON.stringify({
       ok: true,
       key,
@@ -527,6 +550,13 @@ export async function callMcpTool(
       .then((m) => m.maybeExportReflectionsToDropbox())
       .catch((e) =>
         console.warn("[mcp] reflection filing failed:", (e as Error).message)
+      );
+    // Guaranteed entity-tagging (lib/entityTagging.ts) — no-ops internally
+    // unless MCP_AUTO_TAG_EXPORTS is on, so this fire is unconditional here.
+    import("@/lib/entityTagging")
+      .then((m) => m.autoTagReflection(key))
+      .catch((e) =>
+        console.warn("[mcp] auto-tag reflection failed:", (e as Error).message)
       );
     return JSON.stringify({
       ok: true,
@@ -584,9 +614,19 @@ export async function callMcpTool(
             name: typeof e?.name === "string" ? e.name : "",
           }))
         : [];
-      return JSON.stringify(
-        tagConversationEntities({ conversationKey, entities })
-      );
+      const result = tagConversationEntities({ conversationKey, entities });
+      if (!("error" in result)) {
+        // Without this, a freshly-tagged entity's stub sits stale in Dropbox
+        // until an unrelated full sync — nothing else re-exports it after a
+        // tag (this closes that gap for the external-librarian path; the
+        // auto-tag path in lib/entityTagging.ts fires the equivalent itself).
+        import("@/lib/dropbox")
+          .then((m) => m.maybeExportDiaryToDropbox({ notebookId: CONVERSATIONS_NOTEBOOK_ID }))
+          .catch((e) =>
+            console.warn("[mcp] entity-stub re-export failed:", (e as Error).message)
+          );
+      }
+      return JSON.stringify(result);
     }
     if (name === UPDATE_NOTES_TOOL_NAME) {
       return JSON.stringify(

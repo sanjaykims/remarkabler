@@ -33,6 +33,8 @@ beforeEach(() => {
   d.prepare(`DELETE FROM entry_analysis`).run();
   d.prepare(`DELETE FROM entity_wiki`).run();
   d.prepare(`DELETE FROM entity_conversation_notes`).run();
+  d.prepare(`DELETE FROM mcp_conversations`).run();
+  d.prepare(`DELETE FROM mcp_reflections`).run();
   d.prepare(`DELETE FROM pages`).run();
   d.prepare(`DELETE FROM notebooks`).run();
 });
@@ -185,6 +187,22 @@ describe("renderDiaryMarkdown", () => {
     expect(md).not.toContain("[Conversation]");
     expect(md).toContain("pages: 1");
   });
+
+  it("excludes the mcp-reflections synthetic notebook", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    addPage("nb1", 0, "real diary entry", "2026-06-19");
+    addNotebook(
+      notesMod.REFLECTIONS_NOTEBOOK_ID,
+      "Reflections (subscription Claude)",
+      "2026-06-20 00:00:00"
+    );
+    addPage(notesMod.REFLECTIONS_NOTEBOOK_ID, 0, "[Reflection] Who am I", "2026-06-20");
+
+    const md = exportMod.renderDiaryMarkdown();
+    expect(md).toContain("real diary entry");
+    expect(md).not.toContain("[Reflection]");
+    expect(md).toContain("pages: 1");
+  });
 });
 
 describe("renderDiaryDayFiles", () => {
@@ -247,6 +265,18 @@ describe("affectedDayFileNames", () => {
     addPage(notesMod.CONVERSATIONS_NOTEBOOK_ID, 0, "[Conversation] X", "2026-06-21");
     expect(
       exportMod.affectedDayFileNames(notesMod.CONVERSATIONS_NOTEBOOK_ID)
+    ).toEqual([]);
+  });
+
+  it("returns [] for the mcp-reflections notebook (it gets its own note, not a day file)", () => {
+    addNotebook(
+      notesMod.REFLECTIONS_NOTEBOOK_ID,
+      "Reflections (subscription Claude)",
+      "2026-06-21 00:00:00"
+    );
+    addPage(notesMod.REFLECTIONS_NOTEBOOK_ID, 0, "[Reflection] X", "2026-06-21");
+    expect(
+      exportMod.affectedDayFileNames(notesMod.REFLECTIONS_NOTEBOOK_ID)
     ).toEqual([]);
   });
 });
@@ -393,6 +423,76 @@ describe("renderEntityStubFiles", () => {
     expect(files.has("People/Suwon Friend.md")).toBe(true);
   });
 
+  it("INCLUDES entities tagged only via the mcp-reflections notebook (same treatment as conversations)", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "real", "2026-06-19");
+    addEntity(p0, "person", "Jin", "jin");
+    addNotebook(
+      notesMod.REFLECTIONS_NOTEBOOK_ID,
+      "Reflections (subscription Claude)",
+      "2026-06-20 00:00:00"
+    );
+    const rp = addPage(
+      notesMod.REFLECTIONS_NOTEBOOK_ID,
+      0,
+      "[Reflection] X",
+      "2026-06-20"
+    );
+    addEntity(rp, "person", "Reflection Only Friend", "reflection only friend");
+
+    const files = exportMod.renderEntityStubFiles();
+    expect(files.has("People/Jin.md")).toBe(true);
+    expect(files.has("People/Reflection Only Friend.md")).toBe(true);
+  });
+
+  it('renders "## Conversations & reflections" backlinks to tagged notes on both sides', () => {
+    // A real conversation + a real reflection, both tagged with the same
+    // entity via lib/conversationEntities.ts / lib/reflectionEntities.ts's
+    // deterministic page id shape ("<notebook_id>:<content_key>").
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO mcp_conversations(conversation_key, title, content, created_at) VALUES('c1', 'Trip', 'talked about Jin', '2026-06-19 09:00:00')`
+      )
+      .run();
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO mcp_reflections(reflection_key, title, content, created_at) VALUES('r1', 'Reflecting', 'thinking about Jin', '2026-06-20 09:00:00')`
+      )
+      .run();
+    addNotebook(
+      notesMod.CONVERSATIONS_NOTEBOOK_ID,
+      "Conversations (subscription Claude)",
+      "2026-06-19 00:00:00"
+    );
+    addNotebook(
+      notesMod.REFLECTIONS_NOTEBOOK_ID,
+      "Reflections (subscription Claude)",
+      "2026-06-20 00:00:00"
+    );
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO pages(id, notebook_id, page_index, ocr_text, entry_date) VALUES('${notesMod.CONVERSATIONS_NOTEBOOK_ID}:c1', ?, 0, '[Conversation] Trip', '2026-06-19')`
+      )
+      .run(notesMod.CONVERSATIONS_NOTEBOOK_ID);
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO pages(id, notebook_id, page_index, ocr_text, entry_date) VALUES('${notesMod.REFLECTIONS_NOTEBOOK_ID}:r1', ?, 0, '[Reflection] Reflecting', '2026-06-20')`
+      )
+      .run(notesMod.REFLECTIONS_NOTEBOOK_ID);
+    addEntity(`${notesMod.CONVERSATIONS_NOTEBOOK_ID}:c1`, "person", "Jin", "jin");
+    addEntity(`${notesMod.REFLECTIONS_NOTEBOOK_ID}:r1`, "person", "Jin", "jin");
+
+    const files = exportMod.renderEntityStubFiles();
+    const jin = files.get("People/Jin.md") as string;
+    expect(jin).toContain("## Conversations & reflections");
+    expect(jin).toContain("- [[2026-06-19-Trip-");
+    expect(jin).toContain("- [[2026-06-20-Reflecting-");
+  });
+
   it("gives a conversation-only entity (no diary mention at all) a real stub page", () => {
     dbMod
       .db()
@@ -488,5 +588,23 @@ describe("affectedEntityStubFileNames", () => {
     expect(
       exportMod.affectedEntityStubFileNames(notesMod.CONVERSATIONS_NOTEBOOK_ID)
     ).toEqual(["People/Suwon Friend.md"]);
+  });
+
+  it("INCLUDES the mcp-reflections notebook (its stubs should still refresh)", () => {
+    addNotebook(
+      notesMod.REFLECTIONS_NOTEBOOK_ID,
+      "Reflections (subscription Claude)",
+      "2026-06-21 00:00:00"
+    );
+    const rp = addPage(
+      notesMod.REFLECTIONS_NOTEBOOK_ID,
+      0,
+      "[Reflection] X",
+      "2026-06-21"
+    );
+    addEntity(rp, "person", "Reflection Friend", "reflection friend");
+    expect(
+      exportMod.affectedEntityStubFileNames(notesMod.REFLECTIONS_NOTEBOOK_ID)
+    ).toEqual(["People/Reflection Friend.md"]);
   });
 });

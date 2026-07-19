@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { db } from "@/lib/db";
+import { REFLECTIONS_NOTEBOOK_ID } from "@/lib/notes";
+import { entityStubFileName } from "@/lib/diaryExport";
 
 // Standalone AI-written reflections, saved by the MCP `save_reflection`
 // write tool (lib/mcp.ts) and filed as one Markdown note each into the
@@ -41,8 +43,17 @@ export function sanitizeFileName(s: string): string {
     .slice(0, 80);
 }
 
+// The synthetic pages.id lib/reflectionEntities.ts writes an entity-tagged
+// page under — mirrors lib/conversationWiki.ts's conversationPageId.
+export function reflectionPageId(reflectionKey: string): string {
+  return `${REFLECTIONS_NOTEBOOK_ID}:${reflectionKey}`;
+}
+
 // "YYYY-MM-DD" from a sqlite datetime ("YYYY-MM-DD HH:MM:SS") or ISO string.
-function dateKey(createdAt: string): string {
+// Exported for lib/reflectionEntities.ts, which needs the same day-key logic
+// for the synthetic reflection page's entry_date (mirrors conversationWiki's
+// dateKey export for the same reason).
+export function dateKey(createdAt: string): string {
   const m = String(createdAt).match(/^(\d{4}-\d{2}-\d{2})/);
   return m ? m[1] : "undated";
 }
@@ -72,13 +83,15 @@ export function reflectionNoteFileName(row: {
 // The Markdown note: frontmatter + the reflection body. `type:
 // claude-reflection` (not `claude-conversation`) so it's never confused
 // with a real exported chat when browsing the vault.
-export function renderReflectionNote(row: {
-  title: string | null;
-  content: string;
-  created_at: string;
-}): string {
+// `entities` (kind+name, from entry_entities once this reflection has been
+// tagged — lib/entityTagging.ts / lib/reflectionEntities.ts) renders as a
+// "## Connects to" section, mirroring conversationWiki's renderConversationNote.
+export function renderReflectionNote(
+  row: { title: string | null; content: string; created_at: string },
+  entities: Array<{ kind: string; name: string }> = []
+): string {
   const title = row.title?.trim() || `Reflection ${dateKey(row.created_at)}`;
-  return [
+  const lines = [
     "---",
     `title: ${yamlQuote(title)}`,
     "type: claude-reflection",
@@ -92,7 +105,17 @@ export function renderReflectionNote(row: {
     "",
     row.content.trimEnd(),
     "",
-  ].join("\n");
+  ];
+  const links = entities
+    .filter((e) => e.kind === "person" || e.kind === "place" || e.kind === "project")
+    .map((e) => entityStubFileName(e.kind as "person" | "place" | "project", e.name))
+    .map((f) => f.replace(/^[^/]+\//, "").replace(/\.md$/, ""));
+  if (links.length > 0) {
+    lines.push("## Connects to", "");
+    for (const link of links) lines.push(`- [[${link}]]`);
+    lines.push("");
+  }
+  return lines.join("\n");
 }
 
 // --- Store (the write path) ------------------------------------------------
@@ -141,8 +164,17 @@ export function renderReflectionNoteFiles(onlyUnfiled = true): Map<string, strin
        ORDER BY created_at ASC`
     )
     .all() as SavedReflectionRow[];
+  const entityStmt = db().prepare(
+    `SELECT kind, name FROM entry_entities WHERE page_id = ? ORDER BY kind, name`
+  );
   const map = new Map<string, string>();
-  for (const r of rows) map.set(reflectionNoteFileName(r), renderReflectionNote(r));
+  for (const r of rows) {
+    const entities = entityStmt.all(reflectionPageId(r.reflection_key)) as Array<{
+      kind: string;
+      name: string;
+    }>;
+    map.set(reflectionNoteFileName(r), renderReflectionNote(r, entities));
+  }
   return map;
 }
 
@@ -165,4 +197,59 @@ export function unfiledReflectionKeys(): string[] {
       .prepare(`SELECT reflection_key FROM mcp_reflections WHERE filed_at IS NULL`)
       .all() as Array<{ reflection_key: string }>
   ).map((r) => r.reflection_key);
+}
+
+// --- Entity-linking status (mirrors conversationWiki's equivalents) -------
+// Distinct from filed_at (Dropbox filing status): a reflection can be filed
+// long before it's linked, and re-saving under the same key (which clears
+// filed_at, see saveReflection) must not force re-linking.
+
+export type UnlinkedReflection = {
+  reflection_key: string;
+  title: string | null;
+  created_at: string;
+};
+
+export function listUnlinkedReflections(limit = 20): UnlinkedReflection[] {
+  return db()
+    .prepare(
+      `SELECT reflection_key, title, created_at FROM mcp_reflections
+       WHERE linked_at IS NULL
+       ORDER BY created_at ASC
+       LIMIT ?`
+    )
+    .all(limit) as UnlinkedReflection[];
+}
+
+export function markReflectionsLinked(keys: string[]): void {
+  if (keys.length === 0) return;
+  const placeholders = keys.map(() => "?").join(",");
+  db()
+    .prepare(
+      `UPDATE mcp_reflections SET linked_at = datetime('now') WHERE reflection_key IN (${placeholders})`
+    )
+    .run(...keys);
+}
+
+export function getReflectionByKey(reflectionKey: string): SavedReflectionRow | null {
+  return (
+    (db()
+      .prepare(
+        `SELECT reflection_key, title, content, created_at FROM mcp_reflections
+         WHERE reflection_key = ?`
+      )
+      .get(reflectionKey) as SavedReflectionRow | undefined) ?? null
+  );
+}
+
+// reflection_key -> the note's vault-relative file name, for every saved
+// reflection. Used by Part C's entity-stub back-link rendering
+// (lib/diaryExportDb.ts) — mirrors conversationWiki's allConversationFileNames.
+export function allReflectionFileNames(): Map<string, string> {
+  const rows = db()
+    .prepare(`SELECT reflection_key, title, created_at FROM mcp_reflections`)
+    .all() as Array<{ reflection_key: string; title: string | null; created_at: string }>;
+  const map = new Map<string, string>();
+  for (const r of rows) map.set(r.reflection_key, reflectionNoteFileName(r));
+  return map;
 }

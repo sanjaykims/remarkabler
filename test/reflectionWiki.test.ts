@@ -26,6 +26,9 @@ beforeAll(async () => {
 
 beforeEach(() => {
   dbMod.db().prepare("DELETE FROM mcp_reflections").run();
+  dbMod.db().prepare("DELETE FROM entry_entities").run();
+  dbMod.db().prepare("DELETE FROM pages").run();
+  dbMod.db().prepare("DELETE FROM notebooks").run();
 });
 
 describe("renderReflectionNote (verbatim, distinct type from conversations)", () => {
@@ -121,5 +124,80 @@ describe("filing selection", () => {
     expect(rw.renderReflectionNoteFiles(true).size).toBe(1);
     // ...but a full render still has both.
     expect(rw.renderReflectionNoteFiles(false).size).toBe(2);
+  });
+});
+
+describe("entity-linking status (mirrors conversationWiki's equivalents)", () => {
+  it("listUnlinkedReflections/markReflectionsLinked", () => {
+    rw.saveReflection({ content: "a", reflectionId: "k1" });
+    rw.saveReflection({ content: "b", reflectionId: "k2" });
+    expect(rw.listUnlinkedReflections().map((r) => r.reflection_key).sort()).toEqual(["k1", "k2"]);
+    rw.markReflectionsLinked(["k1"]);
+    expect(rw.listUnlinkedReflections().map((r) => r.reflection_key)).toEqual(["k2"]);
+  });
+
+  it("getReflectionByKey returns null for an unknown key", () => {
+    expect(rw.getReflectionByKey("nope")).toBeNull();
+  });
+
+  it("reflectionPageId is deterministic: mcp-reflections:<key>", () => {
+    expect(rw.reflectionPageId("abc")).toBe("mcp-reflections:abc");
+  });
+
+  it("allReflectionFileNames maps every reflection_key to its note filename", () => {
+    rw.saveReflection({ content: "a", reflectionId: "k1", title: "A" });
+    const row = dbMod
+      .db()
+      .prepare("SELECT reflection_key, title, created_at FROM mcp_reflections WHERE reflection_key = 'k1'")
+      .get() as { reflection_key: string; title: string | null; created_at: string };
+    const map = rw.allReflectionFileNames();
+    expect(map.get("k1")).toBe(rw.reflectionNoteFileName(row));
+  });
+});
+
+describe('"Connects to" wikilink section (Part C)', () => {
+  it("omits the section entirely when no entities are tagged", () => {
+    const md = rw.renderReflectionNote({
+      title: "Untagged",
+      content: "text",
+      created_at: "2026-07-19 09:00:00",
+    });
+    expect(md).not.toContain("## Connects to");
+  });
+
+  it("renders bare-basename wikilinks for tagged entities, no folder prefix", () => {
+    const md = rw.renderReflectionNote(
+      { title: "Tagged", content: "text", created_at: "2026-07-19 09:00:00" },
+      [
+        { kind: "person", name: "Jin" },
+        { kind: "place", name: "Suwon" },
+      ]
+    );
+    expect(md).toContain("## Connects to");
+    expect(md).toContain("- [[Jin]]");
+    expect(md).toContain("- [[Suwon]]");
+    expect(md).not.toContain("People/Jin");
+  });
+
+  it("renderReflectionNoteFiles joins entry_entities per row via reflectionPageId", () => {
+    rw.saveReflection({ content: "a", reflectionId: "k1", title: "A" });
+    dbMod
+      .db()
+      .prepare(`INSERT OR IGNORE INTO notebooks(id, name, synced_at) VALUES('mcp-reflections', 'Reflections', datetime('now'))`)
+      .run();
+    dbMod
+      .db()
+      .prepare(`INSERT INTO pages(id, notebook_id, page_index, ocr_text) VALUES('mcp-reflections:k1', 'mcp-reflections', 0, '[Reflection] A')`)
+      .run();
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES('mcp-reflections:k1', 'person', 'Jin', 'jin')`
+      )
+      .run();
+    const files = rw.renderReflectionNoteFiles(false);
+    const md = [...files.values()][0];
+    expect(md).toContain("## Connects to");
+    expect(md).toContain("- [[Jin]]");
   });
 });

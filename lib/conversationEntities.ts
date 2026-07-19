@@ -3,6 +3,7 @@ import { CONVERSATIONS_NOTEBOOK_ID } from "./notes";
 import { applyEntityAlias } from "./entityMerge";
 import { normaliseEntityName } from "./mind";
 import {
+  conversationPageId,
   dateKey,
   getConversationByKey,
   markConversationsLinked,
@@ -53,7 +54,7 @@ export function ensureConversationPage(
   const convo = getConversationByKey(conversationKey);
   if (!convo) return null;
   ensureConversationsNotebook();
-  const pageId = `${CONVERSATIONS_NOTEBOOK_ID}:${conversationKey}`;
+  const pageId = conversationPageId(conversationKey);
   const entryDate = dateKey(convo.created_at);
   const label = (convo.title || conversationKey).slice(0, 180);
   db()

@@ -23,6 +23,9 @@ beforeAll(async () => {
 
 beforeEach(() => {
   dbMod.db().prepare("DELETE FROM mcp_conversations").run();
+  dbMod.db().prepare("DELETE FROM entry_entities").run();
+  dbMod.db().prepare("DELETE FROM pages").run();
+  dbMod.db().prepare("DELETE FROM notebooks").run();
 });
 
 describe("renderConversationNote (verbatim, no summarizing)", () => {
@@ -117,5 +120,68 @@ describe("filing selection", () => {
     expect(cw.renderConversationNoteFiles(true).size).toBe(1);
     // ...but a full render still has both.
     expect(cw.renderConversationNoteFiles(false).size).toBe(2);
+  });
+});
+
+describe("conversationPageId / allConversationFileNames", () => {
+  it("conversationPageId is deterministic: mcp-conversations:<key>", () => {
+    expect(cw.conversationPageId("abc")).toBe("mcp-conversations:abc");
+  });
+
+  it("allConversationFileNames maps every conversation_key to its note filename", () => {
+    cw.saveExportedConversation({ content: "a", conversationId: "k1", title: "A" });
+    const row = dbMod
+      .db()
+      .prepare("SELECT conversation_key, title, created_at FROM mcp_conversations WHERE conversation_key = 'k1'")
+      .get() as { conversation_key: string; title: string | null; created_at: string };
+    const map = cw.allConversationFileNames();
+    expect(map.get("k1")).toBe(cw.conversationNoteFileName(row));
+  });
+});
+
+describe('"Connects to" wikilink section (Part C)', () => {
+  it("omits the section entirely when no entities are tagged", () => {
+    const md = cw.renderConversationNote({
+      title: "Untagged",
+      content: "text",
+      created_at: "2026-07-18 09:00:00",
+    });
+    expect(md).not.toContain("## Connects to");
+  });
+
+  it("renders bare-basename wikilinks for tagged entities, no folder prefix", () => {
+    const md = cw.renderConversationNote(
+      { title: "Tagged", content: "text", created_at: "2026-07-18 09:00:00" },
+      [
+        { kind: "person", name: "Jin" },
+        { kind: "place", name: "Suwon" },
+      ]
+    );
+    expect(md).toContain("## Connects to");
+    expect(md).toContain("- [[Jin]]");
+    expect(md).toContain("- [[Suwon]]");
+    expect(md).not.toContain("People/Jin");
+  });
+
+  it("renderConversationNoteFiles joins entry_entities per row via conversationPageId", () => {
+    cw.saveExportedConversation({ content: "a", conversationId: "k1", title: "A" });
+    dbMod
+      .db()
+      .prepare(`INSERT OR IGNORE INTO notebooks(id, name, synced_at) VALUES('mcp-conversations', 'Conversations', datetime('now'))`)
+      .run();
+    dbMod
+      .db()
+      .prepare(`INSERT INTO pages(id, notebook_id, page_index, ocr_text) VALUES('mcp-conversations:k1', 'mcp-conversations', 0, '[Conversation] A')`)
+      .run();
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES('mcp-conversations:k1', 'person', 'Jin', 'jin')`
+      )
+      .run();
+    const files = cw.renderConversationNoteFiles(false);
+    const md = [...files.values()][0];
+    expect(md).toContain("## Connects to");
+    expect(md).toContain("- [[Jin]]");
   });
 });
