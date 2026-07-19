@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cn } from "./cn";
 
 // Button styles used throughout the app. Encapsulates the existing class
-// strings — no visual change vs. inline. Six variants:
+// strings — no visual change vs. inline. Five variants:
 //   primary   — high-contrast filled amber (the "Add a notebook" button).
 //               The one sunny-yellow CTA — see DESIGN.md's "yellow is
 //               sacred" rule. Don't reuse amber for anything else.
@@ -13,13 +13,20 @@ import { cn } from "./cn";
 //               action that deliberately isn't the one amber CTA.
 //   danger    — bordered red-tinted, for destructive/attention actions
 //               (Retry stuck batches).
-//   text      — bare underlined trigger, no padding/border feel (plain
-//               Delete/Edit/Cancel-style links).
+//
+// Deliberately no "bare text link" variant: real instances of that pattern
+// (Delete/Cancel/Retry-style inline triggers) turned out to be genuinely
+// bespoke — different opacity values, different disabled-opacity, some
+// underlined and some not, some inheriting color from surrounding inline
+// text. Folding them into one shape would mean either a visible regression
+// or a pile of one-off class overrides that (since this component's `cn`
+// is a plain string-join, not tailwind-merge) aren't even reliably safe to
+// stack against the variant's own classes. Left as plain inline elements.
 //
 // Sizes mirror the existing rhythm (`px-4 py-3` / `px-3 py-2` / the
 // smaller `px-3 py-1.5` used by compact inline actions).
 
-type Variant = "primary" | "secondary" | "ghost" | "solid" | "danger" | "text";
+type Variant = "primary" | "secondary" | "ghost" | "solid" | "danger";
 type Size = "xs" | "sm" | "md";
 
 const VARIANT_CLASSES: Record<Variant, string> = {
@@ -33,7 +40,6 @@ const VARIANT_CLASSES: Record<Variant, string> = {
   solid: "bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900",
   danger:
     "border border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 bg-transparent",
-  text: "bg-transparent underline opacity-70 transition-opacity hover:opacity-100",
 };
 
 const SIZE_CLASSES: Record<Size, string> = {

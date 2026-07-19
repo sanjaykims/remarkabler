@@ -1,6 +1,7 @@
 "use client";
 
 import { Eyebrow } from "@/components/Eyebrow";
+import { Button } from "@/components/Button";
 
 import { useEffect, useRef, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
@@ -279,24 +280,28 @@ export default function NotebooksPage() {
             }}
             className="hidden"
           />
-          <button
+          <Button
             type="button"
             onClick={openFilePicker}
             disabled={uploading}
-            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm disabled:opacity-50"
+            variant="secondary"
+            size="xs"
+            className="text-sm"
           >
             Choose file
-          </button>
+          </Button>
           <span className="text-sm opacity-70">
             {fileName ?? "No file chosen"}
           </span>
-          <button
+          <Button
             type="submit"
             disabled={uploading}
-            className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-4 py-1.5 text-sm disabled:opacity-50"
+            variant="solid"
+            size="xs"
+            className="px-4 text-sm"
           >
             {uploading ? "Uploading…" : "Upload"}
-          </button>
+          </Button>
         </div>
         {status && <p className="text-sm opacity-80">{status}</p>}
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -451,13 +456,14 @@ export default function NotebooksPage() {
                                   className="w-full min-h-[10rem] rounded border border-slate-300 dark:border-slate-700 bg-transparent p-2 text-sm leading-relaxed whitespace-pre-wrap"
                                 />
                                 <div className="flex items-center gap-3">
-                                  <button
+                                  <Button
                                     onClick={() => savePageEdit(n.id, p.id)}
                                     disabled={savingEdit}
-                                    className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1 text-xs disabled:opacity-50"
+                                    variant="solid"
+                                    size="xs"
                                   >
                                     {savingEdit ? "Saving…" : "Save correction"}
-                                  </button>
+                                  </Button>
                                   <button
                                     onClick={() => setEditingPageId(null)}
                                     disabled={savingEdit}

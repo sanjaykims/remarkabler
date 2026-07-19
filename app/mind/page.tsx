@@ -1,6 +1,7 @@
 "use client";
 
 import { Eyebrow } from "@/components/Eyebrow";
+import { Button } from "@/components/Button";
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -357,66 +358,78 @@ export default function MindPage() {
           </span>
           {data && data.counts.pending > 0 && (
             <>
-              <button
+              <Button
                 disabled={analyzing}
                 onClick={() => analyze(Math.min(25, data.counts.pending))}
-                className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-xs disabled:opacity-50"
+                variant="solid"
+                size="xs"
               >
                 {analyzing ? "Analysing…" : `Analyse next ${Math.min(25, data.counts.pending)}`}
-              </button>
+              </Button>
               {data.counts.pending > 25 && (
-                <button
+                <Button
                   disabled={analyzing}
                   onClick={() => analyze(Math.min(200, data.counts.pending))}
-                  className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs disabled:opacity-50"
+                  variant="secondary"
+                  size="xs"
                 >
                   Analyse up to 200
-                </button>
+                </Button>
               )}
             </>
           )}
           {data && data.counts.pending === 0 && data.counts.analyzed > 0 && (
             <span className="text-[11px] opacity-50">All caught up.</span>
           )}
-          <button
+          <Button
             disabled={reparsing || analyzing}
             onClick={reparseDates}
             title="Re-runs the YYYY-MM-DD-HH-MM-KST regex over every page and carries dates forward within each notebook."
-            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+            variant="secondary"
+            size="xs"
+            className="opacity-80 hover:opacity-100"
           >
             {reparsing ? "Re-parsing…" : "Re-parse dates"}
-          </button>
-          <button
+          </Button>
+          <Button
             disabled={reanalyzing || analyzing}
             onClick={reanalyzeAll}
             title="Wipes the cached themes / mood / summaries and re-analyses every entry from scratch with English-only prompts. Costs roughly $0.10–0.30 in total. Runs in the background."
-            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+            variant="secondary"
+            size="xs"
+            className="opacity-80 hover:opacity-100"
           >
             {reanalyzing ? "Re-analysing…" : "Re-analyse in English"}
-          </button>
-          <button
+          </Button>
+          <Button
             disabled={merging || analyzing}
             onClick={mergeDuplicates}
             title="Claude finds duplicate spellings of the same person/place/project (e.g. a Korean name and its romanization) and merges them into one name everywhere — graph, chat, and this page. Remembers each merge for future entries."
-            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+            variant="secondary"
+            size="xs"
+            className="opacity-80 hover:opacity-100"
           >
             {merging ? "Merging…" : "Merge duplicate names"}
-          </button>
-          <button
+          </Button>
+          <Button
             disabled={buildingWiki || analyzing}
             onClick={buildWiki}
             title="Claude reads your ENTIRE diary history for each person, place, and project and writes a deep profile (who they are, the relationship, how it evolved) — a self-updating 'wiki of your life' in your Obsidian export. First build ~$3–8; then only entities touched by new/edited entries are rewritten."
-            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+            variant="secondary"
+            size="xs"
+            className="opacity-80 hover:opacity-100"
           >
             {buildingWiki ? "Building…" : "Build life wiki"}
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => setManualOpen((v) => !v)}
             title="Manually fold specific spellings (e.g. OCR variants of one name) into a single canonical name, for cases Claude's automatic merge won't catch."
-            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100"
+            variant="secondary"
+            size="xs"
+            className="opacity-80 hover:opacity-100"
           >
             {manualOpen ? "Close manual merge" : "Merge specific names"}
-          </button>
+          </Button>
         </div>
         {manualOpen && (
           <div className="rounded border border-slate-200 dark:border-slate-800 p-3 space-y-2">
@@ -467,13 +480,9 @@ export default function MindPage() {
                 whatever is already the canonical instead.
               </span>
             </label>
-            <button
-              onClick={mergeManual}
-              disabled={manualBusy}
-              className="rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-xs disabled:opacity-50"
-            >
+            <Button onClick={mergeManual} disabled={manualBusy} variant="solid" size="xs">
               {manualBusy ? "Merging…" : "Merge these"}
-            </button>
+            </Button>
           </div>
         )}
         {labelDebug && (labelDebug.labels || labelDebug.raw || labelDebug.error) && (
@@ -947,18 +956,20 @@ function EmbeddingMap({
       } Orange = positive, blue = negative, grey = un-analysed.`}
     >
       <div className="flex justify-end pb-2">
-        <button
+        <Button
           disabled={labelling}
           onClick={onLabelAxes}
           title="Sends a few extreme entries from each axis of the 3D map to Claude for short labels (e.g. 'family life ↔ business'). One Claude call total."
-          className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs opacity-80 hover:opacity-100 disabled:opacity-40"
+          variant="secondary"
+          size="xs"
+          className="opacity-80 hover:opacity-100"
         >
           {labelling
             ? "Labelling…"
             : axisLabels
             ? "Re-label axes"
             : "Label axes"}
-        </button>
+        </Button>
       </div>
       <Map3D data={data} axisLabels={axisLabels} />
     </Section>
