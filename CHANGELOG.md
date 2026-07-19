@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-07-19 (Vendor Matt Pocock's engineering skills)
+
+Brought in [`sanjaykims/skills`](https://github.com/sanjaykims/skills) (a
+fork of [`mattpocock/skills`](https://github.com/mattpocock/skills), MIT) —
+22 engineering + productivity Claude Code skills for alignment-first,
+disciplined development (grill-with-docs, tdd, diagnosing-bugs, implement,
+domain-modeling, triage, research, resolving-merge-conflicts, handoff, and
+more), following the same live-vendoring pattern already used for
+`kepano/obsidian-skills`.
+
+- Installed all 22 skills under `.claude/skills/`, renaming the upstream
+  `code-review` skill to `deep-code-review` (and its cross-references) to
+  avoid colliding with this session's built-in `code-review` skill.
+- Ran the one-time `setup-matt-pocock-skills` configuration: GitHub Issues
+  as the issue tracker (`docs/agents/issue-tracker.md`, with a note that
+  environments lacking the `gh` CLI should use the GitHub MCP tools
+  instead), default triage labels (`docs/agents/triage-labels.md`), and a
+  single-context domain-docs layout (`docs/agents/domain.md` — `CONTEXT.md`/
+  `docs/adr/` are created lazily by `/domain-modeling`, not upfront). Logged
+  in a new `## Agent skills` section in `CLAUDE.md`.
+- Documented the source and the rename in `docs/reference/README.md`,
+  alongside the existing `kepano/obsidian-skills` entry.
+
 ## 2026-07-18 (MCP Phase B: export a full conversation into the Obsidian wiki)
 
 The first WRITE on the (otherwise read-only) MCP endpoint, built to the user's

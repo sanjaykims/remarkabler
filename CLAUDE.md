@@ -609,6 +609,34 @@ under `docs/sessions/`. Read the most recent ones before starting work on
 related areas (Voyage embeddings, OCR model choice, cost optimization,
 backup behavior) so you don't re-derive answers we already have.
 
+## Agent skills
+
+Vendored from [`sanjaykims/skills`](https://github.com/sanjaykims/skills)
+(a fork of [`mattpocock/skills`](https://github.com/mattpocock/skills),
+MIT) — 22 engineering + productivity skills for disciplined,
+alignment-first agentic development (grill-with-docs, tdd, diagnosing-bugs,
+implement, code-review-style two-axis review, domain-modeling, triage,
+research, and more), installed live under `.claude/skills/`. See
+`docs/reference/README.md` for the full list and the one rename
+(`code-review` → `/deep-code-review`, to avoid colliding with this
+session's built-in `code-review` skill).
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues. See `docs/agents/issue-tracker.md`
+(note: sessions without the `gh` CLI on `PATH` should use the equivalent
+GitHub MCP tools instead — see that file's compatibility note).
+
+### Triage labels
+
+Default canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, `wontfix`), unchanged. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout (`CONTEXT.md` + `docs/adr/` at the repo root, created
+lazily by `/domain-modeling` — neither exists yet). See `docs/agents/domain.md`.
+
 ## Working with this user
 
 - Non-technical; works primarily from an Android phone; communicates with
