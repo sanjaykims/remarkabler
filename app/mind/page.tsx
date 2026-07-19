@@ -103,7 +103,9 @@ export default function MindPage() {
       } else {
         setAnalyzeMsg(
           `Analysed ${d.analyzed} entries${
-            d.failed ? ` (${d.failed} failed)` : ""
+            d.failed
+              ? ` (${d.failed} failed${d.lastError ? ` — ${d.lastError}` : ""})`
+              : ""
           }. ${d.remaining} pending.`
         );
       }

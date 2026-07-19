@@ -195,6 +195,9 @@ export async function analyzePending(
   failed: number;
   remaining: number;
   skipped?: "in-flight";
+  // The most recent failure's message, so a page stuck failing every retry
+  // is diagnosable from the UI instead of needing API/deploy logs.
+  lastError?: string;
 }> {
   if (analyzePendingInFlight) {
     return {
@@ -244,23 +247,27 @@ export async function analyzePending(
     // motivated /raw).
     let analyzed = 0;
     let failed = 0;
+    let lastError: string | undefined;
     const model = process.env.CHAT_MODEL || "claude-sonnet-4-6";
     for (const row of rows) {
       let result: Awaited<ReturnType<typeof analyzeEntryContent>> = null;
       try {
         result = await analyzeEntryContent(row.ocr_text);
       } catch (e) {
-        // Claude error (network, 5xx, parse). Skip this page, continue the
-        // loop — one bad page should never abort an entire backfill.
-        console.warn(
-          "[mind] analyze (claude) failed:",
-          row.id,
-          (e as Error).message
-        );
+        // Claude error (network, 5xx, parse, or a response that couldn't be
+        // used — see analyzeEntryContent's own error messages). Skip this
+        // page, continue the loop — one bad page should never abort an
+        // entire backfill. Keep the message so the caller can surface it.
+        const message = (e as Error).message;
+        console.warn("[mind] analyze (claude) failed:", row.id, message);
         failed++;
+        lastError = message;
         continue;
       }
       if (!result) {
+        // Only reachable if a page's OCR text is somehow empty-after-trim
+        // despite the pending-query filter already excluding those — not a
+        // real failure, so it doesn't set lastError.
         failed++;
         continue;
       }
@@ -307,15 +314,13 @@ export async function analyzePending(
         // deleted). Don't kill the loop — log and move on. Because the
         // per-page block is transactional, the page's state is unchanged
         // by this failure — it stays "pending" until the next sweep.
-        console.warn(
-          "[mind] analyze (db) failed:",
-          row.id,
-          (e as Error).message
-        );
+        const message = (e as Error).message;
+        console.warn("[mind] analyze (db) failed:", row.id, message);
         failed++;
+        lastError = message;
       }
     }
-    return { analyzed, failed, remaining: countPending() };
+    return { analyzed, failed, remaining: countPending(), lastError };
   } finally {
     analyzePendingInFlight = false;
   }
