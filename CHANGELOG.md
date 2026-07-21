@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-07-20 (Second-brain vault structure: Home dashboard + entity indexes + Profile note)
+
+Brings [obsidian-mind](docs/reference/obsidian-mind)'s knowledge-architecture
+layer into the vault Remarkabler already generates — **without** adopting its
+desktop/manual-operator model, and keeping OCR ingestion as the foundation.
+Remarkabler stays the sole deterministic writer of the vault; it just writes a
+richer, more navigable one. (Phase 1 of "combine the two frameworks".)
+
+- **New vault-root notes**, generated on every sync (`lib/diaryExport.ts` pure
+  builders + `lib/diaryExportDb.ts:renderVaultStructureFiles`):
+  - `Home.md` — a dashboard front page: live counts (diary days, People/
+    Places/Projects, reflections, conversations), quick links to the index
+    notes + Profile, and the most recent days/reflections/conversations.
+  - `People.md` / `Places.md` / `Projects.md` — index MOCs listing every
+    entity as a `[[wikilink]]` to its stub, sorted by mention count then name,
+    with day-counts drawn from the SAME `collectEntityStubs()` the stub notes
+    use (so the index and the stub can never disagree). Conversation/
+    reflection-only entities are included and labeled distinctly.
+  - `Profile.md` — Remarkabler's living "profile of you" (goals, patterns,
+    open threads) rendered as a note; the direct analog of obsidian-mind's
+    North Star. Omitted until a profile exists.
+- **Wired into the existing exporter** (`lib/dropbox.ts`): merged into
+  `maybeExportDiaryToDropbox`'s file map and added to `vaultStructureFileNames()`
+  so they refresh on every sync path (full, per-ingest, and post-tag/wiki
+  re-export) except the write-access probe. No new upload machinery.
+- **Refactor**: extracted `collectEntityStubs()` from `renderEntityStubFiles`
+  as the shared entity-computation source of truth for both the stubs and the
+  new indexes.
+- New `test/vaultStructure.test.ts` (7 pure-builder tests) + 5 DB-backed tests
+  in `test/diaryExportDb.test.ts`; 578 pass, lint + build clean.
+- New "do not regress" rule in `CLAUDE.md`: Remarkabler is the sole
+  deterministic writer of the exported vault — this is why the vendored
+  agent frameworks stay reference-only.
+
 ## 2026-07-19 (Guaranteed entity-tagging + bidirectional Obsidian links for conversations & reflections)
 
 Until now, linking an exported conversation into the diary's entity graph

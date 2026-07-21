@@ -9,6 +9,8 @@ import { MAX_UPLOAD_BYTES } from "@/lib/upload";
 import {
   renderDiaryDayFiles,
   renderEntityStubFiles,
+  renderVaultStructureFiles,
+  vaultStructureFileNames,
   affectedDayFileNames,
   affectedEntityStubFileNames,
 } from "@/lib/diaryExportDb";
@@ -797,24 +799,32 @@ export async function maybeExportDiaryToDropbox(
   exportInFlight = true;
   try {
     // filename -> markdown: day files (2026-06-19.md) + entity stub notes
-    // (People/Jin.md …) so the day files' [[wikilinks]] resolve to real pages.
+    // (People/Jin.md …) so the day files' [[wikilinks]] resolve to real pages,
+    // + the vault-structure notes (Home.md, People/Places/Projects index MOCs,
+    // Profile.md) — the "second brain" scaffolding, refreshed on every sync.
     const files = new Map<string, string>([
       ...renderDiaryDayFiles(),
       ...renderEntityStubFiles(),
+      ...renderVaultStructureFiles(),
     ]);
     // Which files to upload:
     //   onlyNewest → a single day file (a fast write-access probe)
     //   notebookId → that notebook's affected days + entity stubs (per-ingest)
     //   neither    → every day + every stub (full sync)
+    // The vault-structure notes reflect GLOBAL counts (any ingest can change
+    // them), so they ride along on every path except the write-access probe.
     let names: string[];
     if (opts?.onlyNewest) {
       names = newestFileName(files);
     } else if (opts?.onlyEntityStubs) {
-      names = opts.onlyEntityStubs.filter((n) => files.has(n));
+      names = [...new Set([...opts.onlyEntityStubs, ...vaultStructureFileNames()])].filter(
+        (n) => files.has(n)
+      );
     } else if (opts?.notebookId) {
       const wanted = new Set(affectedDayFileNames(opts.notebookId));
       for (const n of opts.extraDayFiles || []) wanted.add(n);
       for (const n of affectedEntityStubFileNames(opts.notebookId)) wanted.add(n);
+      for (const n of vaultStructureFileNames()) wanted.add(n);
       names = [...wanted].filter((n) => files.has(n));
     } else {
       names = [...files.keys()];

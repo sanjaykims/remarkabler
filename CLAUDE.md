@@ -400,14 +400,26 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   resolve to real (clickable) Obsidian pages instead of unresolved nodes.
   `EntityStub.relatedNoteLinks`/a `## Conversations & reflections` section
   extend this to tagged conversation/reflection notes too: `renderEntityStubFiles`
-  joins `entry_entities` against BOTH synthetic notebooks in one query,
-  resolving each page id back to its note's filename via
+  (a thin wrapper over the shared `collectEntityStubs()`) joins `entry_entities`
+  against BOTH synthetic notebooks in one query, resolving each page id back to
+  its note's filename via
   `conversationWiki.ts:allConversationFileNames`/`reflectionWiki.ts:allReflectionFileNames`
   — the reverse direction of those notes' own `## Connects to` section
   (`renderConversationNote`/`renderReflectionNote`), so linking is a real
   bidirectional Obsidian graph edge, not just an internal ranking. Merged
   into `maybeExportDiaryToDropbox`'s file map (incremental per notebook,
-  full on a whole-vault sync).
+  full on a whole-vault sync). Also emits the **vault-structure "second brain"
+  notes** (`buildHomeNote`/`buildEntityIndexNote`/`buildProfileNote` pure;
+  `renderVaultStructureFiles`/`vaultStructureFileNames` DB-backed): a fixed set
+  of vault-root notes — `Home.md` (dashboard: live counts + quick links +
+  recent days/reflections/conversations), `People.md`/`Places.md`/`Projects.md`
+  (index MOCs listing every entity as a `[[wikilink]]` to its stub, with
+  day-counts from the SAME `collectEntityStubs()` so index and stub never
+  disagree), and `Profile.md` (Remarkabler's living profile — the obsidian-mind
+  "North Star" analog). Reflect GLOBAL counts, so they refresh on every sync
+  path except the write-access probe. This is the obsidian-mind
+  knowledge-architecture layer, generated deterministically by Remarkabler
+  rather than authored by an external agent (see the sole-writer rule below).
 - `lib/notebookDedup.ts` (pure: `classifyDuplicate`, `buildCloudCoverage`,
   `buildCandidate`) + `lib/notebookDedupDb.ts` (DB-backed
   `findDuplicateCandidates`) — flags old (Dropbox-ingested or manually
@@ -699,6 +711,22 @@ features need the deployed instance to fully verify.
   adding an exclusion). Do not "clean up" by excluding either notebook
   everywhere discipline is excluded, and do not forget the exclusions above
   just because the graph/stub side stays inclusive.
+- **Remarkabler is the SOLE writer of the vault it exports — keep it
+  deterministic.** The whole Obsidian/Dropbox vault (day files, entity stubs,
+  conversation/reflection notes, AND the vault-structure notes `Home.md`/
+  `People|Places|Projects.md`/`Profile.md`) is generated from the DB by
+  `lib/diaryExport*.ts` and uploaded by `maybeExportDiaryToDropbox`. This is
+  the deliberate reason the vendored `obsidian-mind`/`obsidian-second-brain`
+  frameworks are reference-only (`docs/reference/README.md`): an external
+  agent that auto-rewrites vault pages on its own would fight this exporter
+  for the same files. When adding a new "second brain" note type, generate it
+  deterministically here and add its name to `vaultStructureFileNames()` (so
+  incremental syncs refresh it) — do NOT introduce a second writer that edits
+  these files in place. The ONE sanctioned exception is the librarian's
+  `entity_conversation_notes` (a SEPARATE table rendered into a separate stub
+  section, never an in-place edit of a generated file) — any future
+  agent-authored content must follow that same "own table, composed at render
+  time" pattern, never mutate the exporter's output.
 - **`MCP_AUTO_TAG_EXPORTS` is layered ON TOP of `MCP_ALLOW_WIKI_LINKING`, not
   a peer flag — do not let it work independently.** `autoTagExportsEnabled()`
   (`lib/entityTagging.ts`) requires BOTH; `MCP_ALLOW_WIKI_LINKING` is the

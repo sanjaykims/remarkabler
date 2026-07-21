@@ -5,17 +5,26 @@ import { allEntityWikiRows } from "./entityWiki";
 import { allConversationNotesRows } from "./conversationEntities";
 import { allConversationFileNames } from "./conversationWiki";
 import { allReflectionFileNames } from "./reflectionWiki";
+import { getCurrentProfileRow } from "./profile";
 import {
   buildDiaryMarkdown,
   buildDayFiles,
   buildEntityStubFiles,
+  buildHomeNote,
+  buildEntityIndexNote,
+  buildProfileNote,
   carryForwardDates,
   effectiveDateKeys,
   entityStubFileName,
+  entityIndexFileName,
+  HOME_FILE,
+  PROFILE_FILE,
   UNDATED_FILE,
   type DiaryPageRow,
   type EntityStub,
+  type EntityIndexEntry,
   type PageEntities,
+  type RecentLink,
 } from "./diaryExport";
 
 // DB-backed diary Markdown renderer shared by the download route
@@ -152,10 +161,11 @@ export function renderDiaryDayFiles(): Map<string, string> {
   return buildDayFiles({ rows, entitiesByPage, exportedAt: fmtExportedAt() });
 }
 
-// One note per person/place/project (People/…, Places/…, Projects/…) so the
-// day files' [[wikilinks]] resolve to a real page. Reuses fetchDiaryData +
-// carry-forward so an entity's day list matches exactly where it's mentioned.
-export function renderEntityStubFiles(): Map<string, string> {
+// Compute the full EntityStub[] (one per person/place/project) from the
+// diary walk + conversation/reflection tags — the shared source of truth for
+// both the stub notes (renderEntityStubFiles) and the entity index notes
+// (renderVaultStructureFiles), so an entity's day count is identical in both.
+export function collectEntityStubs(): EntityStub[] {
   const { rows, entitiesByPage } = fetchDiaryData();
   const enriched = carryForwardDates(rows);
   // Claude-written profiles (one query), keyed by the SAME sanitized display
@@ -297,7 +307,136 @@ export function renderEntityStubFiles(): Map<string, string> {
     };
   });
   stubs.sort((x, y) => x.kind.localeCompare(y.kind) || x.name.localeCompare(y.name));
-  return buildEntityStubFiles({ stubs, exportedAt: fmtExportedAt() });
+  return stubs;
+}
+
+// One note per person/place/project (People/…, Places/…, Projects/…) so the
+// day files' [[wikilinks]] resolve to a real page. Reuses fetchDiaryData +
+// carry-forward so an entity's day list matches exactly where it's mentioned.
+export function renderEntityStubFiles(): Map<string, string> {
+  return buildEntityStubFiles({ stubs: collectEntityStubs(), exportedAt: fmtExportedAt() });
+}
+
+// The fixed vault-root "second brain" note names, so the incremental Dropbox
+// export can always refresh them alongside a notebook's day/stub files
+// (they reflect global counts, so any ingest can change them). Profile.md is
+// listed unconditionally; the exporter filters to files actually present, so
+// it's skipped when no profile exists yet.
+export function vaultStructureFileNames(): string[] {
+  return [
+    HOME_FILE,
+    entityIndexFileName("person"),
+    entityIndexFileName("place"),
+    entityIndexFileName("project"),
+    PROFILE_FILE,
+  ];
+}
+
+// Most-recent (up to 5) rows of a conversation/reflection table as RecentLink
+// entries — each resolved to its note's bare wikilink target via the supplied
+// key→filename map. Rows whose note isn't filed yet are skipped.
+function recentContentLinks(
+  table: "mcp_conversations" | "mcp_reflections",
+  keyCol: "conversation_key" | "reflection_key",
+  fileNames: Map<string, string>
+): RecentLink[] {
+  const rows = db()
+    .prepare(
+      `SELECT ${keyCol} AS key, title, created_at FROM ${table}
+       ORDER BY created_at DESC LIMIT 5`
+    )
+    .all() as Array<{ key: string; title: string | null; created_at: string }>;
+  const out: RecentLink[] = [];
+  for (const r of rows) {
+    const fname = fileNames.get(r.key);
+    if (!fname) continue;
+    const target = fname.replace(/^[^/]+\//, "").replace(/\.md$/, "");
+    out.push({ target, label: (r.title || "").trim() || target });
+  }
+  return out;
+}
+
+// The "second brain" structure notes: Home dashboard, People/Places/Projects
+// index MOCs, and the Profile note. Generated deterministically from
+// Remarkabler's own data (so the app stays the SOLE writer), refreshed on
+// every sync. Entity day-counts come from the SAME collectEntityStubs() the
+// stub notes use, so the index and the stub never disagree.
+export function renderVaultStructureFiles(): Map<string, string> {
+  const exportedAt = fmtExportedAt();
+  const files = new Map<string, string>();
+
+  // Entity indexes, split from the shared stub computation.
+  const stubs = collectEntityStubs();
+  const byKind: Record<EntityStub["kind"], EntityIndexEntry[]> = {
+    person: [],
+    place: [],
+    project: [],
+  };
+  for (const s of stubs) byKind[s.kind].push({ name: s.name, days: s.dates.length });
+  for (const kind of ["person", "place", "project"] as const) {
+    files.set(
+      entityIndexFileName(kind),
+      buildEntityIndexNote({ kind, entries: byKind[kind], exportedAt })
+    );
+  }
+
+  // Diary days (distinct carried-forward effective dates), most recent first.
+  const { rows } = fetchDiaryData();
+  const dayset = new Set<string>();
+  for (const e of carryForwardDates(rows)) if (e.effectiveDate) dayset.add(e.effectiveDate);
+  const days = [...dayset].sort(); // ascending
+  const recentDays: RecentLink[] = days
+    .slice(-5)
+    .reverse()
+    .map((d) => ({ target: d, label: d }));
+
+  const reflections = (
+    db().prepare(`SELECT COUNT(*) AS c FROM mcp_reflections`).get() as { c: number }
+  ).c;
+  const conversations = (
+    db().prepare(`SELECT COUNT(*) AS c FROM mcp_conversations`).get() as { c: number }
+  ).c;
+  const profileRow = getCurrentProfileRow();
+
+  files.set(
+    HOME_FILE,
+    buildHomeNote({
+      stats: {
+        diaryDays: days.length,
+        people: byKind.person.length,
+        places: byKind.place.length,
+        projects: byKind.project.length,
+        reflections,
+        conversations,
+      },
+      recentDays,
+      recentReflections: recentContentLinks(
+        "mcp_reflections",
+        "reflection_key",
+        allReflectionFileNames()
+      ),
+      recentConversations: recentContentLinks(
+        "mcp_conversations",
+        "conversation_key",
+        allConversationFileNames()
+      ),
+      hasProfile: !!profileRow,
+      exportedAt,
+    })
+  );
+
+  if (profileRow) {
+    files.set(
+      PROFILE_FILE,
+      buildProfileNote({
+        profile: profileRow.content,
+        updatedAt: profileRow.created_at,
+        exportedAt,
+      })
+    );
+  }
+
+  return files;
 }
 
 // The stub file path (e.g. "People/야오팡.md") for a raw entity display name,
