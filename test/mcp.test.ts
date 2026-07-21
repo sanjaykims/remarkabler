@@ -383,6 +383,20 @@ describe("save_diary_entry write tool (opt-in, real diary write)", () => {
     expect(names).not.toContain(mcp.DECISION_TOOL_NAME);
     expect(names).not.toContain(mcp.EXPORT_TOOL_NAME);
   });
+
+  it("its description steers 'put this in my diary' to itself, away from export_conversation", () => {
+    process.env.MCP_ALLOW_DIARY_WRITE = "true";
+    const diary = mcp.mcpToolList().find((t) => t.name === mcp.DIARY_TOOL_NAME)!;
+    // The diary tool claims the "in my diary" intent and warns off the archive tool.
+    expect(diary.description).toContain("in my diary");
+    expect(diary.description).toContain("do NOT use export_conversation");
+
+    // And export_conversation disclaims being the diary + points to save_diary_entry.
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    const exp = mcp.mcpToolList().find((t) => t.name === mcp.EXPORT_TOOL_NAME)!;
+    expect(exp.description).toContain("does NOT become a diary entry");
+    expect(exp.description).toContain("use save_diary_entry");
+  });
 });
 
 describe("librarian tools (Phase C — opt-in, one flag for all six)", () => {

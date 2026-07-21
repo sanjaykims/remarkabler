@@ -122,12 +122,16 @@ export function conversationExportEnabled(): boolean {
 const EXPORT_TOOL: McpToolDef = {
   name: EXPORT_TOOL_NAME,
   description:
-    "Save the FULL text of this conversation to the person's diary wiki so they " +
-    "can look back on it later. Pass `content` = the complete conversation " +
-    "transcript verbatim (both sides, in order), an optional `title`, and an " +
-    "optional stable `conversation_id` (re-exporting with the same id updates the " +
-    "same record). Do this at natural end points or when they say something worth " +
-    "keeping. It is stored as-is — do not summarize.",
+    "Archive the FULL verbatim text of THIS conversation (both sides) into the " +
+    "person's vault, so they can look back on the chat itself later. IMPORTANT: " +
+    "this is a conversation ARCHIVE — it does NOT become a diary entry and does " +
+    "NOT count toward their diary, profile, or analytics. If they want what they " +
+    "said turned into their DIARY (\"put this in my diary\", \"save as today's " +
+    "entry\"), use save_diary_entry instead, NOT this tool. Pass `content` = the " +
+    "complete conversation transcript verbatim (both sides, in order), an " +
+    "optional `title`, and an optional stable `conversation_id` (re-exporting " +
+    "with the same id updates the same record). Do this at natural end points or " +
+    "when they say the chat is worth keeping. Store as-is — do not summarize.",
   inputSchema: {
     type: "object",
     properties: {
@@ -257,9 +261,12 @@ const DIARY_TOOL: McpToolDef = {
   name: DIARY_TOOL_NAME,
   description:
     "Save a real DIARY ENTRY the person composed by talking with you, instead " +
-    "of handwriting it. This is their actual diary — it fully counts (feeds " +
-    "their profile, mood/theme analytics, writing streak, and day files), so " +
-    "hold it to that bar. IMPORTANT: (1) write the entry in the PERSON'S OWN " +
+    "of handwriting it. This is THE tool to use whenever they want something " +
+    "\"in my diary\" / \"saved as today's entry\" / \"as a diary entry\" — do " +
+    "NOT use export_conversation for that (that only archives the raw chat and " +
+    "does NOT count as diary). This is their actual diary — it fully counts " +
+    "(feeds their profile, mood/theme analytics, writing streak, and day " +
+    "files), so hold it to that bar. IMPORTANT: (1) write the entry in the PERSON'S OWN " +
     "first-person voice, grounded in what they actually told you — capture " +
     "their day/thoughts/feelings, do NOT add your own commentary, advice, or " +
     "editorializing; it should read like they wrote it. (2) ALWAYS show them " +
@@ -630,7 +637,10 @@ export async function callMcpTool(
     return JSON.stringify({
       ok: true,
       key,
-      note: "Saved this conversation to your diary wiki.",
+      note:
+        "Archived this conversation to the vault (Conversations) — this is the " +
+        "chat itself, NOT a diary entry. If they wanted it saved as their diary, " +
+        "use save_diary_entry instead.",
     });
   }
   if (name === REFLECTION_TOOL_NAME) {
@@ -675,7 +685,7 @@ export async function callMcpTool(
     return JSON.stringify({
       ok: true,
       key,
-      note: "Saved this reflection to your diary wiki.",
+      note: "Saved this reflection to the vault (Reflections).",
     });
   }
   if (name === DECISION_TOOL_NAME) {
@@ -718,7 +728,7 @@ export async function callMcpTool(
     return JSON.stringify({
       ok: true,
       key,
-      note: "Saved this decision to your diary wiki.",
+      note: "Saved this decision to the vault (Decisions).",
     });
   }
   if (name === DIARY_TOOL_NAME) {
