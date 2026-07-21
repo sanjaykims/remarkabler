@@ -41,20 +41,32 @@ Companion docs — read in order if any is unfamiliar:
 | File | Role |
 |---|---|
 | `db.ts` | SQLite connection, schema, migrations. All `ALTER TABLE ADD COLUMN` and `CREATE INDEX` live here. Idempotent. |
-| `claude.ts` | Every Anthropic SDK call. Model resolution chain: in-app setting → env var → built-in default, per role (`modelMain` / `modelChat` / `modelChatFallback` / `modelChatMemory`). `analyzeEntryContent` extracts themes + sentiment + summary + named entities (people / places / projects) in one Sonnet call per page. |
-| `chatTools.ts` | Tool-calling toolbox for chat — `search_diary` (hybrid FTS + Voyage), `get_entries_by_date`, summaries (day/week/month), current time, locations, chat-history search. |
-| `chatMemory.ts` | Durable cross-chat memory: extract on Clear → embed → dedup → insert → recall top-K on next turn. Fail-open. |
+| `claude.ts` | Every Anthropic SDK call. Model resolution chain: in-app setting → env var → built-in default, per role (`modelMain` / `modelChat` / `modelChatFallback` / `modelChatMemory`). `analyzeEntryContent` extracts themes + sentiment + summary + named entities (people / places / projects) in one Sonnet call per page. Also `composeEntityWiki`/`cleanEntityWiki` (life-wiki), `findEntityDuplicates`/`parseEntityDuplicates` (dedup), `extractTaggingEntities` (bounded entities-only extraction for auto-tagging). |
+| `chatTools.ts` | Tool-calling toolbox for chat — `search_diary` (hybrid FTS + Voyage), `get_entries_by_date`, summaries (day/week/month), current time, locations, chat-history search, `top_entities`, `pages_for_entity`, `related_entities` (entity-graph edges via `entityGraph.ts`). |
+| `chatMemory.ts` | Durable cross-chat memory: extract on Clear → embed → dedup → insert → recall top-K on next turn. Fail-open. Also the rolling-memory pair (`createRollingBatch`/`maybeRollConversationMemory`) that compresses an active chat's out-of-window turns before a Clear. |
 | `chatMemoryBackfill.ts` | Pure helpers that split a long history into transcript-fit chunks (`CHUNK_TARGET_CHARS = 12_000`) so backfill doesn't truncate. |
 | `embeddings.ts` | Voyage AI: token-budget batching, 429 retry, Float32 BLOB codec, cosine similarity. Gated by `VOYAGE_API_KEY`. |
-| `notes.ts` | `createNotebook` / `processNotebook` (background OCR), `runMaintenanceSweep` (one throttled cascade for all chores), entry-date parsing + carry-forward, discipline-repo sync. |
+| `notes.ts` | `createNotebook` / `processNotebook` (background OCR), `runMaintenanceSweep` (one throttled cascade for all chores), entry-date parsing + carry-forward, discipline-repo sync. Owns the synthetic-notebook ids (`DISCIPLINE_ID`, `CONVERSATIONS_NOTEBOOK_ID`, `REFLECTIONS_NOTEBOOK_ID`, `DECISIONS_NOTEBOOK_ID`) + real `CHAT_DIARY_NOTEBOOK_ID`, and the exclude-helpers `nonDiaryNotebookExcludeIdsForChat`/`ForMind`. |
 | `profile.ts` | The evolving "memory of you" (versioned `profile` table). |
-| `mind.ts` | `/mind` analytics: heatmap, theme cloud, sentiment timeline, 3D embedding map. Shared PCA + persisted axis labels. The `analyzePending` in-flight-guard pattern is reused by `chatMemory`. |
+| `mind.ts` | `/mind` analytics: heatmap, theme cloud, sentiment timeline, 3D embedding map. Shared PCA + persisted axis labels. The `analyzePending` in-flight-guard pattern is reused by `chatMemory`. Excludes discipline + all three synthetic notebooks. |
+| `entityGraph.ts` | Pure `computeRelatedEntities` — ranks entities that share diary days with a target (the co-occurrence graph behind `related_entities` + the Obsidian graph). |
+| `entityMerge.ts` | Entity de-dup: `applyEntityAlias` (fold on insert), `mergeEntity`/`mergeEntitiesManually`, the Claude-driven `dedupeAllEntities`. Keyed on `name_norm`, so a merge is a data rewrite with no read-path changes. |
+| `entityWiki.ts` | The "life wiki": a deep Claude-written bio per entity (`composeEntityWiki`), content-addressed by `source_hash`, embedded atop the entity's Obsidian stub. `refreshEntityWiki`/`maybeRefreshEntityWiki` (opt-in, batched). |
+| `mcp.ts` | MCP bridge — derives the remote tool list from `CHAT_TOOLS` + MCP-only reads (`get_profile`/`recall_memories`/`get_guidance`), the write tools, and fail-closed bearer auth. See the MCP route below. |
+| `mcpOauth.ts` | Minimal OAuth 2.1 server for the claude.ai connector (DCR + PKCE-S256, opaque tokens stored hashed, consent reuses `MCP_AUTH_TOKEN`). |
+| `conversationWiki.ts` / `conversationEntities.ts` | Phase B/C: store + verbatim-note renderer for exported subscription-conversations (`mcp_conversations`), and the "librarian" data layer (synthetic pages under `CONVERSATIONS_NOTEBOOK_ID`, `entity_conversation_notes`, heartbeat). |
+| `reflectionWiki.ts` / `reflectionEntities.ts` | Standalone AI-written reflections (`mcp_reflections`, `Reflections/` folder) — 1:1 mirror of the conversation pair, its own table/folder. Entity-linked. |
+| `decisionWiki.ts` / `decisionEntities.ts` | Decision Records (`mcp_decisions`, `Decisions/` folder) — 1:1 mirror of the reflection pair. Entity-linked. |
+| `chatDiary.ts` | "Chat diary": a REAL diary entry composed by talking to Claude (`save_diary_entry`). Lands in the non-excluded `CHAT_DIARY_NOTEBOOK_ID` and runs the full post-ingest pipeline (embed → profile fold → analyze → day-file export). |
+| `entityTagging.ts` | Guaranteed, app-initiated entity-tagging for conversations/reflections/decisions, gated by `autoTagExportsEnabled()` (`MCP_AUTO_TAG_EXPORTS` layered on `MCP_ALLOW_WIKI_LINKING`). `sampleForTagging` + `autoTag*` + sweep backstops. |
 | `usage.ts` | `recordUsage` (per-call cost from list prices) + KST-aware monthly/daily/total aggregation. |
 | `extractText.ts` | Convert PDF/Word attachments to text on the server before sending to Claude. Saves ~3-5× tokens. Handwritten PDFs fall back to raw. |
-| `auth.ts` / `webauthn.ts` | Passcode + passkey (WebAuthn). HMAC session cookie. 24h server-side inactivity timeout. |
+| `auth.ts` / `webauthn.ts` | Passcode + passkey (WebAuthn). HMAC session cookie. 24h server-side inactivity timeout. Passcode brute-force lockout (`auth_fail_state`). |
 | `backup.ts` | Weekly tar.gz of `/data` to a private GitHub repo, keep-last-12. `dropbox_refresh_token` redacted. |
-| `dropbox.ts` | OAuth refresh-token flow, folder polling, dedupe by `dropbox_file_id`. Fired from `runMaintenanceSweep`. Also opt-in **per-day** diary auto-export back to Dropbox (`maybeExportDiaryToDropbox`, one `.md` per day into `dropboxExportFolder`, needs `files.content.write` scope). |
-| `diaryExport.ts` / `diaryExportDb.ts` | Diary→Markdown: pure assembly, carry-forward, and per-day file builder (`diaryExport`, unit-tested) + DB renderers (`renderDiaryMarkdown` combined for the download, `renderDiaryDayFiles` per-day for Dropbox, `affectedDayFileNames`). Excludes the discipline notebook. |
+| `dropbox.ts` | OAuth refresh-token flow, folder polling, dedupe by `dropbox_file_id` **+ tombstones**. Fired from `runMaintenanceSweep`. Also opt-in **per-day** diary auto-export back to Dropbox (`maybeExportDiaryToDropbox`, one `.md` per day into `dropboxExportFolder`, needs `files.content.write` scope) + the conversation/reflection/decision vault exporters. |
+| `diaryExport.ts` / `diaryExportDb.ts` | Diary→Markdown: pure assembly, carry-forward, per-day file builder + DB renderers. **Obsidian-native**: entity `[[wikilinks]]`, entity **stub notes** (with `## Related notes` back-links to tagged conversations/reflections/decisions), and the **vault-structure "second brain" notes** (`Home.md`, `People|Places|Projects.md`, `Profile.md` — `renderVaultStructureFiles`/`vaultStructureFileNames`). Excludes discipline + synthetic notebooks from day files, includes them in the entity graph/stubs. |
+| `notebookDedup.ts` / `notebookDedupDb.ts` | Flags old notebooks whose diary dates are already covered by a reMarkable-cloud import (`/notebooks` "Possible duplicates"). |
+| `remarkableCloud.ts` / `rmRender.ts` / `remarkableImport.ts` / `remarkableSync.ts` | reMarkable-cloud secondary source (rmapi-js, unofficial). Pair+list, `.rm`→PDF render (image-only), on-demand import, zero-tap page-hash sync. |
 | `owntracks.ts` / `location.ts` | OwnTracks ingestion, stay clustering, reverse-geocoding (Nominatim cache). |
 | `github.ts` | Discipline-repo Contents API fetcher. |
 | `format.ts` / `cleanup.ts` / `upload.ts` | KST helpers, orphan-attachment sweep, upload validation. |
@@ -75,7 +87,16 @@ Companion docs — read in order if any is unfamiliar:
 | `profile` | Versioned "memory of you" rows. `getCurrentProfile()` returns latest. |
 | `daily_summaries` | One row per dated day, generated by `summarizeDay` (Opus). Drives week/month aggregates. |
 | `entry_analysis` | Per-page themes/sentiment/summary for `/mind`. Discipline notebook excluded. |
-| `entry_entities` | Per-page named entities (`kind` ∈ person/place/project, `name`, `name_norm` for grouping). Populated alongside `entry_analysis`. Powers the `top_entities` chat tool. ON DELETE CASCADE from `pages`. |
+| `entry_entities` | Per-page named entities (`kind` ∈ person/place/project, `name`, `name_norm` for grouping). Populated alongside `entry_analysis`. Powers `top_entities`/`pages_for_entity`/`related_entities`. ON DELETE CASCADE from `pages`. |
+| `entity_aliases` | Merge records folding a duplicate spelling into a canonical `(kind, name_norm)` (`lib/entityMerge.ts`). |
+| `entity_wiki` | Claude-written life-wiki bio per entity + a `source_hash` of its mentioning pages. Embedded atop the entity's Obsidian stub (`lib/entityWiki.ts`). |
+| `entity_conversation_notes` | The Phase C librarian agent's OWN notes about an entity — kept SEPARATE from `entity_wiki` so the two authors never clobber each other (`lib/conversationEntities.ts`). |
+| `mcp_conversations` | Full subscription-conversation transcripts exported via `export_conversation`, filed verbatim into `Conversations/`. `filed_at` = Dropbox filing, `linked_at` = librarian tagging (`lib/conversationWiki.ts`). |
+| `mcp_reflections` | Standalone AI-written reflections saved via `save_reflection`, filed into `Reflections/`. Own table/folder, entity-linked (`lib/reflectionWiki.ts`). |
+| `mcp_decisions` | Decision Records saved via `save_decision`, filed into `Decisions/`. Own table/folder, entity-linked (`lib/decisionWiki.ts`). |
+| `mcp_audit` | Size-capped log of MCP tool calls + failed auth attempts. |
+| `mcp_oauth_clients` / `mcp_oauth_tokens` | OAuth 2.1 state for the claude.ai connector — DCR clients + issued access/refresh tokens stored HASHED, each bound to its authorizing `MCP_AUTH_TOKEN` (`lib/mcpOauth.ts`). |
+| `dropbox_ingest_tombstones` / `remarkable_ingest_tombstones` | Deleted source ids the Dropbox watcher / reMarkable sweep must NOT re-ingest (`deleteNotebook` writes them). |
 | `locations` | Manual one-tap log (legacy). |
 | `location_points` | OwnTracks raw points. |
 | `route_stops` | Clustered stays (place + dwell). |
@@ -92,7 +113,7 @@ Companion docs — read in order if any is unfamiliar:
 - **Notes:** `notebooks`, `notebooks/[id]/pages`, `diary`.
 - **Memory/profile:** `memory` (the `/memory` page's profile editor — *not* chat memory).
 - **Insights:** `insights`.
-- **Mind:** `mind`, `mind/analyze`, `mind/reanalyze`, `mind/axis-labels`, `mind/reparse-dates`.
+- **Mind:** `mind`, `mind/analyze`, `mind/reanalyze`, `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities` (Claude-driven entity dedup), `mind/build-wiki` (batched life-wiki build).
 - **Embeddings:** `embeddings/status` (GET status + POST run-backfill).
 - **Backup:** `backup` (GET status, POST run-now).
 - **Dropbox:** `dropbox/connect`, `/callback`, `/status`, `/disconnect`,
@@ -109,15 +130,30 @@ Companion docs — read in order if any is unfamiliar:
 - **Location:** `location` (GET + POST manual log), `location/settings`, `owntracks` (`?token=` push endpoint).
 - **MCP:** `mcp` (remote MCP endpoint, Streamable HTTP — read-only diary tools
   for Claude on the user's subscription, + three MCP-only companion tools
-  `get_profile`/`recall_memories`/`get_guidance`, + the opt-in write tool
-  `export_conversation` (`MCP_ALLOW_CONVERSATION_EXPORT=true`; files a full
-  conversation verbatim into the Obsidian vault — Phase B, `lib/conversationWiki.ts`),
-  + six Phase C "librarian" tools behind one flag `MCP_ALLOW_WIKI_LINKING=true`
-  (reads `list_unlinked_conversations`/`get_conversation`/`get_entity_wiki`,
-  writes `tag_conversation_entities`/`update_entity_conversation_notes`/
-  `record_librarian_heartbeat` — lets a SEPARATE, subscription-billed Claude
-  Code agent link conversations into the entity graph/wiki; `lib/conversationEntities.ts`);
-  bearer auth via `MCP_AUTH_TOKEN`,
+  `get_profile`/`recall_memories`/`get_guidance`. **Sanctioned write tools, each
+  OFF by default behind its OWN flag** (independent privacy tradeoffs, so any
+  subset can be enabled):
+  - `export_conversation` (`MCP_ALLOW_CONVERSATION_EXPORT=true`) — files a full
+    conversation verbatim into `Conversations/` (Phase B, `lib/conversationWiki.ts`).
+  - `save_reflection` (`MCP_ALLOW_REFLECTION_SAVE=true`) — Claude's own one-sided
+    reflection into `Reflections/` (`lib/reflectionWiki.ts`).
+  - `save_decision` (`MCP_ALLOW_DECISION_SAVE=true`) — a Decision Record into
+    `Decisions/` (`lib/decisionWiki.ts`).
+  - `save_diary_entry` (`MCP_ALLOW_DIARY_WRITE=true`) — the ONE write that is
+    REAL diary: composed by talking to Claude, lands in the non-excluded
+    `CHAT_DIARY_NOTEBOOK_ID` and runs the full profile/analytics pipeline
+    (`lib/chatDiary.ts`).
+  - Six Phase C "librarian" tools behind one flag `MCP_ALLOW_WIKI_LINKING=true`
+    (reads `list_unlinked_conversations`/`get_conversation`/`get_entity_wiki`,
+    writes `tag_conversation_entities`/`update_entity_conversation_notes`/
+    `record_librarian_heartbeat` — lets a SEPARATE, subscription-billed Claude
+    Code agent link conversations into the entity graph/wiki; `lib/conversationEntities.ts`).
+  Layered on top: `MCP_AUTO_TAG_EXPORTS=true` (requires `MCP_ALLOW_WIKI_LINKING`)
+  makes the app itself guarantee entity-tagging right after each export/save,
+  on its own `ANTHROPIC_API_KEY` (`lib/entityTagging.ts`). Sensitive tools
+  (`get_recent_locations`/`search_chat_history`) excluded unless
+  `MCP_ALLOW_SENSITIVE_TOOLS=true`. Bearer auth via `MCP_AUTH_TOKEN`
+  (comma-separated = zero-downtime rotation),
   fails closed when unset; backed by `lib/mcp.ts`; setup in `docs/mcp-setup.md`)
   + `mcp/oauth/{register,authorize,token,protected-resource,authorization-server}`
   (minimal OAuth 2.1 server so the claude.ai connector can complete its OAuth
@@ -140,8 +176,8 @@ Companion docs — read in order if any is unfamiliar:
 | `/notebooks` | Upload PDFs. Per-notebook expand → status + transcribed pages. Delete. |
 | `/chat` | Conversational chat with Claude over the profile. Image/PDF attachments. Voice in/out (Android). Clear button (= archive + chat-memory extraction). Tools include `top_entities` (aggregate "who/where/what do I mention most?") and `pages_for_entity` (drill down to actual pages for a named entity). |
 | `/insights` | History of reflections. "Generate now" button (Opus). |
-| `/mind` | Heatmap (6 months) + theme cloud + "Who, where, what" (top people/places/projects) + sentiment timeline + 3D embedding map (`Map3D.tsx`). Axis labels under the map. "Re-analyse" / "Re-label" buttons. |
-| `/memory` | Profile editor (the textarea) + Discipline, Location, OwnTracks, Models, Voyage status, Dropbox, Backup, **Chat memory** (collapsible), Export sections. |
+| `/mind` | Heatmap (6 months) + theme cloud + "Who, where, what" (top people/places/projects) + sentiment timeline + 3D embedding map (`Map3D.tsx`). Axis labels under the map. "Re-analyse" / "Re-label" / "Merge duplicate names" / "Merge specific names" / "Build life wiki" buttons. |
+| `/memory` | Profile editor (the textarea) + Discipline, Location, OwnTracks, Models, Voyage status, Dropbox (+ vault auto-export toggle), Backup, reMarkable import/auto-sync, **Chat memory** (collapsible), Librarian heartbeat status, Export sections. |
 | `/usage` | Cost calendar (daily/monthly), feature breakdown. KST timezone. |
 
 ## UI structure
@@ -176,6 +212,9 @@ them all.
 11. `maybeCompressChatSessions()` — chat-memory extractor for any pending batches.
 12. `maybeSyncRemarkable()` — reMarkable-cloud zero-tap sync (own interval/backoff/quiesce gates).
 13. `maybeRefreshEntityWiki()` — regenerate stale entity "life-wiki" profiles (once opted in; a few/tick).
+14. `maybeExportConversationsToDropbox()` / `maybeExportReflectionsToDropbox()` / `maybeExportDecisionsToDropbox()` — file any unfiled vault notes (backstops the inline export from each write tool).
+15. `maybeRollConversationMemory()` — roll an active chat's out-of-window turns into memory before a Clear.
+16. `maybeAutoTagUnlinkedConversations()` / `...Reflections()` / `...Decisions()` — guaranteed app-side entity-tagging backstop (no-op unless `MCP_AUTO_TAG_EXPORTS` + `MCP_ALLOW_WIKI_LINKING`).
 
 ## Models
 
@@ -211,6 +250,15 @@ attribute cost to features and surfaces.
 - `OWNTRACKS_TOKEN` — enables OwnTracks ingestion endpoint. `LOCATION_TZ_OFFSET` (minutes, default 540 = Seoul).
 - `DISCIPLINE_REPO` / `DISCIPLINE_GITHUB_TOKEN` / `DISCIPLINE_BRANCH` — GitHub discipline-notes source.
 - `BACKUP_REPO` / `BACKUP_GITHUB_TOKEN` — off-site auto-backup.
+- **MCP (subscription-Claude diary access):** `MCP_AUTH_TOKEN` (16+ chars,
+  comma-separated for rotation; unset = endpoint disabled/fails closed),
+  `APP_BASE_URL` (fixes the OAuth public origin). Write-tool flags, each OFF by
+  default and independent: `MCP_ALLOW_CONVERSATION_EXPORT`,
+  `MCP_ALLOW_REFLECTION_SAVE`, `MCP_ALLOW_DECISION_SAVE`, `MCP_ALLOW_DIARY_WRITE`,
+  `MCP_ALLOW_WIKI_LINKING` (the six librarian tools). Layered:
+  `MCP_AUTO_TAG_EXPORTS` (requires `MCP_ALLOW_WIKI_LINKING`). Read-surface:
+  `MCP_ALLOW_SENSITIVE_TOOLS` (exposes location + chat-history search),
+  `MCP_EXCLUDE_TOOLS` (add more exclusions; can never re-include a sensitive tool).
 
 ## Hard-won rules — do not regress
 
@@ -226,6 +274,8 @@ attribute cost to features and surfaces.
 8. **OCR stays on Opus** for this user (validated on Korean handwriting — `docs/sessions/2026-06-04.md`).
 9. **Behind Railway's proxy, `req.url` reports `localhost:8080`.** Never build absolute URLs from it.
 10. **One throttled `runMaintenanceSweep`** drives every background job.
+11. **The MCP endpoint is read-only by default and fails closed.** Every write tool is OFF behind its own flag, deterministic-destination, size-capped; a missing/short `MCP_AUTH_TOKEN` returns 503 (never "open"); sensitive tools stay excluded unless `MCP_ALLOW_SENSITIVE_TOOLS=true`.
+12. **Synthetic notebooks excluded from analytics, included in the entity graph; Remarkabler is the SOLE deterministic writer of its vault.** `CHAT_DIARY_NOTEBOOK_ID` is the one synthetic-notebook exception — it's REAL diary and stays on every list.
 
 ## Known intentional limits
 
