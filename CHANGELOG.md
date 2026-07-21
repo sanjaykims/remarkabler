@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-07-21 (Index docs refresh: SKILL.md + AGENTS.md caught up to the current codebase)
+
+The two index/onboarding docs had fallen behind everything shipped over the
+past several sessions (reflections, decisions, chat-diary, the entity
+life-wiki, guaranteed auto-tagging, the second-brain vault structure, the MCP
+write tools + OAuth server, and their tables/routes/env vars). Refreshed both
+so a fresh agent gets an accurate map in one pass — no code change.
+
+- **`SKILL.md`**: Modules table now lists `entityGraph`/`entityMerge`/
+  `entityWiki`/`mcp`/`mcpOauth`/`conversation*`/`reflection*`/`decision*`/
+  `chatDiary`/`entityTagging`/`notebookDedup`/`remarkable*` and the
+  Obsidian-native vault-structure additions to `diaryExport*`. Database-tables
+  section adds `entity_aliases`/`entity_wiki`/`entity_conversation_notes`/
+  `mcp_conversations`/`mcp_reflections`/`mcp_decisions`/`mcp_audit`/
+  `mcp_oauth_*`/`*_ingest_tombstones`. MCP route now documents all four
+  independent write flags + the librarian flag + `MCP_AUTO_TAG_EXPORTS`; the
+  sweep list, `/mind` + `/memory` page notes, env-var block, and rules list
+  all catch up.
+- **`AGENTS.md`**: the `db.ts` tables line, the `lib/` module table (new
+  reflection/decision/chatDiary/entityTagging/entityWiki/entityGraph/
+  entityMerge/diaryExport rows), the `mcp.ts` row, the API-route groups
+  (mcp/oauth, remarkable, mind/merge-entities + build-wiki, export/diary), and
+  two new load-bearing rules (MCP read-only-by-default; synthetic-notebook
+  exclusion + sole-vault-writer) all updated.
+
+Standing note for future sessions: keep `SKILL.md` and `AGENTS.md` current with
+every notable change, same as `CLAUDE.md`/`CHANGELOG.md`.
+
 ## 2026-07-21 (MCP tool descriptions: stop confusing "archive this chat" with "save to my diary")
 
 A live voice test surfaced a real tool-selection bug: asked to put a chat "in
