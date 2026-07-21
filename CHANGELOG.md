@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-21 (MCP tool descriptions: stop confusing "archive this chat" with "save to my diary")
+
+A live voice test surfaced a real tool-selection bug: asked to put a chat "in
+my diary," Claude reached for `export_conversation` (which only archives the
+transcript to the vault, excluded from the diary) instead of `save_diary_entry`
+(the real diary write). The cause was wording — `export_conversation`'s
+description and success note both said they saved to the "diary wiki," which
+read like *that* was the diary.
+
+- `export_conversation`'s description now says plainly it's a conversation
+  ARCHIVE that does NOT become a diary entry, and points to `save_diary_entry`
+  for "put this in my diary" intent.
+- `save_diary_entry`'s description now claims the "in my diary / today's entry"
+  intent explicitly and warns off `export_conversation`.
+- The success notes for conversation/reflection/decision writes stop saying
+  "diary wiki" (they save to the *vault*, not the diary); the conversation note
+  actively tells Claude to use `save_diary_entry` if the diary was intended.
+- New regression test pinning the cross-referencing wording. No behavior change
+  beyond tool-selection guidance; build + lint clean.
+
 ## 2026-07-20 (Write your diary by conversation: the save_diary_entry MCP tool)
 
 You can now **write a real diary entry by talking to subscription-Claude**
