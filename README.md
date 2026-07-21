@@ -160,6 +160,7 @@ for the full walkthrough and security model.
 | `MCP_ALLOW_CONVERSATION_EXPORT` | Enable the `export_conversation` write tool (files a full chat into the vault). |
 | `MCP_ALLOW_REFLECTION_SAVE` | Enable the `save_reflection` write tool (a standalone reflection Claude wrote about you). |
 | `MCP_ALLOW_DECISION_SAVE` | Enable the `save_decision` write tool (a structured Decision Record). |
+| `MCP_ALLOW_DIARY_WRITE` | Enable the `save_diary_entry` write tool — compose a **real diary entry** by talking to Claude (feeds your profile + analytics, unlike the vault-only tools above). |
 | `MCP_ALLOW_WIKI_LINKING` | Enable linking exported content into your entity graph (the "librarian" tools + reads). |
 | `MCP_AUTO_TAG_EXPORTS` | Layered on top of the above — the app auto-tags entities itself right after each export (guaranteed, not opportunistic). |
 | `MCP_ALLOW_SENSITIVE_TOOLS` | Opt in to exposing location + chat-history tools over MCP (excluded by default for physical-safety reasons). |

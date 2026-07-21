@@ -797,7 +797,7 @@ export function maybeDistillLocation(): void {
 // Local-time (KST) date string YYYY-MM-DD for "today" — used to fire the
 // daily discipline auto-sync at most once per local day. We anchor on the
 // user's display timezone so "every day at 00:00" matches what they see.
-function todayLocalDate(): string {
+export function todayLocalDate(): string {
   const now = Date.now() + TZ_OFFSET_MIN * 60 * 1000;
   return new Date(now).toISOString().slice(0, 10);
 }
@@ -1022,6 +1022,19 @@ export const REFLECTIONS_NOTEBOOK_ID = "mcp-reflections";
 // discipline as CONVERSATIONS_NOTEBOOK_ID / REFLECTIONS_NOTEBOOK_ID — one
 // page per saved Decision Record (lib/decisionEntities.ts).
 export const DECISIONS_NOTEBOOK_ID = "mcp-decisions";
+
+// The "Chat diary" notebook (lib/chatDiary.ts) — a diary composed by talking
+// to subscription-Claude instead of handwriting. CRUCIALLY, unlike the three
+// synthetic notebooks above, this is a REAL diary notebook: its entries are
+// the person's own first-person writing (just dictated via conversation), so
+// it must NOT be added to any exclude list — it feeds the profile, /mind,
+// heatmap, day files, and entity graph exactly like a handwritten notebook.
+// It is kept as its OWN notebook (not folded into an uploaded one) only so
+// handwritten vs talked entries stay distinguishable. Because every exclude
+// list keys on discipline + the three synthetic notebooks, a new real
+// notebook is automatically INCLUDED everywhere with zero other changes —
+// that inclusion is the whole point, so do not "tidy up" by excluding it.
+export const CHAT_DIARY_NOTEBOOK_ID = "chat-diary";
 
 /**
  * The notebook ids to exclude from chat-tool surfaces that must reflect

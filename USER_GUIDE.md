@@ -270,8 +270,15 @@ Once your operator sets it up (a secret token — see the appendix), you add
 things like *"what have I been focused on this month?"* and it reads your diary
 to answer. By default it's **read-only** — it can look, not change anything.
 
-Three optional extras your operator can switch on, each with its own button:
+Four optional extras your operator can switch on, each with its own setting:
 
+- **Write your diary by talking** — instead of handwriting, just *tell Claude
+  about your day*. It drafts a diary entry in your own voice, **shows it to you,
+  and saves it only once you say yes.** This is a **real diary entry** — it
+  counts toward your profile, your Mind charts, and your writing streak, exactly
+  like a handwritten page. (Talked entries are kept in a separate "Chat diary"
+  notebook so you can always tell them apart from handwritten ones.) Great for
+  the days you don't feel like writing by hand but still want to capture.
 - **Save a reflection** — ask Claude for *"an honest, independent take on how
   I'm doing"* and tell it to save; it files a **Reflection** into your vault.
 - **Save a decision** — say *"we decided X because Y — save that as a
