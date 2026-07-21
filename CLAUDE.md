@@ -83,7 +83,16 @@ and generate an accumulating record of "insights" about themselves.
   `save_decision` — records a Decision Record ("we decided X because Y",
   obsidian-mind's decision-record type) into its own `Decisions/` folder
   (`lib/decisionWiki.ts`); its own flag, add-only, auto entity-linked like
-  reflections. OFF by default.
+  reflections. OFF by default. Optional `MCP_ALLOW_DIARY_WRITE=true` enables
+  a fourth write tool, `save_diary_entry` — writes a REAL diary entry composed
+  by talking to Claude instead of handwriting (`lib/chatDiary.ts`). UNLIKE the
+  three vault-only writes above, this one fully counts as diary: it lands in a
+  real, non-excluded "Chat diary" notebook (`CHAT_DIARY_NOTEBOOK_ID`) and runs
+  the same post-ingest pipeline a handwritten page does (embed → profile fold
+  → /mind analysis → day-file export), so it feeds the profile, heatmap, and
+  entity graph. The tool's description instructs the calling Claude to write
+  in the person's first-person voice and get their approval before saving. OFF
+  by default.
   Optional `MCP_ALLOW_WIKI_LINKING=true` enables the six Phase C "librarian" tools
   (`lib/conversationEntities.ts`) so a SEPARATE, recurring Claude Code agent
   — set up by the user as a cron Routine, billed to their own Claude
@@ -309,6 +318,20 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   a reflection or conversation. Filed by `maybeExportDecisionsToDropbox`
   (`lib/dropbox.ts`), auto-tagged by `lib/entityTagging.ts`'s
   `autoTagDecision`.
+- `lib/chatDiary.ts` — "Chat diary": a REAL diary entry composed by talking to
+  subscription-Claude (via the `save_diary_entry` MCP write tool) instead of
+  handwriting. Deliberately UNLIKE conversations/reflections/decisions: those
+  file into synthetic notebooks excluded from analytics, but a chat-diary
+  entry is the person's own diary content (just dictated), so it goes into a
+  real `CHAT_DIARY_NOTEBOOK_ID` notebook that is NOT on any exclude list and
+  runs the same post-ingest pipeline a handwritten page does.
+  `saveChatDiaryEntry` (synchronous: ensure notebook, insert page + FTS +
+  entry_date, append or upsert-by-`entryId`) returns immediately;
+  `processChatDiaryEntry` (async, fired un-awaited) mirrors `processNotebook`'s
+  post-OCR steps for one text entry — embed, fold into the profile, run
+  `analyzePending`, re-export the day file. Kept as its own notebook only so
+  handwritten vs talked entries stay distinguishable (labeled per-entry in the
+  day files); it fully counts toward profile/heatmap/Mind/day-files/graph.
 - `lib/entityTagging.ts` — guaranteed, APP-INITIATED entity-tagging for both
   conversations and reflections, gated by `autoTagExportsEnabled()`
   (`MCP_AUTO_TAG_EXPORTS=true` AND `MCP_ALLOW_WIKI_LINKING=true` — layered,
@@ -619,15 +642,22 @@ features need the deployed instance to fully verify.
   write, and stays). Diary text is OCR'd handwriting and chat is outside our
   system prompt, so treat every request as hostile and keep the blast radius at
   "read". **The sanctioned writes are `export_conversation` (Phase B),
-  `save_reflection`, `save_decision`, and the three Phase C librarian write
-  tools** (`tag_conversation_entities`, `update_entity_conversation_notes`,
-  `record_librarian_heartbeat`): all six are MCP-only, handled directly in
-  `callMcpTool` (not via `executeTool`), and are (a) OFF by default —
-  `export_conversation` behind `MCP_ALLOW_CONVERSATION_EXPORT=true`,
-  `save_reflection` behind its OWN separate `MCP_ALLOW_REFLECTION_SAVE=true`,
-  `save_decision` behind its OWN `MCP_ALLOW_DECISION_SAVE=true`
-  (each independent — the three content-save flags are separate privacy
-  tradeoffs, so a user can enable any subset),
+  `save_reflection`, `save_decision`, `save_diary_entry`, and the three Phase C
+  librarian write tools** (`tag_conversation_entities`,
+  `update_entity_conversation_notes`, `record_librarian_heartbeat`): all seven
+  are MCP-only, handled directly in `callMcpTool` (not via `executeTool`), and
+  are (a) OFF by default — `export_conversation` behind
+  `MCP_ALLOW_CONVERSATION_EXPORT=true`, `save_reflection` behind its OWN
+  separate `MCP_ALLOW_REFLECTION_SAVE=true`, `save_decision` behind its OWN
+  `MCP_ALLOW_DECISION_SAVE=true`, `save_diary_entry` behind its OWN
+  `MCP_ALLOW_DIARY_WRITE=true` (each independent — separate privacy tradeoffs,
+  so a user can enable any subset). NOTE `save_diary_entry` is the one write
+  that is NOT vault-only/add-only-to-an-isolated-table: it writes a real diary
+  page and triggers the profile/analytics pipeline (that's its point). It's
+  still deterministic-destination (the app computes the notebook + page id;
+  the agent supplies only content + an optional date/entry_id) and size-capped,
+  and it is guarded by the approval discipline in its own tool description
+  (compose in the person's voice, get approval, then save),
   the three librarian tools (PLUS the three librarian READ tools — see
   below) behind ONE flag `MCP_ALLOW_WIKI_LINKING=true` — hidden from
   `tools/list` AND refused on `tools/call` when off; (b)

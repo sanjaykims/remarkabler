@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-07-20 (Write your diary by conversation: the save_diary_entry MCP tool)
+
+You can now **write a real diary entry by talking to subscription-Claude**
+instead of handwriting it. A new opt-in MCP tool, `save_diary_entry`, lets any
+connected Claude draft an entry in your first-person voice, show it to you for
+approval, and — once you okay it — save it as a genuine diary entry.
+
+- **It fully counts as diary.** Unlike `export_conversation` /
+  `save_reflection` / `save_decision` (which file into vault folders *excluded*
+  from analytics), a chat-diary entry lands in a **real, non-excluded "Chat
+  diary" notebook** (`CHAT_DIARY_NOTEBOOK_ID`) and runs the same post-ingest
+  pipeline a handwritten page does — embeddings, profile fold, `/mind`
+  analysis, day-file export. So it feeds your profile, mood/theme charts,
+  writing heatmap, day files, and entity graph.
+- **New module** `lib/chatDiary.ts`: `saveChatDiaryEntry` (synchronous insert —
+  ensure notebook, page + FTS + entry_date, append or upsert-by-`entry_id`) +
+  `processChatDiaryEntry` (async post-ingest, fired un-awaited, mirroring
+  `processNotebook`).
+- **New MCP tool** (`lib/mcp.ts`): gated behind its own flag
+  `MCP_ALLOW_DIARY_WRITE=true`, independent of the other write flags. Its
+  description carries the discipline: write in the person's own voice, show the
+  draft, get approval before saving. Deterministic-destination and size-capped;
+  optional `date` (defaults to today) and `entry_id` (edit an entry vs. add).
+- **Kept as its own notebook** so handwritten vs talked entries stay
+  distinguishable (labeled per-entry in the day files) — but both count. Because
+  every analytics surface is exclusion-based (discipline + the three synthetic
+  notebooks), a new real notebook is auto-included everywhere with no other
+  changes.
+- New `test/chatDiary.test.ts` (6) + `save_diary_entry` tests in
+  `test/mcp.test.ts` (4); 608 pass, lint + build clean.
+
 ## 2026-07-20 (Decision Records: the save_decision MCP write tool)
 
 Phase 2 of "combine the two frameworks" — brings obsidian-mind's **Decision

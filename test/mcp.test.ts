@@ -40,6 +40,7 @@ afterEach(() => {
   delete process.env.MCP_ALLOW_CONVERSATION_EXPORT;
   delete process.env.MCP_ALLOW_REFLECTION_SAVE;
   delete process.env.MCP_ALLOW_DECISION_SAVE;
+  delete process.env.MCP_ALLOW_DIARY_WRITE;
   delete process.env.MCP_ALLOW_WIKI_LINKING;
   delete process.env.MCP_AUTO_TAG_EXPORTS;
   mcp.resetMcpThrottle();
@@ -332,6 +333,54 @@ describe("save_decision write tool (opt-in, add-only, own flag)", () => {
     const names = mcp.mcpToolList().map((t) => t.name);
     expect(names).toContain(mcp.DECISION_TOOL_NAME);
     expect(names).not.toContain(mcp.REFLECTION_TOOL_NAME);
+    expect(names).not.toContain(mcp.EXPORT_TOOL_NAME);
+  });
+});
+
+describe("save_diary_entry write tool (opt-in, real diary write)", () => {
+  it("is HIDDEN and REFUSED by default", async () => {
+    expect(mcp.mcpToolList().map((t) => t.name)).not.toContain(mcp.DIARY_TOOL_NAME);
+    const out = JSON.parse(await mcp.callMcpTool(mcp.DIARY_TOOL_NAME, { content: "hi" }));
+    expect(out.error).toContain("not available");
+  });
+
+  it("appears and writes a real diary page ONLY when MCP_ALLOW_DIARY_WRITE=true", async () => {
+    process.env.MCP_ALLOW_DIARY_WRITE = "true";
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM pages WHERE notebook_id = 'chat-diary'").run();
+    expect(mcp.mcpToolList().map((t) => t.name)).toContain(mcp.DIARY_TOOL_NAME);
+
+    const out = JSON.parse(
+      await mcp.callMcpTool(mcp.DIARY_TOOL_NAME, {
+        content: "Today I finally shipped the chat-diary feature.",
+        date: "2026-07-20",
+      })
+    );
+    expect(out.ok).toBe(true);
+    expect(out.date).toBe("2026-07-20");
+    const row = db()
+      .prepare("SELECT ocr_text, entry_date FROM pages WHERE notebook_id = 'chat-diary' LIMIT 1")
+      .get() as { ocr_text: string; entry_date: string };
+    expect(row.ocr_text).toContain("shipped the chat-diary feature");
+    expect(row.entry_date).toBe("2026-07-20");
+  });
+
+  it("requires content and rejects oversize input", async () => {
+    process.env.MCP_ALLOW_DIARY_WRITE = "true";
+    const empty = JSON.parse(await mcp.callMcpTool(mcp.DIARY_TOOL_NAME, {}));
+    expect(empty.error).toContain("required");
+    const over = JSON.parse(
+      await mcp.callMcpTool(mcp.DIARY_TOOL_NAME, { content: "x".repeat(50_000) })
+    );
+    expect(over.error).toContain("too large");
+  });
+
+  it("is independent of the vault-write flags", () => {
+    process.env.MCP_ALLOW_DIARY_WRITE = "true";
+    const names = mcp.mcpToolList().map((t) => t.name);
+    expect(names).toContain(mcp.DIARY_TOOL_NAME);
+    expect(names).not.toContain(mcp.REFLECTION_TOOL_NAME);
+    expect(names).not.toContain(mcp.DECISION_TOOL_NAME);
     expect(names).not.toContain(mcp.EXPORT_TOOL_NAME);
   });
 });

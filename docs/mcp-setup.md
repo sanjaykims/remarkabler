@@ -200,6 +200,39 @@ about a project/person shows up connected to it in your graph, and gets a
 decisions". Not automatic — Claude calls it when you tell it to record a
 decision.
 
+## Writing your diary by conversation (OFF by default)
+
+The other three write tools file into the *vault* but stay OUT of your actual
+diary. `save_diary_entry` is different: it writes a **real diary entry** — one
+you composed by talking to Claude instead of handwriting it. It fully counts:
+it feeds your profile, your Mind analytics, your writing streak/heatmap, your
+day files, and your entity graph, exactly like a scanned handwritten page.
+
+Its **own flag**:
+
+```
+MCP_ALLOW_DIARY_WRITE=true
+```
+
+How it behaves:
+- Entries land in a **separate "Chat diary" notebook**, so handwritten vs
+  talked entries stay distinguishable — but both count as diary.
+- The tool's instructions tell Claude to **write in your own first-person
+  voice** (your day, grounded in what you said — not Claude's commentary) and
+  to **show you the draft and get your approval before saving**. So the normal
+  flow is: talk about your day → Claude drafts the entry → you say "yes, save
+  it" → it's saved.
+- Optional `date` (defaults to today) and `entry_id` (re-use to *edit* an entry
+  instead of adding a new one).
+- Because it's a real diary write (it updates your profile + analytics, not
+  just a vault file), it has a broader effect than the vault-only tools above —
+  which is exactly the point. It's still off by default and destination-fixed
+  (you supply the text; Remarkabler decides where it lands).
+
+Unlike the Dropbox-vault tools, this one does **not** require the Dropbox write
+scope — the entry is saved to your database regardless; the Dropbox day file
+just also updates if you have the export on.
+
 ## Linking conversations and reflections into your entity wiki (OFF by default)
 
 Once conversations/reflections are being saved (above), a second optional

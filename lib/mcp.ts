@@ -11,6 +11,7 @@ import {
 } from "@/lib/conversationWiki";
 import { saveReflection, MAX_REFLECTION_CHARS } from "@/lib/reflectionWiki";
 import { saveDecision, MAX_DECISION_CHARS } from "@/lib/decisionWiki";
+import { saveChatDiaryEntry, MAX_DIARY_ENTRY_CHARS } from "@/lib/chatDiary";
 import {
   wikiLinkingEnabled,
   tagConversationEntities,
@@ -231,6 +232,58 @@ const DECISION_TOOL: McpToolDef = {
         type: "string",
         description:
           "Stable id for this decision; re-save with the same id to update it. Optional.",
+      },
+    },
+    required: ["content"],
+  },
+};
+
+// MCP-only WRITE tool: write a real DIARY ENTRY by conversation. Unlike
+// export_conversation / save_reflection / save_decision (which file into their
+// own vault folders and stay OUT of the diary's analytics), this one saves a
+// genuine diary entry that fully counts — it feeds the profile of the person,
+// the /mind analytics, the writing heatmap, the day files, and the entity
+// graph, exactly like a handwritten page. It lands in a separate "Chat diary"
+// notebook so handwritten vs talked entries stay distinguishable. Gated behind
+// its OWN flag, MCP_ALLOW_DIARY_WRITE. OFF by default (fail-safe). See the
+// do-not-regress rule.
+export const DIARY_TOOL_NAME = "save_diary_entry";
+
+export function diaryWriteEnabled(): boolean {
+  return process.env.MCP_ALLOW_DIARY_WRITE === "true";
+}
+
+const DIARY_TOOL: McpToolDef = {
+  name: DIARY_TOOL_NAME,
+  description:
+    "Save a real DIARY ENTRY the person composed by talking with you, instead " +
+    "of handwriting it. This is their actual diary — it fully counts (feeds " +
+    "their profile, mood/theme analytics, writing streak, and day files), so " +
+    "hold it to that bar. IMPORTANT: (1) write the entry in the PERSON'S OWN " +
+    "first-person voice, grounded in what they actually told you — capture " +
+    "their day/thoughts/feelings, do NOT add your own commentary, advice, or " +
+    "editorializing; it should read like they wrote it. (2) ALWAYS show them " +
+    "the drafted entry and get their explicit approval BEFORE calling this " +
+    "tool — never save an entry they haven't seen and okayed. Pass `content` = " +
+    "the approved entry text, an optional `date` (YYYY-MM-DD; defaults to " +
+    "today), and an optional stable `entry_id` (re-saving with the same id " +
+    `edits that entry instead of adding a new one). Capped at ${MAX_DIARY_ENTRY_CHARS} characters.`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      content: {
+        type: "string",
+        description:
+          "The approved diary entry, in the person's first-person voice (required).",
+      },
+      date: {
+        type: "string",
+        description: "The entry's date as YYYY-MM-DD. Optional — defaults to today.",
+      },
+      entry_id: {
+        type: "string",
+        description:
+          "Stable id to EDIT an existing entry instead of adding a new one. Optional.",
       },
     },
     required: ["content"],
@@ -503,6 +556,11 @@ export function mcpToolList(): McpToolDef[] {
       : "";
     tools.push({ ...DECISION_TOOL, description: DECISION_TOOL.description + nudge });
   }
+  // Conversational diary entry — its own flag. A real diary write (feeds the
+  // profile + analytics), so it stands apart from the vault-only writes above.
+  if (diaryWriteEnabled() && !excluded.has(DIARY_TOOL_NAME)) {
+    tools.push(DIARY_TOOL);
+  }
   // The librarian tools (Phase C) — all six gate behind one flag, including
   // the reads, since get_conversation exposes full conversation content the
   // endpoint could not previously return at all.
@@ -661,6 +719,41 @@ export async function callMcpTool(
       ok: true,
       key,
       note: "Saved this decision to your diary wiki.",
+    });
+  }
+  if (name === DIARY_TOOL_NAME) {
+    // Refused unless opted in (fail-safe) — its own flag.
+    if (!diaryWriteEnabled()) {
+      return JSON.stringify({ error: `Tool not available: ${name}` });
+    }
+    const a = (args ?? {}) as { content?: unknown; date?: unknown; entry_id?: unknown };
+    const content = typeof a.content === "string" ? a.content : "";
+    if (!content.trim()) {
+      return JSON.stringify({ error: "content is required (the approved diary entry)." });
+    }
+    if (content.length > MAX_DIARY_ENTRY_CHARS) {
+      return JSON.stringify({
+        error: `content too large — ${content.length} chars, max ${MAX_DIARY_ENTRY_CHARS}.`,
+      });
+    }
+    // Write the entry synchronously (so it's durably saved before we reply),
+    // then fire the heavy post-ingest pipeline (embed → profile fold → /mind
+    // analysis → day-file export) un-awaited, the same createNotebook →
+    // processNotebook split a handwritten upload uses.
+    const { pageId, date } = saveChatDiaryEntry({
+      content,
+      date: typeof a.date === "string" ? a.date : undefined,
+      entryId: typeof a.entry_id === "string" ? a.entry_id : undefined,
+    });
+    import("@/lib/chatDiary")
+      .then((m) => m.processChatDiaryEntry(pageId, content))
+      .catch((e) =>
+        console.warn("[mcp] chat-diary processing failed:", (e as Error).message)
+      );
+    return JSON.stringify({
+      ok: true,
+      date,
+      note: `Saved to your diary for ${date}. It now counts toward your profile, Mind, and writing streak.`,
     });
   }
   const librarianToolNames: string[] = [
