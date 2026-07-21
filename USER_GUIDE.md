@@ -46,7 +46,8 @@ private even if you hand someone your phone.
 | **Notebooks** | Upload reMarkable PDFs and watch them get transcribed. |
 | **Chat** | Ask anything — it answers from its memory of you. |
 | **Insights** | On-demand reflections about you, building over time. |
-| **Memory** | See and edit what it understands about you; connect extra sources (GitHub, location). |
+| **Mind** | Your diary visualized — a writing heatmap, your themes, your mood over time, and a map of the people/places/projects you write about. |
+| **Memory** | See and edit what it understands about you; connect extra sources (Dropbox, reMarkable cloud, GitHub, location); manage the Obsidian export and the Claude-app connector. |
 | **Cost** | A calendar of how much you've spent on Claude. |
 
 ---
@@ -72,6 +73,21 @@ anything skipped (wrong type, too large).
 **Tip (Android):** You can also **share a PDF straight from the reMarkable app
 to Remarkabler** using your phone's share button — it starts transcription
 automatically, no manual upload.
+
+### Two automatic ways in (so you never have to upload)
+
+Manual upload always works, but you can also let notes arrive on their own:
+
+- **Dropbox (one tap on the tablet).** With reMarkable Connect, on the tablet
+  tap **Share → Export to integration → Dropbox**. Remarkabler watches that
+  Dropbox folder and transcribes new PDFs by itself — no phone step at all.
+  This is the reliable automatic path.
+- **reMarkable cloud sync (zero taps).** On the **Memory** tab you can pair
+  your reMarkable once and switch on **Auto-sync** for the folders you choose.
+  After that, you just **write and close the cover** — Remarkabler notices the
+  new or changed pages and transcribes them in the background. (This uses
+  reMarkable's unofficial cloud, so it's a bonus on top of the dependable
+  Dropbox path, not a replacement.)
 
 ---
 
@@ -113,7 +129,27 @@ expensive reflection than everyday chat.
 
 ---
 
-## 4. Memory — the "profile of you"
+## 4. Mind — your diary, visualized
+
+The **Mind** tab turns your diary into pictures, so you can *see* patterns you'd
+never spot reading entries one by one. It's all free to look at (nothing new is
+sent to Claude when you open it):
+
+- A **writing heatmap** — which days you wrote, and how much.
+- Your **themes** — the topics that come up most.
+- Your **mood over time** — a gentle line of how positive or heavy your
+  entries have felt.
+- A **map of your people, places, and projects** — who and what you write
+  about, and which of them show up together.
+
+You can also tidy up the entities here (for example, merge "Mom" and "Mother"
+into one person), and tap **"Build life wiki"** to have Claude write a short
+biography of each important person/place/project from everything you've written
+about them.
+
+---
+
+## 5. Memory — the "profile of you"
 
 The **Memory** tab shows you, in plain language, **what Remarkabler currently
 understands about you.** This is the AI's living memory, updated automatically
@@ -128,7 +164,7 @@ This is also where you connect the extra memory sources below.
 
 ---
 
-## 5. Extra memory sources (optional)
+## 6. Extra memory sources (optional)
 
 ### Discipline (GitHub)
 
@@ -201,6 +237,49 @@ Settings → **Mode: HTTP** → paste the link → set any UserID → Reporting:
 should climb and show a "last received" time.
 
 ---
+
+## Your diary as an Obsidian "second brain" (optional)
+
+If you connect **Dropbox** (with write access), Remarkabler doesn't just keep
+your diary in its own database — it also writes it out as a proper, browsable
+**Obsidian vault** in your Dropbox. You never edit these files by hand;
+Remarkabler keeps them current automatically. You get:
+
+- **One note per day**, with your entries and clickable links to the people,
+  places, and projects you mentioned.
+- **A page for each person, place, and project**, with a short Claude-written
+  bio and links back to every day you mentioned them.
+- **A `Home` dashboard**, plus **People / Places / Projects** index pages and a
+  **Profile** page — so opening your vault feels like opening a real "second
+  brain," not a pile of files.
+
+To turn it on: **Memory** tab → the Dropbox section → **"Auto-save diary
+Markdown"** → **Turn on** (it'll tell you if you need to enable write access in
+Dropbox first). There's an **"Export now"** button to sync everything
+immediately.
+
+## Talk to your diary from the Claude app (optional)
+
+You can reach your diary from your **Claude subscription** — the **claude.ai
+app** or **Claude Code** — instead of only the in-app Chat tab. That means you
+can chat about your life using the plan you already pay for, no per-message API
+cost.
+
+Once your operator sets it up (a secret token — see the appendix), you add
+"Remarkabler" as a **connector** in the Claude app. Then you can ask Claude
+things like *"what have I been focused on this month?"* and it reads your diary
+to answer. By default it's **read-only** — it can look, not change anything.
+
+Three optional extras your operator can switch on, each with its own button:
+
+- **Save a reflection** — ask Claude for *"an honest, independent take on how
+  I'm doing"* and tell it to save; it files a **Reflection** into your vault.
+- **Save a decision** — say *"we decided X because Y — save that as a
+  decision"* and it files a **Decision Record**.
+- **Auto-linking** — anything saved this way is automatically connected to the
+  people and projects it's about, so it shows up in your graph.
+
+Full setup lives in `docs/mcp-setup.md` (for whoever configures the app).
 
 ## Privacy controls — what you choose to share
 
@@ -300,11 +379,18 @@ database and PDFs. Behavior is controlled by environment variables:
 | `CHAT_FALLBACK_MODEL` | Optional. Used if the chat model is busy. |
 | `DATA_DIR` | Where the database + PDFs live (the mounted volume). |
 | `APP_PASSCODE` | Set this to turn the private lock on. Unset = app is open. |
+| `VOYAGE_API_KEY` | Optional. Turns on smarter (meaning-based) diary search and the Mind map. |
+| `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` / `APP_BASE_URL` | Turn on Dropbox auto-ingest and the Obsidian vault export. |
 | `OWNTRACKS_TOKEN` | Set this to enable automatic location (OwnTracks). |
 | `LOCATION_TZ_OFFSET` | Minutes from UTC for displaying local times (default 540 = Seoul). |
 | `DISCIPLINE_REPO` / `DISCIPLINE_GITHUB_TOKEN` / `DISCIPLINE_BRANCH` | Connect a private GitHub notes repo. |
+| `MCP_AUTH_TOKEN` | A long secret that turns on the read-only Claude-app connector (`/api/mcp`). |
+| `MCP_ALLOW_REFLECTION_SAVE` / `MCP_ALLOW_DECISION_SAVE` / `MCP_ALLOW_CONVERSATION_EXPORT` | Let the connector *save* reflections / decisions / conversations into the vault (each off by default). |
+| `MCP_ALLOW_WIKI_LINKING` / `MCP_AUTO_TAG_EXPORTS` | Let saved content be linked into your entity graph, and have the app do that tagging automatically. |
 | `NEXT_PUBLIC_POSTHOG_KEY` | Optional anonymous analytics (no note content is ever sent). |
 
-The lock, location, GitHub sync, and analytics are all **off until their
-variables are set** — so you can turn the app from fully open to fully private
-by adding a single variable.
+The lock, Dropbox, location, GitHub sync, the Claude-app connector, and
+analytics are all **off until their variables are set** — so you can turn the
+app from fully open to fully private by adding or removing a single variable.
+The full connector setup (including the security model) is in
+`docs/mcp-setup.md`.
