@@ -1,9 +1,15 @@
 import { getConversationByKey, listUnlinkedConversations } from "./conversationWiki";
 import { getReflectionByKey, listUnlinkedReflections } from "./reflectionWiki";
+import { getDecisionByKey, listUnlinkedDecisions } from "./decisionWiki";
 import { tagConversationEntities, wikiLinkingEnabled } from "./conversationEntities";
 import { tagReflectionEntities } from "./reflectionEntities";
+import { tagDecisionEntities } from "./decisionEntities";
 import { extractTaggingEntities } from "./claude";
-import { CONVERSATIONS_NOTEBOOK_ID, REFLECTIONS_NOTEBOOK_ID } from "./notes";
+import {
+  CONVERSATIONS_NOTEBOOK_ID,
+  REFLECTIONS_NOTEBOOK_ID,
+  DECISIONS_NOTEBOOK_ID,
+} from "./notes";
 
 // Guaranteed, app-initiated entity-tagging for exported conversations and
 // reflections — the app calls Claude itself (its own ANTHROPIC_API_KEY)
@@ -151,12 +157,42 @@ export async function autoTagReflection(
   }
 }
 
+export async function autoTagDecision(
+  decisionKey: string
+): Promise<{ tagged: number } | { error: string } | { skipped: string }> {
+  if (!autoTagExportsEnabled()) return { skipped: "disabled" };
+  const flightKey = `decision:${decisionKey}`;
+  if (taggingInFlight.has(flightKey)) return { skipped: "in-flight" };
+  taggingInFlight.add(flightKey);
+  try {
+    const dec = getDecisionByKey(decisionKey);
+    if (!dec) return { error: `Unknown decision_key "${decisionKey}"` };
+    const entities = await extractTaggingEntities(sampleForTagging(dec.content));
+    const result = tagDecisionEntities({ decisionKey, entities });
+    if (!("error" in result)) {
+      reExportAffectedStubs(DECISIONS_NOTEBOOK_ID).catch((e) =>
+        console.warn("[entityTagging] stub re-export failed:", (e as Error).message)
+      );
+    }
+    return result;
+  } catch (e) {
+    console.warn(
+      "[entityTagging] auto-tag decision failed:",
+      decisionKey,
+      (e as Error).message
+    );
+    return { error: (e as Error).message };
+  } finally {
+    taggingInFlight.delete(flightKey);
+  }
+}
+
 // Maintenance-sweep safety net for anything the inline fire missed (e.g. a
 // process restart mid-call). Small per-tick limit bounds worst-case cost per
 // sweep, mirroring maybeRefreshEntityWiki's limit:4 / daily-summary
 // PER_TICK=3 precedent elsewhere in this codebase. Per-row try/catch inside
-// autoTagConversation/autoTagReflection already isolates one bad row from
-// the rest of the batch.
+// autoTagConversation/autoTagReflection/autoTagDecision already isolates one
+// bad row from the rest of the batch.
 export async function maybeAutoTagUnlinkedConversations(
   limit = 5
 ): Promise<{ tagged: number; failed: number }> {
@@ -181,6 +217,21 @@ export async function maybeAutoTagUnlinkedReflections(
   let failed = 0;
   for (const row of rows) {
     const result = await autoTagReflection(row.reflection_key);
+    if ("error" in result) failed++;
+    else if ("tagged" in result) tagged++;
+  }
+  return { tagged, failed };
+}
+
+export async function maybeAutoTagUnlinkedDecisions(
+  limit = 5
+): Promise<{ tagged: number; failed: number }> {
+  if (!autoTagExportsEnabled()) return { tagged: 0, failed: 0 };
+  const rows = listUnlinkedDecisions(limit);
+  let tagged = 0;
+  let failed = 0;
+  for (const row of rows) {
+    const result = await autoTagDecision(row.decision_key);
     if ("error" in result) failed++;
     else if ("tagged" in result) tagged++;
   }

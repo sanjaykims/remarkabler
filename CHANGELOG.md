@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-07-20 (Decision Records: the save_decision MCP write tool)
+
+Phase 2 of "combine the two frameworks" — brings obsidian-mind's **Decision
+Record** note type into Remarkabler. A new opt-in MCP write tool,
+`save_decision`, lets any connected Claude record a decision ("we decided X
+because Y") as a structured, durable, entity-linked note.
+
+- **New table + modules**: `mcp_decisions` + `lib/decisionWiki.ts` +
+  `lib/decisionEntities.ts`, a 1:1 mirror of the reflection modules — its own
+  `Decisions/` vault folder, never mixed with reflections or conversations.
+- **New MCP tool** (`lib/mcp.ts`): gated behind its own flag
+  `MCP_ALLOW_DECISION_SAVE=true`, independent of the reflection/conversation
+  flags. Add-only, deterministic destination, size-capped. Files to Dropbox
+  within seconds (`maybeExportDecisionsToDropbox`) and is auto entity-linked
+  (`lib/entityTagging.ts:autoTagDecision`) — a decision about a project/person
+  shows up connected to it in the graph, with a `## Connects to` section on
+  the note and a backlink from the entity's stub.
+- **Fourth synthetic notebook**: `DECISIONS_NOTEBOOK_ID` joins conversations
+  + reflections. The shared exclude helpers became 4-tuples and every
+  `NOT IN (?, …)` exclusion site widened accordingly (the documented
+  dual inclusion/exclusion discipline).
+- **Home + stubs**: `Home.md` gains a Decisions count + "Recent decisions"
+  section; the entity-stub back-link section was renamed `## Related notes`
+  (it now covers conversations, reflections, AND decisions).
+- New `test/decisionWiki.test.ts` (10) + `test/decisionEntities.test.ts` (4),
+  plus extensions to `test/mcp.test.ts`, `test/diaryExportDb.test.ts`,
+  `test/vaultStructure.test.ts`, `test/mind.test.ts`; build + lint clean.
+
 ## 2026-07-20 (Second-brain vault structure: Home dashboard + entity indexes + Profile note)
 
 Brings [obsidian-mind](docs/reference/obsidian-mind)'s knowledge-architecture

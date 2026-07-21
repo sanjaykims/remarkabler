@@ -39,6 +39,7 @@ afterEach(() => {
   delete process.env.MCP_ALLOW_SENSITIVE_TOOLS;
   delete process.env.MCP_ALLOW_CONVERSATION_EXPORT;
   delete process.env.MCP_ALLOW_REFLECTION_SAVE;
+  delete process.env.MCP_ALLOW_DECISION_SAVE;
   delete process.env.MCP_ALLOW_WIKI_LINKING;
   delete process.env.MCP_AUTO_TAG_EXPORTS;
   mcp.resetMcpThrottle();
@@ -284,6 +285,54 @@ describe("save_reflection write tool (opt-in, add-only, own flag)", () => {
     names = mcp.mcpToolList().map((t) => t.name);
     expect(names).not.toContain(mcp.EXPORT_TOOL_NAME);
     expect(names).toContain(mcp.REFLECTION_TOOL_NAME);
+  });
+});
+
+describe("save_decision write tool (opt-in, add-only, own flag)", () => {
+  it("is HIDDEN and REFUSED by default", async () => {
+    expect(mcp.mcpToolList().map((t) => t.name)).not.toContain(mcp.DECISION_TOOL_NAME);
+    const out = JSON.parse(await mcp.callMcpTool(mcp.DECISION_TOOL_NAME, { content: "hi" }));
+    expect(out.error).toContain("not available");
+  });
+
+  it("appears and writes ONLY when MCP_ALLOW_DECISION_SAVE=true", async () => {
+    process.env.MCP_ALLOW_DECISION_SAVE = "true";
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM mcp_decisions").run();
+    expect(mcp.mcpToolList().map((t) => t.name)).toContain(mcp.DECISION_TOOL_NAME);
+
+    const out = JSON.parse(
+      await mcp.callMcpTool(mcp.DECISION_TOOL_NAME, {
+        content: "Decided to defer the Redis migration to Q2.",
+        title: "Defer Redis",
+        decision_id: "d1",
+      })
+    );
+    expect(out.ok).toBe(true);
+    expect(out.key).toBe("d1");
+    const row = db()
+      .prepare("SELECT content, title FROM mcp_decisions WHERE decision_key = 'd1'")
+      .get() as { content: string; title: string };
+    expect(row.content).toContain("Redis migration");
+    expect(row.title).toBe("Defer Redis");
+  });
+
+  it("requires content and rejects oversize input", async () => {
+    process.env.MCP_ALLOW_DECISION_SAVE = "true";
+    const empty = JSON.parse(await mcp.callMcpTool(mcp.DECISION_TOOL_NAME, {}));
+    expect(empty.error).toContain("required");
+    const over = JSON.parse(
+      await mcp.callMcpTool(mcp.DECISION_TOOL_NAME, { content: "x".repeat(30_000) })
+    );
+    expect(over.error).toContain("too large");
+  });
+
+  it("is independent of the reflection + conversation flags", () => {
+    process.env.MCP_ALLOW_DECISION_SAVE = "true";
+    const names = mcp.mcpToolList().map((t) => t.name);
+    expect(names).toContain(mcp.DECISION_TOOL_NAME);
+    expect(names).not.toContain(mcp.REFLECTION_TOOL_NAME);
+    expect(names).not.toContain(mcp.EXPORT_TOOL_NAME);
   });
 });
 

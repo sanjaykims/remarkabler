@@ -25,6 +25,7 @@ const STATS: HomeStats = {
   projects: 4,
   reflections: 1,
   conversations: 5,
+  decisions: 2,
 };
 
 describe("filenames", () => {
@@ -44,6 +45,7 @@ describe("buildHomeNote", () => {
       recentDays: [{ target: "2026-07-19", label: "2026-07-19" }],
       recentReflections: [{ target: "2026-07-19-Reflecting-abc123", label: "Reflecting" }],
       recentConversations: [],
+      recentDecisions: [{ target: "2026-07-18-Defer-ETF-def456", label: "Defer ETF" }],
       hasProfile: true,
       exportedAt: "2026-07-20 10:00",
     });
@@ -51,12 +53,15 @@ describe("buildHomeNote", () => {
     expect(md).toContain("Diary days**: 12");
     expect(md).toContain("[[People]]: 3");
     expect(md).toContain("[[Projects]]: 4");
+    expect(md).toContain("Decisions**: 2");
     // Quick-link section resolves to the real index notes + profile.
     expect(md).toContain("- [[People]]");
     expect(md).toContain("- [[Profile]]");
     // Recent items link by bare basename, reflections aliased to their title.
     expect(md).toContain("- [[2026-07-19]]");
     expect(md).toContain("- [[2026-07-19-Reflecting-abc123|Reflecting]]");
+    expect(md).toContain("## Recent decisions");
+    expect(md).toContain("- [[2026-07-18-Defer-ETF-def456|Defer ETF]]");
     // No conversations → that section is omitted entirely.
     expect(md).not.toContain("## Recent conversations");
   });
@@ -67,6 +72,7 @@ describe("buildHomeNote", () => {
       recentDays: [],
       recentReflections: [],
       recentConversations: [],
+      recentDecisions: [],
       hasProfile: false,
       exportedAt: "",
     });

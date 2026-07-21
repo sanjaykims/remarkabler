@@ -1,10 +1,16 @@
 import { db } from "./db";
 import { TZ_OFFSET_MIN, parseSqliteUtc } from "./format";
-import { DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID, REFLECTIONS_NOTEBOOK_ID } from "./notes";
+import {
+  DISCIPLINE_ID,
+  CONVERSATIONS_NOTEBOOK_ID,
+  REFLECTIONS_NOTEBOOK_ID,
+  DECISIONS_NOTEBOOK_ID,
+} from "./notes";
 import { allEntityWikiRows } from "./entityWiki";
 import { allConversationNotesRows } from "./conversationEntities";
 import { allConversationFileNames } from "./conversationWiki";
 import { allReflectionFileNames } from "./reflectionWiki";
+import { allDecisionFileNames } from "./decisionWiki";
 import { getCurrentProfileRow } from "./profile";
 import {
   buildDiaryMarkdown,
@@ -118,13 +124,18 @@ function fetchDiaryData(): {
        JOIN notebooks n ON n.id = p.notebook_id
        LEFT JOIN entry_analysis a ON a.page_id = p.id
        WHERE p.ocr_text IS NOT NULL AND p.ocr_text != ''
-         AND p.notebook_id NOT IN (?, ?, ?)
+         AND p.notebook_id NOT IN (?, ?, ?, ?)
        ORDER BY
          n.synced_at ASC NULLS LAST,
          p.notebook_id ASC,
          p.page_index ASC`
     )
-    .all(DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID, REFLECTIONS_NOTEBOOK_ID) as DiaryPageRow[];
+    .all(
+      DISCIPLINE_ID,
+      CONVERSATIONS_NOTEBOOK_ID,
+      REFLECTIONS_NOTEBOOK_ID,
+      DECISIONS_NOTEBOOK_ID
+    ) as DiaryPageRow[];
 
   const canonicalNames = fetchCanonicalEntityNames();
   const entityRows = db()
@@ -224,16 +235,19 @@ export function collectEntityStubs(): EntityStub[] {
   // back-links to the tagged note itself (Part C's "## Conversations &
   // reflections" section) — one query, not two.
   const canonicalNames = fetchCanonicalEntityNames();
-  const conversationFileNames = allConversationFileNames();
-  const reflectionFileNames = allReflectionFileNames();
+  const fileNamesByNotebook: Record<string, Map<string, string>> = {
+    [CONVERSATIONS_NOTEBOOK_ID]: allConversationFileNames(),
+    [REFLECTIONS_NOTEBOOK_ID]: allReflectionFileNames(),
+    [DECISIONS_NOTEBOOK_ID]: allDecisionFileNames(),
+  };
   const relatedLinksByKey = new Map<string, Set<string>>();
   const linkedContentTagged = db()
     .prepare(
       `SELECT e.kind, e.name_norm, p.id AS page_id, p.notebook_id
        FROM entry_entities e JOIN pages p ON p.id = e.page_id
-       WHERE p.notebook_id IN (?, ?)`
+       WHERE p.notebook_id IN (?, ?, ?)`
     )
-    .all(CONVERSATIONS_NOTEBOOK_ID, REFLECTIONS_NOTEBOOK_ID) as Array<{
+    .all(CONVERSATIONS_NOTEBOOK_ID, REFLECTIONS_NOTEBOOK_ID, DECISIONS_NOTEBOOK_ID) as Array<{
     kind: string;
     name_norm: string;
     page_id: string;
@@ -260,13 +274,10 @@ export function collectEntityStubs(): EntityStub[] {
       });
     }
     // pages.id is "<notebook_id>:<content_key>" (conversationPageId/
-    // reflectionPageId), so strip the known prefix to recover the key and
-    // look up that note's filename.
+    // reflectionPageId/decisionPageId), so strip the known prefix to recover
+    // the key and look up that note's filename.
     const contentKey = row.page_id.slice(row.notebook_id.length + 1);
-    const fileName =
-      row.notebook_id === CONVERSATIONS_NOTEBOOK_ID
-        ? conversationFileNames.get(contentKey)
-        : reflectionFileNames.get(contentKey);
+    const fileName = fileNamesByNotebook[row.notebook_id]?.get(contentKey);
     if (fileName) {
       const target = fileName.replace(/^[^/]+\//, "").replace(/\.md$/, "");
       let set = relatedLinksByKey.get(key);
@@ -336,8 +347,8 @@ export function vaultStructureFileNames(): string[] {
 // entries — each resolved to its note's bare wikilink target via the supplied
 // key→filename map. Rows whose note isn't filed yet are skipped.
 function recentContentLinks(
-  table: "mcp_conversations" | "mcp_reflections",
-  keyCol: "conversation_key" | "reflection_key",
+  table: "mcp_conversations" | "mcp_reflections" | "mcp_decisions",
+  keyCol: "conversation_key" | "reflection_key" | "decision_key",
   fileNames: Map<string, string>
 ): RecentLink[] {
   const rows = db()
@@ -396,6 +407,9 @@ export function renderVaultStructureFiles(): Map<string, string> {
   const conversations = (
     db().prepare(`SELECT COUNT(*) AS c FROM mcp_conversations`).get() as { c: number }
   ).c;
+  const decisions = (
+    db().prepare(`SELECT COUNT(*) AS c FROM mcp_decisions`).get() as { c: number }
+  ).c;
   const profileRow = getCurrentProfileRow();
 
   files.set(
@@ -408,6 +422,7 @@ export function renderVaultStructureFiles(): Map<string, string> {
         projects: byKind.project.length,
         reflections,
         conversations,
+        decisions,
       },
       recentDays,
       recentReflections: recentContentLinks(
@@ -419,6 +434,11 @@ export function renderVaultStructureFiles(): Map<string, string> {
         "mcp_conversations",
         "conversation_key",
         allConversationFileNames()
+      ),
+      recentDecisions: recentContentLinks(
+        "mcp_decisions",
+        "decision_key",
+        allDecisionFileNames()
       ),
       hasProfile: !!profileRow,
       exportedAt,
@@ -490,7 +510,8 @@ export function affectedDayFileNames(notebookId: string): string[] {
   if (
     notebookId === DISCIPLINE_ID ||
     notebookId === CONVERSATIONS_NOTEBOOK_ID ||
-    notebookId === REFLECTIONS_NOTEBOOK_ID
+    notebookId === REFLECTIONS_NOTEBOOK_ID ||
+    notebookId === DECISIONS_NOTEBOOK_ID
   ) {
     return [];
   }

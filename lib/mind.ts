@@ -104,7 +104,7 @@ function disciplineNotebookId(): string {
 // get "analyzed" by Claude, wasting tokens on a placeholder AND transitively
 // polluting getThemes/getSentimentSeries/getEmbeddingMap (all keyed off the
 // entry_analysis rows this backfill produces).
-function pendingPagesSql(excludeIds: [string, string, string], limit: number) {
+function pendingPagesSql(excludeIds: [string, string, string, string], limit: number) {
   return {
     sql: `SELECT p.id, p.ocr_text
             FROM pages p
@@ -112,7 +112,7 @@ function pendingPagesSql(excludeIds: [string, string, string], limit: number) {
             WHERE p.ocr_text IS NOT NULL
               AND TRIM(p.ocr_text, ' ' || char(9) || char(10) || char(13)) != ''
               AND a.page_id IS NULL
-              AND p.notebook_id NOT IN (?, ?, ?)
+              AND p.notebook_id NOT IN (?, ?, ?, ?)
             ORDER BY p.entry_date IS NULL ASC, p.entry_date DESC, p.id DESC
             LIMIT ?`,
     params: [...excludeIds, limit] as Array<string | number>,
@@ -128,7 +128,7 @@ export function countPending(): number {
          WHERE p.ocr_text IS NOT NULL
            AND TRIM(p.ocr_text, ' ' || char(9) || char(10) || char(13)) != ''
            AND a.page_id IS NULL
-           AND p.notebook_id NOT IN (?, ?, ?)`
+           AND p.notebook_id NOT IN (?, ?, ?, ?)`
     )
     .get(...nonDiaryNotebookExcludeIdsForMind()) as { c: number };
   return row.c;
@@ -360,7 +360,7 @@ export function getHeatmap(): HeatmapBucket[] {
          JOIN notebooks n ON n.id = p.notebook_id
          WHERE p.ocr_text IS NOT NULL AND p.ocr_text != ''
            AND ${EFFECTIVE_DATE_SQL} IS NOT NULL
-           AND p.notebook_id NOT IN (?, ?, ?)
+           AND p.notebook_id NOT IN (?, ?, ?, ?)
          GROUP BY ${EFFECTIVE_DATE_SQL}
          ORDER BY date ASC`
     )
@@ -617,7 +617,7 @@ export function getEmbeddingMap(limit: number = 500): MapPoint[] {
          LEFT JOIN entry_analysis a ON a.page_id = p.id
          WHERE p.embedding IS NOT NULL
            AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
-           AND p.notebook_id NOT IN (?, ?, ?)
+           AND p.notebook_id NOT IN (?, ?, ?, ?)
          ORDER BY p.entry_date IS NULL ASC, p.entry_date DESC, p.id DESC
          LIMIT ?`
     )
@@ -758,7 +758,7 @@ export async function generateAxisLabels(): Promise<
            LEFT JOIN entry_analysis a ON a.page_id = p.id
            WHERE p.embedding IS NOT NULL
              AND p.ocr_text IS NOT NULL AND p.ocr_text != ''
-             AND p.notebook_id NOT IN (?, ?, ?)`
+             AND p.notebook_id NOT IN (?, ?, ?, ?)`
       )
       .all(...nonDiaryNotebookExcludeIdsForMind()) as Array<{
       page_id: string;

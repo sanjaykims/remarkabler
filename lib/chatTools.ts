@@ -499,7 +499,7 @@ function getEntriesByDate(input: { date?: string }): unknown {
            WHERE (p.ocr_text LIKE ? OR n.name LIKE ?
                   OR (p.entry_date IS NOT NULL AND p.entry_date != 'none'
                       AND p.entry_date LIKE ?))
-             AND p.notebook_id NOT IN (?, ?, ?)
+             AND p.notebook_id NOT IN (?, ?, ?, ?)
            ORDER BY n.synced_at DESC, p.page_index`
         )
         .all(`%${pattern}%`, `%${pattern}%`, `%${pattern}%`, ...excludeIds) as Array<{
@@ -533,7 +533,7 @@ function listNotebooks(): unknown {
       .prepare(
         `SELECT n.id, n.name, n.synced_at AS uploaded, COUNT(p.id) AS pages
          FROM notebooks n LEFT JOIN pages p ON p.notebook_id = n.id
-         WHERE n.id NOT IN (?, ?, ?)
+         WHERE n.id NOT IN (?, ?, ?, ?)
          GROUP BY n.id
          ORDER BY n.synced_at DESC NULLS LAST`
       )
@@ -586,7 +586,7 @@ function getRecentEntries(input: { days?: number }): unknown {
         `SELECT n.name AS notebook_name, p.page_index, p.ocr_text AS text
          FROM pages p JOIN notebooks n ON n.id = p.notebook_id
          WHERE p.ocr_text IS NOT NULL AND p.ocr_text != ''
-           AND p.notebook_id NOT IN (?, ?, ?)
+           AND p.notebook_id NOT IN (?, ?, ?, ?)
            AND datetime(n.synced_at) >= datetime('now', ?)
          ORDER BY n.synced_at DESC, p.page_index`
       )

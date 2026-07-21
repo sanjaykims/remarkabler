@@ -35,6 +35,7 @@ beforeEach(() => {
   d.prepare(`DELETE FROM entity_conversation_notes`).run();
   d.prepare(`DELETE FROM mcp_conversations`).run();
   d.prepare(`DELETE FROM mcp_reflections`).run();
+  d.prepare(`DELETE FROM mcp_decisions`).run();
   d.prepare(`DELETE FROM profile`).run();
   d.prepare(`DELETE FROM pages`).run();
   d.prepare(`DELETE FROM notebooks`).run();
@@ -446,10 +447,10 @@ describe("renderEntityStubFiles", () => {
     expect(files.has("People/Reflection Only Friend.md")).toBe(true);
   });
 
-  it('renders "## Conversations & reflections" backlinks to tagged notes on both sides', () => {
-    // A real conversation + a real reflection, both tagged with the same
-    // entity via lib/conversationEntities.ts / lib/reflectionEntities.ts's
-    // deterministic page id shape ("<notebook_id>:<content_key>").
+  it('renders "## Related notes" backlinks to tagged conversation/reflection/decision notes', () => {
+    // A real conversation + reflection + decision, all tagged with the same
+    // entity via each *Entities.ts module's deterministic page id shape
+    // ("<notebook_id>:<content_key>").
     dbMod
       .db()
       .prepare(
@@ -462,6 +463,12 @@ describe("renderEntityStubFiles", () => {
         `INSERT INTO mcp_reflections(reflection_key, title, content, created_at) VALUES('r1', 'Reflecting', 'thinking about Jin', '2026-06-20 09:00:00')`
       )
       .run();
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO mcp_decisions(decision_key, title, content, created_at) VALUES('d1', 'Decide', 'decided with Jin', '2026-06-21 09:00:00')`
+      )
+      .run();
     addNotebook(
       notesMod.CONVERSATIONS_NOTEBOOK_ID,
       "Conversations (subscription Claude)",
@@ -471,6 +478,11 @@ describe("renderEntityStubFiles", () => {
       notesMod.REFLECTIONS_NOTEBOOK_ID,
       "Reflections (subscription Claude)",
       "2026-06-20 00:00:00"
+    );
+    addNotebook(
+      notesMod.DECISIONS_NOTEBOOK_ID,
+      "Decisions (subscription Claude)",
+      "2026-06-21 00:00:00"
     );
     dbMod
       .db()
@@ -484,14 +496,22 @@ describe("renderEntityStubFiles", () => {
         `INSERT INTO pages(id, notebook_id, page_index, ocr_text, entry_date) VALUES('${notesMod.REFLECTIONS_NOTEBOOK_ID}:r1', ?, 0, '[Reflection] Reflecting', '2026-06-20')`
       )
       .run(notesMod.REFLECTIONS_NOTEBOOK_ID);
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO pages(id, notebook_id, page_index, ocr_text, entry_date) VALUES('${notesMod.DECISIONS_NOTEBOOK_ID}:d1', ?, 0, '[Decision] Decide', '2026-06-21')`
+      )
+      .run(notesMod.DECISIONS_NOTEBOOK_ID);
     addEntity(`${notesMod.CONVERSATIONS_NOTEBOOK_ID}:c1`, "person", "Jin", "jin");
     addEntity(`${notesMod.REFLECTIONS_NOTEBOOK_ID}:r1`, "person", "Jin", "jin");
+    addEntity(`${notesMod.DECISIONS_NOTEBOOK_ID}:d1`, "person", "Jin", "jin");
 
     const files = exportMod.renderEntityStubFiles();
     const jin = files.get("People/Jin.md") as string;
-    expect(jin).toContain("## Conversations & reflections");
+    expect(jin).toContain("## Related notes");
     expect(jin).toContain("- [[2026-06-19-Trip-");
     expect(jin).toContain("- [[2026-06-20-Reflecting-");
+    expect(jin).toContain("- [[2026-06-21-Decide-");
   });
 
   it("gives a conversation-only entity (no diary mention at all) a real stub page", () => {
@@ -683,7 +703,7 @@ describe("renderVaultStructureFiles", () => {
     expect(people).toContain("[[Chat Friend]] — from conversations");
   });
 
-  it("Home surfaces recent reflections/conversations linked to their filed notes", () => {
+  it("Home surfaces recent reflections/conversations/decisions linked to their filed notes", () => {
     dbMod
       .db()
       .prepare(
@@ -696,14 +716,23 @@ describe("renderVaultStructureFiles", () => {
         `INSERT INTO mcp_conversations(conversation_key, title, content, created_at) VALUES('c1', 'Suwon trip', 'text', '2026-07-18 09:00:00')`
       )
       .run();
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO mcp_decisions(decision_key, title, content, created_at) VALUES('d1', 'Defer ETF', 'text', '2026-07-17 09:00:00')`
+      )
+      .run();
 
     const home = exportMod.renderVaultStructureFiles().get("Home.md") as string;
     expect(home).toContain("## Recent reflections");
     expect(home).toContain("|Follow-through]]");
     expect(home).toContain("## Recent conversations");
     expect(home).toContain("|Suwon trip]]");
+    expect(home).toContain("## Recent decisions");
+    expect(home).toContain("|Defer ETF]]");
     expect(home).toContain("Reflections**: 1");
     expect(home).toContain("Conversations**: 1");
+    expect(home).toContain("Decisions**: 1");
   });
 
   it("excludes the discipline notebook from the day count", () => {

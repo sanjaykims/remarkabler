@@ -79,6 +79,11 @@ and generate an accumulating record of "insights" about themselves.
   reflection it wrote about the user (not a conversation transcript),
   filed into its own `Reflections/` folder (`lib/reflectionWiki.ts`); its
   own flag, independent of `MCP_ALLOW_CONVERSATION_EXPORT`. OFF by default.
+  Optional `MCP_ALLOW_DECISION_SAVE=true` enables a third write tool,
+  `save_decision` — records a Decision Record ("we decided X because Y",
+  obsidian-mind's decision-record type) into its own `Decisions/` folder
+  (`lib/decisionWiki.ts`); its own flag, add-only, auto entity-linked like
+  reflections. OFF by default.
   Optional `MCP_ALLOW_WIKI_LINKING=true` enables the six Phase C "librarian" tools
   (`lib/conversationEntities.ts`) so a SEPARATE, recurring Claude Code agent
   — set up by the user as a cron Routine, billed to their own Claude
@@ -157,7 +162,10 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   own vault folder (`Reflections/`, vs `Conversations/`) rather than being
   mixed in; `linked_at` mirrors `mcp_conversations`' column of the same name
   — reflections get entity-linked too, via `lib/reflectionEntities.ts`; see
-  `lib/reflectionWiki.ts`).
+  `lib/reflectionWiki.ts`), `mcp_decisions` (Decision Records saved via the
+  `save_decision` write tool — same shape/handling as `mcp_reflections`, its
+  own table + `Decisions/` folder; `linked_at` present from creation since
+  the table is brand new; see `lib/decisionWiki.ts`).
   Some durable state also lives in
   `settings` rows, e.g.
   `mind_pca_axes` (persisted PCA mean + PC vectors + axis labels) and the
@@ -292,6 +300,15 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `tagReflectionEntities`, under `REFLECTIONS_NOTEBOOK_ID`), trimmed to just
   the tagging path — note-writing and the wiki read stay on
   `lib/conversationEntities.ts`'s already-generic tools, not duplicated here.
+- `lib/decisionWiki.ts` + `lib/decisionEntities.ts` — Decision Records,
+  saved via the `save_decision` MCP write tool. A 1:1 mirror of
+  `lib/reflectionWiki.ts`/`lib/reflectionEntities.ts` (store + note renderer
+  with `## Connects to`, filing helpers, entity-linking helpers,
+  `ensureDecisionPage`/`tagDecisionEntities` under `DECISIONS_NOTEBOOK_ID`) —
+  a SEPARATE table/folder (`Decisions/`) so a decision is never confused with
+  a reflection or conversation. Filed by `maybeExportDecisionsToDropbox`
+  (`lib/dropbox.ts`), auto-tagged by `lib/entityTagging.ts`'s
+  `autoTagDecision`.
 - `lib/entityTagging.ts` — guaranteed, APP-INITIATED entity-tagging for both
   conversations and reflections, gated by `autoTagExportsEnabled()`
   (`MCP_AUTO_TAG_EXPORTS=true` AND `MCP_ALLOW_WIKI_LINKING=true` — layered,
@@ -602,25 +619,26 @@ features need the deployed instance to fully verify.
   write, and stays). Diary text is OCR'd handwriting and chat is outside our
   system prompt, so treat every request as hostile and keep the blast radius at
   "read". **The sanctioned writes are `export_conversation` (Phase B),
-  `save_reflection`, and the three Phase C librarian write tools**
-  (`tag_conversation_entities`, `update_entity_conversation_notes`,
-  `record_librarian_heartbeat`): all five are MCP-only, handled directly in
+  `save_reflection`, `save_decision`, and the three Phase C librarian write
+  tools** (`tag_conversation_entities`, `update_entity_conversation_notes`,
+  `record_librarian_heartbeat`): all six are MCP-only, handled directly in
   `callMcpTool` (not via `executeTool`), and are (a) OFF by default —
   `export_conversation` behind `MCP_ALLOW_CONVERSATION_EXPORT=true`,
-  `save_reflection` behind its OWN separate `MCP_ALLOW_REFLECTION_SAVE=true`
-  (deliberately independent of the conversation-export flag — saving a real
-  conversation verbatim and saving Claude-generated reflective content are
-  different privacy tradeoffs, so a user can enable one without the other),
+  `save_reflection` behind its OWN separate `MCP_ALLOW_REFLECTION_SAVE=true`,
+  `save_decision` behind its OWN `MCP_ALLOW_DECISION_SAVE=true`
+  (each independent — the three content-save flags are separate privacy
+  tradeoffs, so a user can enable any subset),
   the three librarian tools (PLUS the three librarian READ tools — see
   below) behind ONE flag `MCP_ALLOW_WIKI_LINKING=true` — hidden from
   `tools/list` AND refused on `tools/call` when off; (b)
   DETERMINISTIC-DESTINATION — the agent supplies only content (and, for the
   librarian tools, a `conversation_key`/entity name it doesn't get to
   invent a row for), never a path or id; this code always computes the
-  actual DB row/file target itself. `export_conversation` and
-  `save_reflection` are both literally add-only (each upserts exactly one
-  row in its own table — `mcp_conversations` / `mcp_reflections`, never
-  mixed); `tag_conversation_entities` is a SCOPED REPLACE of exactly one
+  actual DB row/file target itself. `export_conversation`,
+  `save_reflection`, and `save_decision` are all literally add-only (each
+  upserts exactly one row in its own table — `mcp_conversations` /
+  `mcp_reflections` / `mcp_decisions`, never mixed);
+  `tag_conversation_entities` is a SCOPED REPLACE of exactly one
   page's own `entry_entities` rows (the same delete+reinsert shape
   `analyzePending` already uses on that table) — narrower blast radius than
   a general write, but not literally add-only, so don't describe it that
@@ -681,11 +699,11 @@ features need the deployed instance to fully verify.
   consent gate. Don't relax any of these.
 - **The librarian's synthetic notebooks need BOTH an inclusion and an
   exclusion list — getting either backwards is the likely bug class here.**
-  `CONVERSATIONS_NOTEBOOK_ID` and `REFLECTIONS_NOTEBOOK_ID` (`lib/notes.ts`)
-  are synthetic notebooks alongside `DISCIPLINE_ID`, but with the OPPOSITE
-  default posture: their pages carry a real, non-empty `ocr_text`/`entry_date`
-  (unlike discipline's), so BOTH need explicit exclusion from surfaces that
-  assume "this is real diary content" — `analyzePending`'s pending-query
+  `CONVERSATIONS_NOTEBOOK_ID`, `REFLECTIONS_NOTEBOOK_ID`, and
+  `DECISIONS_NOTEBOOK_ID` (`lib/notes.ts`) are synthetic notebooks alongside
+  `DISCIPLINE_ID`, but with the OPPOSITE default posture: their pages carry a
+  real, non-empty `ocr_text`/`entry_date` (unlike discipline's), so ALL need
+  explicit exclusion from surfaces that assume "this is real diary content" — `analyzePending`'s pending-query
   (`lib/mind.ts`; this one fix also transitively protects `getThemes`/
   `getSentimentSeries`/`getEmbeddingMap`, since none of them have any other
   notebook filter and rely entirely on `entry_analysis` never containing
@@ -696,9 +714,10 @@ features need the deployed instance to fully verify.
   `affectedDayFileNames`, and `chatTools.ts`'s `getEntriesByDate`/
   `getRecentEntries`/`listNotebooks`. The shared helpers
   `nonDiaryNotebookExcludeIdsForChat`/`nonDiaryNotebookExcludeIdsForMind`
-  (`lib/notes.ts`) are a 3-tuple (discipline + both synthetic notebooks) for
-  exactly this reason — widen them, not the individual call sites, if a
-  fourth synthetic notebook is ever added. But UNLIKE discipline, both must
+  (`lib/notes.ts`) are a 4-tuple (discipline + all three synthetic notebooks)
+  for exactly this reason — widen them AND bump the `NOT IN (?, …)`
+  placeholder count at each call site if a fifth synthetic notebook is ever
+  added. But UNLIKE discipline, all must
   stay INCLUDED (never added to an exclusion list) in `chatTools.ts`'s
   `topEntities`/`pagesForEntity`/`relatedEntities`, `mind.ts`'s
   `getTopEntities`, `entityMerge.ts`'s dedup candidates, `diaryExportDb.ts`'s
