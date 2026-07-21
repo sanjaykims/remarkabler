@@ -636,6 +636,26 @@ CREATE TABLE IF NOT EXISTS mcp_reflections (
   filed_at        TEXT                  -- when last filed to the vault; NULL = needs filing
 );
 
+-- Decision Records, saved via the MCP save_decision write tool (opt-in,
+-- add-only — see lib/mcp.ts and the "do not regress" rule in CLAUDE.md).
+-- A structured "we decided X because Y" note (obsidian-mind's Decision
+-- Record type), filed into its own Decisions/ vault folder. Same shape as
+-- mcp_reflections but a SEPARATE table/folder so a decision is never
+-- confused with a reflection or a conversation. Filed as one Markdown note
+-- each (lib/decisionWiki.ts). The linked_at column is present from creation
+-- (unlike mcp_conversations/mcp_reflections, which got it via a later ALTER)
+-- since this table is brand new. Upsert by decision_key; filed_at/linked_at
+-- cleared on update so it re-files/re-links.
+CREATE TABLE IF NOT EXISTS mcp_decisions (
+  decision_key TEXT PRIMARY KEY,        -- client-supplied id, or generated
+  title           TEXT,
+  content         TEXT NOT NULL,        -- the decision record text
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  filed_at        TEXT,                 -- when last filed to the vault; NULL = needs filing
+  linked_at       TEXT                  -- when entities were last tagged; NULL = needs linking
+);
+
 -- The "librarian" agent's own notes about an entity, distinct from
 -- entity_wiki.summary (the in-app Claude-composed diary bio). Two disjoint
 -- tables so the in-app content-addressed regen (lib/entityWiki.ts) and the

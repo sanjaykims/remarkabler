@@ -180,3 +180,40 @@ describe("getTopEntities INCLUDES reflection-derived entities (deliberate)", () 
     expect(people.map((p) => p.name)).toContain("Reflection Friend");
   });
 });
+
+// The mcp-decisions synthetic notebook (lib/decisionEntities.ts) gets the
+// SAME dual inclusion/exclusion treatment (4th synthetic notebook).
+
+describe("mcp-decisions notebook: excluded from /mind, included in rankings", () => {
+  it("a decision page never counts as pending analysis or heatmap volume", () => {
+    addNotebook("nb1", "Diary", "2026-06-19 00:00:00");
+    addPage("nb1", 0, "real diary text", "2026-06-19");
+    addNotebook(
+      notesMod.DECISIONS_NOTEBOOK_ID,
+      "Decisions (subscription Claude)",
+      "2026-06-20 00:00:00"
+    );
+    addPage(notesMod.DECISIONS_NOTEBOOK_ID, 0, "[Decision] X", "2026-06-20");
+
+    expect(mindMod.countPending()).toBe(1);
+    expect(mindMod.getHeatmap().map((b) => b.date)).toEqual(["2026-06-19"]);
+  });
+
+  it("a person tagged only via a decision page still ranks in getTopEntities", () => {
+    addNotebook(
+      notesMod.DECISIONS_NOTEBOOK_ID,
+      "Decisions (subscription Claude)",
+      "2026-06-20 00:00:00"
+    );
+    const dp = addPage(notesMod.DECISIONS_NOTEBOOK_ID, 0, "[Decision] X", "2026-06-20");
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES(?,?,?,?)`
+      )
+      .run(dp, "project", "ETF", "etf");
+
+    const { projects } = mindMod.getTopEntities();
+    expect(projects.map((p) => p.name)).toContain("ETF");
+  });
+});

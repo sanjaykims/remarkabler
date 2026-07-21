@@ -178,6 +178,28 @@ Requirements + how it behaves:
 - Can be linked into your entity wiki the same way conversations can — see
   the next section.
 
+## Saving a Decision Record (OFF by default)
+
+A third optional **write** tool, `save_decision`, lets Claude record a
+**decision** you made (or reached together) as a structured, durable note —
+obsidian-mind's "Decision Record" idea. Use it when something was actually
+*decided* ("we're deferring the ETF allocation", "going with option B"):
+Claude writes what was decided, the reasoning, and the alternatives, filed
+under a separate `Decisions/` folder.
+
+Its **own flag**, independent of the reflection/conversation flags:
+
+```
+MCP_ALLOW_DECISION_SAVE=true
+```
+
+Same behaviour as `save_reflection`: same Dropbox `files.content.write`
+prerequisite, add-only, filed within seconds, auto entity-linked (a decision
+about a project/person shows up connected to it in your graph, and gets a
+`## Connects to` section), and it appears on `Home.md`'s counts + "Recent
+decisions". Not automatic — Claude calls it when you tell it to record a
+decision.
+
 ## Linking conversations and reflections into your entity wiki (OFF by default)
 
 Once conversations/reflections are being saved (above), a second optional

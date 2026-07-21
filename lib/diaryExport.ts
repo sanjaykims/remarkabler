@@ -484,12 +484,12 @@ function renderEntityStub(stub: EntityStub, exportedAt: string): string {
     lines.push(conversationNotes);
     lines.push("");
   }
-  // Direct backlinks to every tagged conversation/reflection note — the
-  // reverse of that note's own "## Connects to" section, so either side of
-  // the link is a real clickable Obsidian graph edge, not just a derived
+  // Direct backlinks to every tagged conversation/reflection/decision note —
+  // the reverse of that note's own "## Connects to" section, so either side
+  // of the link is a real clickable Obsidian graph edge, not just a derived
   // ranking inside the app's own /mind or chat tools.
   if (stub.relatedNoteLinks && stub.relatedNoteLinks.length > 0) {
-    lines.push("## Conversations & reflections");
+    lines.push("## Related notes");
     lines.push("");
     for (const link of stub.relatedNoteLinks) lines.push(`- [[${link}]]`);
     lines.push("");
@@ -555,6 +555,7 @@ export type HomeStats = {
   projects: number;
   reflections: number;
   conversations: number;
+  decisions: number;
 };
 
 // A recent item to surface on Home: the wikilink target (bare basename, no
@@ -574,10 +575,11 @@ export function buildHomeNote(opts: {
   recentDays: RecentLink[];
   recentReflections: RecentLink[];
   recentConversations: RecentLink[];
+  recentDecisions: RecentLink[];
   hasProfile: boolean;
   exportedAt: string;
 }): string {
-  const { stats, recentDays, recentReflections, recentConversations } = opts;
+  const { stats, recentDays, recentReflections, recentConversations, recentDecisions } = opts;
   const lines: string[] = [];
   lines.push("---");
   lines.push("title: Home");
@@ -598,6 +600,7 @@ export function buildHomeNote(opts: {
   lines.push(countLine("Projects", stats.projects, "Projects"));
   lines.push(countLine("Reflections", stats.reflections));
   lines.push(countLine("Conversations", stats.conversations));
+  lines.push(countLine("Decisions", stats.decisions));
   lines.push("");
   lines.push("## Explore");
   lines.push("");
@@ -622,6 +625,12 @@ export function buildHomeNote(opts: {
     lines.push("## Recent conversations");
     lines.push("");
     for (const c of recentConversations) lines.push(`- [[${c.target}|${c.label}]]`);
+    lines.push("");
+  }
+  if (recentDecisions.length) {
+    lines.push("## Recent decisions");
+    lines.push("");
+    for (const d of recentDecisions) lines.push(`- [[${d.target}|${d.label}]]`);
     lines.push("");
   }
   return lines.join("\n");

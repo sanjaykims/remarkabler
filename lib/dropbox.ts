@@ -25,6 +25,11 @@ import {
   unfiledReflectionKeys,
   markReflectionsFiled,
 } from "@/lib/reflectionWiki";
+import {
+  renderDecisionNoteFiles,
+  unfiledDecisionKeys,
+  markDecisionsFiled,
+} from "@/lib/decisionWiki";
 
 // Folder inside the user's Dropbox where the per-day diary Markdown files
 // are written (one file per day, e.g. `2026-06-19.md`, + `undated.md`).
@@ -1013,6 +1018,66 @@ export async function maybeExportReflectionsToDropbox(): Promise<DiaryExportResu
   } catch (e) {
     const msg = friendlyExportError(e);
     console.warn("[dropbox] reflection export failed:", msg);
+    return { ok: false, error: msg };
+  } finally {
+    exportInFlight = false;
+  }
+}
+
+/**
+ * Same shape as maybeExportReflectionsToDropbox, for Decision Records saved
+ * via the MCP save_decision tool (lib/mcp.ts, lib/decisionWiki.ts). Shares
+ * the same `exportInFlight` guard as every other Dropbox writer. Opt-in via
+ * `dropbox_export_enabled` and best-effort — never throws.
+ */
+export async function maybeExportDecisionsToDropbox(): Promise<DiaryExportResult> {
+  if (!dropboxExportEnabled()) return { ok: false, skipped: "disabled" };
+  if (!dropboxConnected()) return { ok: false, skipped: "not-connected" };
+  if (exportInFlight) return { ok: false, skipped: "in-flight" };
+  exportInFlight = true;
+  try {
+    const keys = unfiledDecisionKeys();
+    if (keys.length === 0) return { ok: true, written: 0, skipped: "nothing" };
+    const files = renderDecisionNoteFiles(true); // unfiled only
+    const folder = dropboxExportFolder();
+    const names = [...files.keys()];
+    let written = 0;
+    let failed = 0;
+    let lastError: unknown = null;
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      try {
+        await uploadTextFile(`${folder}/${name}`, files.get(name) as string);
+        written++;
+      } catch (e) {
+        if (e instanceof DropboxApiError && e.kind === "auth") {
+          const msg = friendlyExportError(e);
+          setSetting("dropbox_export_last_error", msg);
+          console.warn("[dropbox] decision export aborted (auth):", msg);
+          return { ok: false, written, failed, error: msg };
+        }
+        failed++;
+        lastError = e;
+        console.warn(
+          `[dropbox] decision export: ${name} failed, continuing:`,
+          (e as Error).message
+        );
+      }
+      if (i < names.length - 1) await new Promise((r) => setTimeout(r, 150));
+    }
+    if (failed === 0) {
+      markDecisionsFiled(keys);
+      clearSetting("dropbox_export_last_error");
+      return { ok: true, written, failed: 0 };
+    }
+    const msg = `${written} saved, ${failed} failed (${friendlyExportError(
+      lastError
+    )}).`;
+    setSetting("dropbox_export_last_error", msg);
+    return { ok: false, written, failed, error: msg };
+  } catch (e) {
+    const msg = friendlyExportError(e);
+    console.warn("[dropbox] decision export failed:", msg);
     return { ok: false, error: msg };
   } finally {
     exportInFlight = false;

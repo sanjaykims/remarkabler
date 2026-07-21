@@ -10,6 +10,7 @@ import {
   MAX_CONVERSATION_CHARS,
 } from "@/lib/conversationWiki";
 import { saveReflection, MAX_REFLECTION_CHARS } from "@/lib/reflectionWiki";
+import { saveDecision, MAX_DECISION_CHARS } from "@/lib/decisionWiki";
 import {
   wikiLinkingEnabled,
   tagConversationEntities,
@@ -187,6 +188,49 @@ const REFLECTION_TOOL: McpToolDef = {
         type: "string",
         description:
           "Stable id for this reflection; re-save with the same id to update it. Optional.",
+      },
+    },
+    required: ["content"],
+  },
+};
+
+// MCP-only WRITE tool: a Decision Record — a structured "we decided X because
+// Y" note (obsidian-mind's Decision Record type), filed into its own
+// Decisions/ folder. Distinct from save_reflection (one-sided reflective
+// writing) and export_conversation (a verbatim transcript). Gated behind its
+// OWN flag, MCP_ALLOW_DECISION_SAVE, independent of the others — recording a
+// decision is a different privacy/utility tradeoff. OFF by default — forgetting
+// config keeps the endpoint read-only (fail-safe). See the do-not-regress rule.
+export const DECISION_TOOL_NAME = "save_decision";
+
+export function decisionSavingEnabled(): boolean {
+  return process.env.MCP_ALLOW_DECISION_SAVE === "true";
+}
+
+const DECISION_TOOL: McpToolDef = {
+  name: DECISION_TOOL_NAME,
+  description:
+    "Record a DECISION the person made (or that you and they reached together) " +
+    "as a structured, durable note in their diary wiki — obsidian-mind's " +
+    "'Decision Record'. Use this when something was actually DECIDED (a choice " +
+    "settled, a direction committed to, an option ruled out), not for general " +
+    "reflection (use save_reflection) or a transcript (use export_conversation). " +
+    "Pass `content` = the decision written out — ideally what was decided, the " +
+    "reasoning, and any alternatives considered — an optional `title` (name the " +
+    "decision), and an optional stable `decision_id` (re-saving with the same id " +
+    `updates the same record). Capped at ${MAX_DECISION_CHARS} characters.`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      content: {
+        type: "string",
+        description: "The decision record: what was decided, why, and alternatives (required).",
+      },
+      title: { type: "string", description: "Short name for the decision. Optional." },
+      decision_id: {
+        type: "string",
+        description:
+          "Stable id for this decision; re-save with the same id to update it. Optional.",
       },
     },
     required: ["content"],
@@ -447,6 +491,18 @@ export function mcpToolList(): McpToolDef[] {
       : "";
     tools.push({ ...REFLECTION_TOOL, description: REFLECTION_TOOL.description + nudge });
   }
+  // Decision Records — its own flag, independent of the others. Same
+  // enrichment nudge as save_reflection when the librarian tools are on
+  // (base tagging is guaranteed by MCP_AUTO_TAG_EXPORTS).
+  if (decisionSavingEnabled() && !excluded.has(DECISION_TOOL_NAME)) {
+    const nudge = librarianToolsEnabled()
+      ? " Base entity-tagging for this decision happens automatically. But if it " +
+        "involves someone/somewhere/something worth REMEMBERING beyond just " +
+        "noting it, call get_entity_wiki for that entity, then " +
+        "update_entity_conversation_notes with what's newly worth keeping."
+      : "";
+    tools.push({ ...DECISION_TOOL, description: DECISION_TOOL.description + nudge });
+  }
   // The librarian tools (Phase C) — all six gate behind one flag, including
   // the reads, since get_conversation exposes full conversation content the
   // endpoint could not previously return at all.
@@ -562,6 +618,49 @@ export async function callMcpTool(
       ok: true,
       key,
       note: "Saved this reflection to your diary wiki.",
+    });
+  }
+  if (name === DECISION_TOOL_NAME) {
+    // Refused unless opted in (fail-safe) — its own flag.
+    if (!decisionSavingEnabled()) {
+      return JSON.stringify({ error: `Tool not available: ${name}` });
+    }
+    const a = (args ?? {}) as {
+      content?: unknown;
+      title?: unknown;
+      decision_id?: unknown;
+    };
+    const content = typeof a.content === "string" ? a.content : "";
+    if (!content.trim()) {
+      return JSON.stringify({ error: "content is required (the decision record)." });
+    }
+    if (content.length > MAX_DECISION_CHARS) {
+      return JSON.stringify({
+        error: `content too large — ${content.length} chars, max ${MAX_DECISION_CHARS}.`,
+      });
+    }
+    // Add-only: writes exactly one row in mcp_decisions (upsert by id), never
+    // anything else. Then fire filing + guaranteed auto-tagging, both
+    // fire-and-forget with .catch (no-op internally when their gates are off).
+    const { key } = saveDecision({
+      content,
+      title: typeof a.title === "string" ? a.title : undefined,
+      decisionId: typeof a.decision_id === "string" ? a.decision_id : undefined,
+    });
+    import("@/lib/dropbox")
+      .then((m) => m.maybeExportDecisionsToDropbox())
+      .catch((e) =>
+        console.warn("[mcp] decision filing failed:", (e as Error).message)
+      );
+    import("@/lib/entityTagging")
+      .then((m) => m.autoTagDecision(key))
+      .catch((e) =>
+        console.warn("[mcp] auto-tag decision failed:", (e as Error).message)
+      );
+    return JSON.stringify({
+      ok: true,
+      key,
+      note: "Saved this decision to your diary wiki.",
     });
   }
   const librarianToolNames: string[] = [

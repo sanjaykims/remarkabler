@@ -1018,16 +1018,26 @@ export const CONVERSATIONS_NOTEBOOK_ID = "mcp-conversations";
 // filename derivation in lib/diaryExportDb.ts).
 export const REFLECTIONS_NOTEBOOK_ID = "mcp-reflections";
 
+// A fourth synthetic notebook, same shape and same dual inclusion/exclusion
+// discipline as CONVERSATIONS_NOTEBOOK_ID / REFLECTIONS_NOTEBOOK_ID — one
+// page per saved Decision Record (lib/decisionEntities.ts).
+export const DECISIONS_NOTEBOOK_ID = "mcp-decisions";
+
 /**
  * The notebook ids to exclude from chat-tool surfaces that must reflect
  * only real diary content (dates, recents, notebook listing) — discipline
- * (respecting the sharing toggle) plus the conversations/reflections
- * notebooks always. Deliberately NOT used by topEntities/pagesForEntity/
- * relatedEntities, which stay inclusive of conversation/reflection-derived
- * entities on purpose.
+ * (respecting the sharing toggle) plus the conversations/reflections/
+ * decisions notebooks always. Deliberately NOT used by topEntities/
+ * pagesForEntity/relatedEntities, which stay inclusive of
+ * conversation/reflection/decision-derived entities on purpose.
  */
-export function nonDiaryNotebookExcludeIdsForChat(): [string, string, string] {
-  return [disciplineExcludeIdForChat(), CONVERSATIONS_NOTEBOOK_ID, REFLECTIONS_NOTEBOOK_ID];
+export function nonDiaryNotebookExcludeIdsForChat(): [string, string, string, string] {
+  return [
+    disciplineExcludeIdForChat(),
+    CONVERSATIONS_NOTEBOOK_ID,
+    REFLECTIONS_NOTEBOOK_ID,
+    DECISIONS_NOTEBOOK_ID,
+  ];
 }
 
 /**
@@ -1036,10 +1046,15 @@ export function nonDiaryNotebookExcludeIdsForChat(): [string, string, string] {
  * map ride the same entry_analysis rows, so starving it here protects all
  * three) and from the in-app entity-wiki bio composer. getTopEntities is
  * deliberately NOT one of these call sites — /mind's entity rankings
- * include conversation/reflection-derived entities on purpose.
+ * include conversation/reflection/decision-derived entities on purpose.
  */
-export function nonDiaryNotebookExcludeIdsForMind(): [string, string, string] {
-  return [DISCIPLINE_ID, CONVERSATIONS_NOTEBOOK_ID, REFLECTIONS_NOTEBOOK_ID];
+export function nonDiaryNotebookExcludeIdsForMind(): [string, string, string, string] {
+  return [
+    DISCIPLINE_ID,
+    CONVERSATIONS_NOTEBOOK_ID,
+    REFLECTIONS_NOTEBOOK_ID,
+    DECISIONS_NOTEBOOK_ID,
+  ];
 }
 
 /** Replace the discipline notebook with the freshly fetched repo files.
@@ -1216,6 +1231,16 @@ export function runMaintenanceSweep(): void {
   } catch {
     // best-effort
   }
+  // Same safety net for Decision Records (MCP save_decision tool).
+  try {
+    void import("./dropbox")
+      .then((m) => m.maybeExportDecisionsToDropbox())
+      .catch((e) =>
+        console.warn("[sweep] decision export failed:", (e as Error).message)
+      );
+  } catch {
+    // best-effort
+  }
   // Guaranteed entity-tagging (lib/entityTagging.ts) safety net: catches
   // anything the inline fire (from the MCP export/save tools) missed, e.g. a
   // process restart mid-call. No-op unless MCP_AUTO_TAG_EXPORTS is on and
@@ -1234,6 +1259,15 @@ export function runMaintenanceSweep(): void {
       .then((m) => m.maybeAutoTagUnlinkedReflections())
       .catch((e) =>
         console.warn("[sweep] auto-tag reflections failed:", (e as Error).message)
+      );
+  } catch {
+    // best-effort
+  }
+  try {
+    void import("./entityTagging")
+      .then((m) => m.maybeAutoTagUnlinkedDecisions())
+      .catch((e) =>
+        console.warn("[sweep] auto-tag decisions failed:", (e as Error).message)
       );
   } catch {
     // best-effort
