@@ -35,6 +35,7 @@ beforeEach(() => {
   d.prepare(`DELETE FROM entity_conversation_notes`).run();
   d.prepare(`DELETE FROM mcp_conversations`).run();
   d.prepare(`DELETE FROM mcp_reflections`).run();
+  d.prepare(`DELETE FROM profile`).run();
   d.prepare(`DELETE FROM pages`).run();
   d.prepare(`DELETE FROM notebooks`).run();
 });
@@ -606,5 +607,112 @@ describe("affectedEntityStubFileNames", () => {
     expect(
       exportMod.affectedEntityStubFileNames(notesMod.REFLECTIONS_NOTEBOOK_ID)
     ).toEqual(["People/Reflection Friend.md"]);
+  });
+});
+
+describe("renderVaultStructureFiles", () => {
+  function addEntity(pageId: string, kind: string, name: string, norm: string) {
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES(?,?,?,?)`
+      )
+      .run(pageId, kind, name, norm);
+  }
+
+  it("always emits Home + the three index notes; Profile only when a profile exists", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    addPage("nb1", 0, "real diary entry", "2026-06-19");
+
+    let files = exportMod.renderVaultStructureFiles();
+    expect([...files.keys()].sort()).toEqual([
+      "Home.md",
+      "People.md",
+      "Places.md",
+      "Projects.md",
+    ]);
+
+    dbMod.db().prepare(`INSERT INTO profile(content) VALUES('You are a builder.')`).run();
+    files = exportMod.renderVaultStructureFiles();
+    expect(files.has("Profile.md")).toBe(true);
+    expect(files.get("Profile.md")).toContain("You are a builder.");
+  });
+
+  it("Home counts distinct diary days and per-kind entities; the index day-count matches the stub", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "day 19", "2026-06-19");
+    const p1 = addPage("nb1", 1, "still 19", "none"); // carries forward → same day
+    const p2 = addPage("nb1", 2, "day 20", "2026-06-20");
+    addEntity(p0, "person", "Jin", "jin");
+    addEntity(p1, "person", "Jin", "jin"); // same day (carried) — still 1 day so far
+    addEntity(p2, "person", "Jin", "jin"); // second day
+    addEntity(p0, "place", "Seoul", "seoul");
+
+    const files = exportMod.renderVaultStructureFiles();
+    const home = files.get("Home.md") as string;
+    // Two distinct diary days (06-19 with carry-forward, 06-20).
+    expect(home).toContain("Diary days**: 2");
+    expect(home).toContain("[[People]]: 1");
+    expect(home).toContain("[[Places]]: 1");
+    expect(home).toContain("[[Projects]]: 0");
+
+    // Index day-count is computed from the SAME collectEntityStubs() the stub
+    // note uses, so Jin shows 2 days in both.
+    const people = files.get("People.md") as string;
+    expect(people).toContain("[[Jin]] — 2 days");
+    const stub = exportMod.renderEntityStubFiles().get("People/Jin.md") as string;
+    expect(stub).toContain("- [[2026-06-19]]");
+    expect(stub).toContain("- [[2026-06-20]]");
+  });
+
+  it("includes conversation/reflection-only entities in the index, labeled distinctly", () => {
+    addNotebook(
+      notesMod.CONVERSATIONS_NOTEBOOK_ID,
+      "Conversations (subscription Claude)",
+      "2026-06-20 00:00:00"
+    );
+    const cp = addPage(
+      notesMod.CONVERSATIONS_NOTEBOOK_ID,
+      0,
+      "[Conversation] X",
+      "2026-06-20"
+    );
+    addEntity(cp, "person", "Chat Friend", "chat friend");
+
+    const people = exportMod.renderVaultStructureFiles().get("People.md") as string;
+    expect(people).toContain("[[Chat Friend]] — from conversations");
+  });
+
+  it("Home surfaces recent reflections/conversations linked to their filed notes", () => {
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO mcp_reflections(reflection_key, title, content, created_at) VALUES('r1', 'Follow-through', 'text', '2026-07-19 09:00:00')`
+      )
+      .run();
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO mcp_conversations(conversation_key, title, content, created_at) VALUES('c1', 'Suwon trip', 'text', '2026-07-18 09:00:00')`
+      )
+      .run();
+
+    const home = exportMod.renderVaultStructureFiles().get("Home.md") as string;
+    expect(home).toContain("## Recent reflections");
+    expect(home).toContain("|Follow-through]]");
+    expect(home).toContain("## Recent conversations");
+    expect(home).toContain("|Suwon trip]]");
+    expect(home).toContain("Reflections**: 1");
+    expect(home).toContain("Conversations**: 1");
+  });
+
+  it("excludes the discipline notebook from the day count", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    addPage("nb1", 0, "real", "2026-06-19");
+    addNotebook(notesMod.DISCIPLINE_ID, "Discipline", "2026-06-20 00:00:00");
+    addPage(notesMod.DISCIPLINE_ID, 0, "repo", "2026-06-20");
+
+    const home = exportMod.renderVaultStructureFiles().get("Home.md") as string;
+    expect(home).toContain("Diary days**: 1");
   });
 });

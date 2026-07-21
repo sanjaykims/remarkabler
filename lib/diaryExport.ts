@@ -521,3 +521,182 @@ export function buildEntityStubFiles(opts: {
   }
   return files;
 }
+
+// ── Vault structure notes (the "second brain" scaffolding) ──────────────────
+// Home dashboard, per-kind entity indexes, and a Profile note — the
+// navigability layer obsidian-mind has and a raw diary export lacks. All
+// generated deterministically from Remarkabler's own data, so the app stays
+// the SOLE writer (see the do-not-regress rule in CLAUDE.md). Pure here;
+// the DB gather lives in lib/diaryExportDb.ts:renderVaultStructureFiles.
+//
+// File names are fixed vault-root notes so their wikilinks are stable:
+// [[Home]], [[People]], [[Places]], [[Projects]], [[Profile]].
+
+export const HOME_FILE = "Home.md";
+export const PROFILE_FILE = "Profile.md";
+const ENTITY_INDEX_FILE: Record<EntityStub["kind"], string> = {
+  person: "People.md",
+  place: "Places.md",
+  project: "Projects.md",
+};
+export function entityIndexFileName(kind: EntityStub["kind"]): string {
+  return ENTITY_INDEX_FILE[kind];
+}
+
+export type EntityIndexEntry = {
+  name: string; // canonical, already sanitized (matches its stub basename)
+  days: number; // how many diary days mention it (0 for conversation/reflection-only)
+};
+
+export type HomeStats = {
+  diaryDays: number;
+  people: number;
+  places: number;
+  projects: number;
+  reflections: number;
+  conversations: number;
+};
+
+// A recent item to surface on Home: the wikilink target (bare basename, no
+// folder / no .md) plus a human label. Days use the date itself as both.
+export type RecentLink = { target: string; label: string };
+
+function countLine(label: string, n: number, link?: string): string {
+  const shown = link ? `[[${link}]]` : `**${label}**`;
+  return `- ${shown}: ${n}`;
+}
+
+// Home.md — the vault's front page. Live counts, quick links to the index
+// notes + Profile, and the most recent diary days / reflections /
+// conversations so there's always a fresh jumping-off point.
+export function buildHomeNote(opts: {
+  stats: HomeStats;
+  recentDays: RecentLink[];
+  recentReflections: RecentLink[];
+  recentConversations: RecentLink[];
+  hasProfile: boolean;
+  exportedAt: string;
+}): string {
+  const { stats, recentDays, recentReflections, recentConversations } = opts;
+  const lines: string[] = [];
+  lines.push("---");
+  lines.push("title: Home");
+  lines.push("type: home");
+  lines.push("source: Remarkabler");
+  lines.push(`exported: ${opts.exportedAt || "unknown"}`);
+  lines.push("---");
+  lines.push("");
+  lines.push("# Home");
+  lines.push("");
+  lines.push("_Your reMarkable diary, as a connected second brain. This page is generated automatically — Remarkabler keeps it current on every sync._");
+  lines.push("");
+  lines.push("## At a glance");
+  lines.push("");
+  lines.push(countLine("Diary days", stats.diaryDays));
+  lines.push(countLine("People", stats.people, "People"));
+  lines.push(countLine("Places", stats.places, "Places"));
+  lines.push(countLine("Projects", stats.projects, "Projects"));
+  lines.push(countLine("Reflections", stats.reflections));
+  lines.push(countLine("Conversations", stats.conversations));
+  lines.push("");
+  lines.push("## Explore");
+  lines.push("");
+  lines.push("- [[People]] — everyone your diary mentions");
+  lines.push("- [[Places]] — every place");
+  lines.push("- [[Projects]] — every project, topic, and named thing");
+  if (opts.hasProfile) lines.push("- [[Profile]] — who you are, your goals, and open threads");
+  lines.push("");
+  if (recentDays.length) {
+    lines.push("## Recent days");
+    lines.push("");
+    for (const d of recentDays) lines.push(`- [[${d.target}]]`);
+    lines.push("");
+  }
+  if (recentReflections.length) {
+    lines.push("## Recent reflections");
+    lines.push("");
+    for (const r of recentReflections) lines.push(`- [[${r.target}|${r.label}]]`);
+    lines.push("");
+  }
+  if (recentConversations.length) {
+    lines.push("## Recent conversations");
+    lines.push("");
+    for (const c of recentConversations) lines.push(`- [[${c.target}|${c.label}]]`);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+const INDEX_TITLE: Record<EntityStub["kind"], string> = {
+  person: "People",
+  place: "Places",
+  project: "Projects",
+};
+
+// People.md / Places.md / Projects.md — one index (MOC) note per kind listing
+// every entity as a wikilink to its stub, sorted, most-mentioned first then
+// alphabetical, with a day-count suffix. `entries` names are canonical +
+// sanitized (so `[[name]]` resolves to that entity's stub note).
+export function buildEntityIndexNote(opts: {
+  kind: EntityStub["kind"];
+  entries: EntityIndexEntry[];
+  exportedAt: string;
+}): string {
+  const title = INDEX_TITLE[opts.kind];
+  const sorted = [...opts.entries].sort(
+    (a, b) => b.days - a.days || a.name.localeCompare(b.name)
+  );
+  const lines: string[] = [];
+  lines.push("---");
+  lines.push(`title: ${title}`);
+  lines.push("type: index");
+  lines.push("source: Remarkabler");
+  lines.push(`count: ${sorted.length}`);
+  lines.push(`exported: ${opts.exportedAt || "unknown"}`);
+  lines.push("---");
+  lines.push("");
+  lines.push(`# ${title}`);
+  lines.push("");
+  if (sorted.length === 0) {
+    lines.push(`_No ${title.toLowerCase()} yet._`);
+    lines.push("");
+    return lines.join("\n");
+  }
+  lines.push(`_${sorted.length} ${sorted.length === 1 ? "entry" : "entries"} · [[Home]]_`);
+  lines.push("");
+  for (const e of sorted) {
+    const suffix =
+      e.days > 0 ? ` — ${e.days} day${e.days === 1 ? "" : "s"}` : " — from conversations";
+    lines.push(`- [[${e.name}]]${suffix}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+// Profile.md — Remarkabler's living "profile of you" (goals, patterns, open
+// threads) rendered as a browsable note. The direct analog of obsidian-mind's
+// North Star. Content is Remarkabler's own generated profile text, emitted
+// verbatim under a heading.
+export function buildProfileNote(opts: {
+  profile: string;
+  updatedAt: string;
+  exportedAt: string;
+}): string {
+  const lines: string[] = [];
+  lines.push("---");
+  lines.push("title: Profile");
+  lines.push("type: profile");
+  lines.push("source: Remarkabler");
+  lines.push(`exported: ${opts.exportedAt || "unknown"}`);
+  lines.push("---");
+  lines.push("");
+  lines.push("# Profile");
+  lines.push("");
+  lines.push(
+    `_Remarkabler's evolving understanding of you, built from your whole diary and updated in the background. [[Home]]_`
+  );
+  lines.push("");
+  lines.push(opts.profile.trim());
+  lines.push("");
+  return lines.join("\n");
+}
