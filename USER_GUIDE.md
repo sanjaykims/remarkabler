@@ -324,6 +324,11 @@ in-app choice and falls back to whatever was set in the host's environment.
 
 - The whole app (every page and every action) is gated behind your
   **fingerprint / Face ID**, with the passcode as backup.
+- The lock is **only on when `APP_PASSCODE` is set** (see the env-vars table).
+  If it's **not** set, the app is open to anyone with the link — and to make
+  that impossible to miss, you'll see a **red "This diary is unlocked" banner**
+  across the top of every page (and the server logs a warning at startup). The
+  banner disappears the moment you set `APP_PASSCODE` and redeploy.
 - It **re-locks the moment you leave it**, so a glance over your shoulder won't
   expose your diary.
 - Your notes, diary, and location stay in your own database. The only data that
@@ -385,7 +390,7 @@ database and PDFs. Behavior is controlled by environment variables:
 | `CHAT_MODEL` | Optional. Cheaper model for everyday chat. |
 | `CHAT_FALLBACK_MODEL` | Optional. Used if the chat model is busy. |
 | `DATA_DIR` | Where the database + PDFs live (the mounted volume). |
-| `APP_PASSCODE` | Set this to turn the private lock on. Unset = app is open. |
+| `APP_PASSCODE` | Set this to turn the private lock on. Unset = app is open (and a red warning banner nags you until you set it). |
 | `VOYAGE_API_KEY` | Optional. Turns on smarter (meaning-based) diary search and the Mind map. |
 | `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` / `APP_BASE_URL` | Turn on Dropbox auto-ingest and the Obsidian vault export. |
 | `OWNTRACKS_TOKEN` | Set this to enable automatic location (OwnTracks). |
