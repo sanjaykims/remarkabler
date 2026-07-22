@@ -134,7 +134,7 @@ its variable is set** — so you flip each one on by adding a single variable.
 | `CHAT_FALLBACK_MODEL` | Used if the chat model is briefly overloaded (e.g. `claude-sonnet-4-6`). |
 | `CHAT_MEMORY_MODEL` | Optional. Model that extracts durable memories from cleared chats (defaults to `CHAT_MODEL`). |
 | `DATA_DIR` | Where `app.db` + PDFs live (mount a persistent volume here). |
-| `APP_PASSCODE` | Set to enable the private lock (passkey + passcode backup). Unset = app is open. |
+| `APP_PASSCODE` | Set to enable the private lock (passkey + passcode backup). Unset = app is open (a red in-app banner + a boot log warn until it's set). |
 | `VOYAGE_API_KEY` | Optional. Enables Voyage embeddings for semantic diary search + the `/mind` 3D map. |
 
 ### Sources & sync
