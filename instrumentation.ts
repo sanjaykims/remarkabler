@@ -38,6 +38,20 @@ export async function register() {
       console.error("[uncaughtException]", err);
     });
 
+    // Loud boot warning when the app lock is OFF. With APP_PASSCODE unset the
+    // entire app + every API is open to anyone with the URL, and that's easy
+    // to leave unnoticed — this diary holds the most sensitive content the
+    // owner has. Checked inline (not via lib/auth's isLockEnabled) to avoid
+    // statically importing next/headers + the native better-sqlite3 module
+    // into this boot file, same reason the scheduler import below is dynamic.
+    if (!process.env.APP_PASSCODE) {
+      console.warn(
+        "[security] App lock is OFF — APP_PASSCODE is not set, so the whole " +
+          "app and all APIs are open to anyone with the URL. Set APP_PASSCODE " +
+          "in the environment (Railway) to require a passkey/passcode."
+      );
+    }
+
     const { startBackgroundMaintenanceScheduler } = await import("./lib/notes");
     startBackgroundMaintenanceScheduler();
   }

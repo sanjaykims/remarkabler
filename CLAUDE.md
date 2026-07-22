@@ -40,7 +40,12 @@ and generate an accumulating record of "insights" about themselves.
 - Optional env var `APP_PASSCODE` enables the private lock. When set, the
   whole app (pages + APIs) is gated behind a passkey (fingerprint / Face ID)
   or the passcode itself. When unset, the app is fully open — so the lock can
-  be turned on/off purely by adding/removing this one variable.
+  be turned on/off purely by adding/removing this one variable. **Because
+  "unset = wide open" is easy to miss, that state is now loud, not silent:** a
+  server boot `console.warn` (`instrumentation.ts`) and a dismissible red
+  in-app banner (`app/LockOffBanner.tsx`, rendered by `app/layout.tsx` only
+  when `!isLockEnabled()`) both nag to set `APP_PASSCODE`. Treat the passcode
+  as effectively required for any internet-reachable deploy.
 - Optional analytics: set `NEXT_PUBLIC_POSTHOG_KEY` (and optionally
   `NEXT_PUBLIC_POSTHOG_HOST`, default `https://us.i.posthog.com`) to enable
   PostHog. It only sends anonymous page views + a few explicit events
@@ -581,6 +586,23 @@ features need the deployed instance to fully verify.
   NOT gated — a forged assertion isn't practically guessable, so limiting it
   would only add self-lockout risk with no security benefit. A correct
   passcode clears the counter immediately.
+- **Every data API route must gate behind the app lock — a test enforces it.**
+  Enforcement is per-route (each handler calls `isAuthenticated()` or the
+  shared `requireAuth()` helper in `lib/auth.ts`), and `test/authGuard.test.ts`
+  walks `app/api/**/route.ts` asserting each references a guard unless it's on
+  an explicit PUBLIC allowlist. Only three kinds of route belong on that
+  allowlist: the login endpoint (`auth`), the MCP bearer endpoint (`mcp`, which
+  has its own `MCP_AUTH_TOKEN` check), and the OAuth handshake
+  (`mcp/oauth/*`, whose anchor is the `/authorize` consent gate) — plus the
+  logging-only `csp-report` sink. Adding a route to the allowlist is a
+  deliberate security decision; never do it just to make the test pass. Note
+  the app has NO `middleware.ts` (see `next.config.mjs`) — the layout gates the
+  UI and each API route gates itself, so this test is the safety net against a
+  new route silently shipping open. Baseline response hardening (HSTS,
+  `X-Frame-Options: DENY`, COOP/CORP, `Permissions-Policy`) lives in
+  `next.config.mjs headers()`; a real enforced Content-Security-Policy is still
+  a deliberate deferred pass (report-only first — no `dangerouslySetInnerHTML`
+  anywhere means there's no active XSS surface, so CSP is defense-in-depth).
 - **Deleting an auto-ingested notebook must tombstone its source id — BOTH
   channels.** The Dropbox watcher dedupes on `notebooks.dropbox_file_id` and
   the reMarkable sweep's subscription set is `notebooks.remarkable_doc_id`;

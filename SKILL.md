@@ -276,6 +276,7 @@ attribute cost to features and surfaces.
 10. **One throttled `runMaintenanceSweep`** drives every background job.
 11. **The MCP endpoint is read-only by default and fails closed.** Every write tool is OFF behind its own flag, deterministic-destination, size-capped; a missing/short `MCP_AUTH_TOKEN` returns 503 (never "open"); sensitive tools stay excluded unless `MCP_ALLOW_SENSITIVE_TOOLS=true`.
 12. **Synthetic notebooks excluded from analytics, included in the entity graph; Remarkabler is the SOLE deterministic writer of its vault.** `CHAT_DIARY_NOTEBOOK_ID` is the one synthetic-notebook exception — it's REAL diary and stays on every list.
+13. **Every data API route gates behind the app lock — `test/authGuard.test.ts` enforces it.** There's no `middleware.ts`; each route calls `isAuthenticated()`/`requireAuth()` (`lib/auth.ts`) and the layout gates the UI. Only login + the MCP bearer endpoint + the OAuth handshake (+ `csp-report`) are on the PUBLIC allowlist. Lock-off (`APP_PASSCODE` unset) is loud now: boot warning + red in-app banner. Baseline hardening headers (HSTS/COOP/CORP/etc.) live in `next.config.mjs`.
 
 ## Known intentional limits
 

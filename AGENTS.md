@@ -211,6 +211,18 @@ full picture; the essentials:
     diary and stays on every list. Never introduce a second writer that edits
     the exported vault files in place (the librarian's `entity_conversation_notes`
     is the one sanctioned "own table, composed at render time" exception).
+13. **Every data API route gates behind the app lock — `test/authGuard.test.ts`
+    enforces it.** There's no `middleware.ts`: `app/layout.tsx` gates the UI,
+    and each `app/api/**/route.ts` calls `isAuthenticated()`/`requireAuth()`
+    (`lib/auth.ts`). Only the login endpoint, the MCP bearer endpoint, the
+    OAuth handshake, and the `csp-report` sink are on the test's PUBLIC
+    allowlist — adding to it is a deliberate security decision. Lock-off
+    (`APP_PASSCODE` unset = whole app open) is now loud: a boot warning
+    (`instrumentation.ts`) + a red in-app banner (`app/LockOffBanner.tsx`).
+    Baseline response headers (HSTS, COOP, CORP, X-Frame-Options,
+    Permissions-Policy) live in `next.config.mjs`; an enforced CSP is a
+    deferred report-only-first pass (no `dangerouslySetInnerHTML` = no active
+    XSS surface).
 
 ---
 

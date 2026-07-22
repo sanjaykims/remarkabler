@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { isAuthenticated, isLockEnabled } from "@/lib/auth";
 import LockScreen from "./LockScreen";
+import LockOffBanner from "./LockOffBanner";
 import AutoLock from "./AutoLock";
 import Nav from "./Nav";
 import PostHogProvider from "./PostHogProvider";
@@ -57,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <PostHogProvider>
           {authed ? (
             <>
+              {!isLockEnabled() && <LockOffBanner />}
               <header className="border-b border-slate-200 dark:border-slate-800 pt-safe pl-safe pr-safe">
                 <Nav />
               </header>

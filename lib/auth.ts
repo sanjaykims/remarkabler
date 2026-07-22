@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { getSetting, setSetting, clearSetting } from "@/lib/db";
 
 export const SESSION_COOKIE = "fc_session";
@@ -105,6 +106,24 @@ export function isAuthenticated(): boolean {
     markActivityNow(now);
   }
   return true;
+}
+
+/**
+ * Route guard: returns a 401 response to send when the request isn't
+ * authenticated, or `null` when it is (so the handler proceeds). Use as:
+ *
+ *   const denied = requireAuth();
+ *   if (denied) return denied;
+ *
+ * A single shared guard so a new API route can't silently ship without the
+ * lock — `test/authGuard.test.ts` enforces that every non-public route file
+ * references a guard. Equivalent to the hand-rolled
+ * `if (!isAuthenticated()) return NextResponse.json({error:"Locked"},{status:401})`
+ * that most routes already use.
+ */
+export function requireAuth(): NextResponse | null {
+  if (isAuthenticated()) return null;
+  return NextResponse.json({ error: "Locked" }, { status: 401 });
 }
 
 /** Constant-time comparison of a submitted passcode against APP_PASSCODE. */

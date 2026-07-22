@@ -55,6 +55,26 @@ const nextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
+            // Force HTTPS for two years incl. subdomains. Railway serves this
+            // app over HTTPS only, so there's no plain-HTTP surface to break;
+            // this stops a downgrade/SSL-strip from ever reaching the diary.
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
+          {
+            // Isolate this origin's browsing context from any window it opens
+            // or that opens it — closes cross-origin window-handle leaks.
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin",
+          },
+          {
+            // Refuse to hand this origin's responses to cross-origin
+            // embedders. All assets (fonts, icons, manifest) are same-origin,
+            // so nothing legitimate is blocked.
+            key: "Cross-Origin-Resource-Policy",
+            value: "same-origin",
+          },
+          {
             // Only geolocation (Memory page's "capture current location")
             // and microphone (chat's voice input) are actually used.
             key: "Permissions-Policy",
