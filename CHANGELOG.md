@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-07-22 (Security hardening: loud lock-off warning, HSTS/isolation headers, guard regression test)
+
+A review of the content-security surfaces found the app well-hardened where it
+was recently built (complete per-route app-lock coverage, fail-closed MCP, no
+`dangerouslySetInnerHTML` / stored-XSS surface, passcode brute-force lockout),
+with a few concrete, low-risk gaps. This closes the safe ones now; a Next 16
+upgrade (the only fix for the flagged npm-audit CVEs, none of which apply to
+this App-Router/no-i18n/no-middleware app) and at-rest encryption are
+deliberately left as separate, larger efforts.
+
+- **The unlocked state is no longer silent.** `APP_PASSCODE` is optional, and
+  with it unset the whole app + every API is open to anyone with the URL — the
+  single biggest risk. Now: a loud server **boot warning** (`instrumentation.ts`)
+  and a dismissible **in-app banner** (`app/LockOffBanner.tsx`, shown by
+  `app/layout.tsx` only when the lock is off) nag the owner to set it. The
+  banner uses the red/danger tone, not amber (amber stays the one primary CTA).
+- **New response headers** (`next.config.mjs`): `Strict-Transport-Security`
+  (2-year HSTS + preload), `Cross-Origin-Opener-Policy: same-origin`,
+  `Cross-Origin-Resource-Policy: same-origin`. All assets are same-origin, so
+  nothing legitimate is blocked.
+- **Auth-guard regression test** (`test/authGuard.test.ts`): asserts every
+  `app/api/**/route.ts` references the lock guard unless it's on an explicit
+  PUBLIC allowlist (login, MCP bearer endpoint, OAuth handshake). Plus a shared
+  `requireAuth()` helper in `lib/auth.ts` for new routes. Coverage was already
+  complete; this stops a future route from silently shipping unguarded.
+- Verified: lint clean, 612 tests pass, `npm run build` green. (Full runtime
+  confirmation of the headers/banner needs the deployed Railway instance.)
+- Follow-up (separate PR): a `Content-Security-Policy-Report-Only` pass + a
+  `/api/csp-report` sink, as the safe first step toward an enforced CSP.
+
 ## 2026-07-21 (Index docs refresh: SKILL.md + AGENTS.md caught up to the current codebase)
 
 The two index/onboarding docs had fallen behind everything shipped over the
