@@ -1,6 +1,7 @@
 node_modules
 .next
 out
+tmp/
 .env
 .env.local
 data/*.db
