@@ -4,12 +4,12 @@ import { tmpdir } from "os";
 import path from "path";
 
 // entity_wiki (the in-app Claude-composed diary bio) must stay DIARY-ONLY —
-// the mcp-conversations and mcp-reflections synthetic notebooks are
+// the mcp-conversations, mcp-reflections, and mcp-decisions synthetic notebooks are
 // bookkeeping devices, not real diary entries, so their pages must never
 // feed into a Claude call here even when an entity is ALSO mentioned in the
 // real diary. This is a pre-existing exclusion (lib/entityWiki.ts's private
 // candidates()/mentions()) that had no test coverage before this file, for
-// either notebook.
+// those synthetic notebooks.
 
 type DbMod = typeof import("@/lib/db");
 type EwMod = typeof import("@/lib/entityWiki");

@@ -4,6 +4,8 @@
 // lib/chatMemoryBackfill.ts. No DB, no I/O here; the route fetches rows
 // and hands them in.
 
+import { PREDICATES } from "./entityPredicates";
+
 export type DiaryPageRow = {
   id: string;
   notebook_id: string;
@@ -419,11 +421,19 @@ export type EntityStub = {
   // other. See lib/conversationEntities.ts.
   conversationNotes?: string | null;
   // Bare-basename wikilink targets (no folder, no .md) to every tagged
-  // conversation/reflection note that mentions this entity — the reverse
-  // direction of renderConversationNote/renderReflectionNote's own
+  // conversation/reflection/decision note that mentions this entity — the reverse
+  // direction of renderConversationNote/renderReflectionNote/renderDecisionNote's own
   // "## Connects to" section. Sorted; a note's leading YYYY-MM-DD gives
   // chronological order for free. See lib/diaryExportDb.ts.
   relatedNoteLinks?: string[];
+  // Explicit typed relationships asserted by the librarian, separate from
+  // the co-occurrence graph. These render as wikilinks in the note body; the
+  // default Obsidian graph connects the nodes but does not label edges.
+  relationships?: Array<{
+    predicate: string;
+    otherName: string;
+    direction: "out" | "in";
+  }>;
 };
 
 const ENTITY_STUB_FOLDER: Record<EntityStub["kind"], string> = {
@@ -482,6 +492,27 @@ function renderEntityStub(stub: EntityStub, exportedAt: string): string {
     lines.push("## Recent conversations");
     lines.push("");
     lines.push(conversationNotes);
+    lines.push("");
+  }
+  if (stub.relationships && stub.relationships.length > 0) {
+    lines.push("## Relationships");
+    lines.push("");
+    const relationships = [...stub.relationships].sort(
+      (a, b) =>
+        (PREDICATES[a.predicate] ?? a.predicate).localeCompare(
+          PREDICATES[b.predicate] ?? b.predicate
+        ) ||
+        a.otherName.localeCompare(b.otherName) ||
+        a.direction.localeCompare(b.direction)
+    );
+    for (const r of relationships) {
+      const label = PREDICATES[r.predicate] ?? r.predicate;
+      lines.push(
+        r.direction === "out"
+          ? `- ${label} [[${r.otherName}]]`
+          : `- [[${r.otherName}]] — ${label}`
+      );
+    }
     lines.push("");
   }
   // Direct backlinks to every tagged conversation/reflection/decision note —
@@ -545,7 +576,7 @@ export function entityIndexFileName(kind: EntityStub["kind"]): string {
 
 export type EntityIndexEntry = {
   name: string; // canonical, already sanitized (matches its stub basename)
-  days: number; // how many diary days mention it (0 for conversation/reflection-only)
+  days: number; // how many diary days mention it (0 for exported-note-only)
 };
 
 export type HomeStats = {
@@ -675,7 +706,7 @@ export function buildEntityIndexNote(opts: {
   lines.push("");
   for (const e of sorted) {
     const suffix =
-      e.days > 0 ? ` — ${e.days} day${e.days === 1 ? "" : "s"}` : " — from conversations";
+      e.days > 0 ? ` — ${e.days} day${e.days === 1 ? "" : "s"}` : " — from exported notes";
     lines.push(`- [[${e.name}]]${suffix}`);
   }
   lines.push("");

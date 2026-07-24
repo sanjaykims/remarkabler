@@ -268,7 +268,6 @@ export function refreshAccessToken(
   clientId: string,
   now = Date.now()
 ): IssuedTokens | null {
-  backfillLegacyTokenSecrets();
   const row = db()
     .prepare(
       `SELECT client_id, secret_hash FROM mcp_oauth_tokens WHERE token_hash = ? AND kind = 'refresh'`
@@ -291,42 +290,12 @@ export function refreshAccessToken(
   return { access_token: access, refresh_token: refreshToken, expires_in: ACCESS_TTL_SEC };
 }
 
-// Legacy adoption: tokens issued before the secret_hash column existed have a
-// NULL secret_hash after the migration's ALTER. A plain deploy would then
-// reject them (isValidAccessToken/refreshAccessToken require the secret to be
-// currently configured), silently logging the user's existing connector out.
-// Instead, adopt those NULL rows into the CURRENTLY configured secret once, at
-// first use after the migration — at which point the current secret IS the one
-// that authorized them (the user hasn't rotated between issuing and this
-// deploy). They then behave like any other token: valid on a same-secret
-// deploy, revoked on a later rotation. Idempotent + guarded so it runs once.
-let legacyAdopted = false;
-export function backfillLegacyTokenSecrets(): void {
-  if (legacyAdopted) return;
-  const primary = [...currentSecretHashes()][0];
-  if (!primary) return; // no secret configured → endpoint disabled; retry later
-  try {
-    db()
-      .prepare(`UPDATE mcp_oauth_tokens SET secret_hash = ? WHERE secret_hash IS NULL`)
-      .run(primary);
-    legacyAdopted = true;
-  } catch {
-    // best-effort; a failure just means we retry on the next call
-  }
-}
-
-// Test-only: reset the once-per-process adoption guard.
-export function resetLegacyAdoption(): void {
-  legacyAdopted = false;
-}
-
 // True if the presented bearer is a live (unexpired) OAuth access token whose
 // authorizing secret is STILL configured. Rotating MCP_AUTH_TOKEN away from
 // the value that minted a token invalidates it here — this is what makes the
 // documented "change the token to revoke" actually revoke. better-sqlite3 is
 // synchronous, so this stays a sync check.
 export function isValidAccessToken(token: string, now = Date.now()): boolean {
-  backfillLegacyTokenSecrets();
   const row = db()
     .prepare(
       `SELECT secret_hash, expires_at FROM mcp_oauth_tokens WHERE token_hash = ? AND kind = 'access'`

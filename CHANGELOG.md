@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-07-25 (MCP Phase B/C completion: relationship lifecycle, re-linking, setup docs)
+
+Finished the remaining Phase B/C sharp edges around exported conversations and
+the external librarian surface.
+
+- **Re-exported conversations re-enter the linking queue.** `saveExportedConversation`
+  now clears both `filed_at` and `linked_at` on update, matching reflections
+  and decisions. A growing conversation saved again under the same id is still
+  one row/note, but the librarian/auto-tag path can refresh entities against
+  the new content instead of silently treating the old link pass as current.
+- **Typed relationship handling hardened.** Predicate validation now uses an
+  own-key check, and the `relate_entities` Dropbox refresh path rewrites
+  touched stubs that still exist while deleting touched relationship-only stubs
+  that disappeared after a scoped retraction.
+- **Setup guidance caught up to the code.** `README.md`, `docs/mcp-setup.md`,
+  and the `/memory` librarian copy now mention `save_diary_entry`,
+  decision auto-tagging, `relate_entities`, supported typed relationships, and
+  the accurate Obsidian promise: connected nodes, labels in note bodies.
+- **Entity index wording now covers every exported note type.** Entities with
+  zero diary-day mentions now render as "from exported notes" instead of
+  implying they only came from conversations.
+
+## 2026-07-24 (MCP OAuth: fail closed for unbound legacy tokens)
+
+The secret-binding migration originally tried to preserve pre-migration OAuth
+sessions by assigning NULL `secret_hash` rows to whichever `MCP_AUTH_TOKEN`
+was currently configured. That could incorrectly associate a compromised,
+pre-rotation refresh token with the *new* secret and let it survive the very
+rotation intended to revoke it. NULL-secret access and refresh tokens now fail
+closed and require the connector to re-authorize; newly issued tokens remain
+bound to their exact authorizing secret, preserving normal overlap rotation.
+Tests cover rejection for both legacy access and refresh tokens.
+
 ## 2026-07-22 (Security hardening: loud lock-off warning, HSTS/isolation headers, guard regression test)
 
 A review of the content-security surfaces found the app well-hardened where it

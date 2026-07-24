@@ -81,6 +81,41 @@ export function mergeEntity(
     db()
       .prepare(`DELETE FROM entry_entities WHERE kind = ? AND name_norm = ?`)
       .run(kind, aliasNorm);
+    // Relationships key on the same canonical (kind, name_norm) identity as
+    // entry_entities. Keep endpoint rewrites inside this transaction so an
+    // alias merge cannot leave stale labeled edges pointing at a dead stub.
+    db()
+      .prepare(
+        `UPDATE OR IGNORE entity_relationships
+         SET subject_norm = ?, subject_name = ?
+         WHERE subject_kind = ? AND subject_norm = ?`
+      )
+      .run(canonicalNorm, canonicalName, kind, aliasNorm);
+    db()
+      .prepare(
+        `DELETE FROM entity_relationships
+         WHERE subject_kind = ? AND subject_norm = ?`
+      )
+      .run(kind, aliasNorm);
+    db()
+      .prepare(
+        `UPDATE OR IGNORE entity_relationships
+         SET object_norm = ?, object_name = ?
+         WHERE object_kind = ? AND object_norm = ?`
+      )
+      .run(canonicalNorm, canonicalName, kind, aliasNorm);
+    db()
+      .prepare(
+        `DELETE FROM entity_relationships
+         WHERE object_kind = ? AND object_norm = ?`
+      )
+      .run(kind, aliasNorm);
+    db()
+      .prepare(
+        `DELETE FROM entity_relationships
+         WHERE subject_kind = object_kind AND subject_norm = object_norm`
+      )
+      .run();
   })();
   return rewritten;
 }

@@ -243,7 +243,9 @@ export function db(): Database.Database {
   // Bind each issued OAuth token to the MCP_AUTH_TOKEN that authorized it, so
   // rotating the secret (not just unsetting it) actually revokes tokens minted
   // under the old value. Added after mcp_oauth_tokens first shipped, so an
-  // ALTER is needed for already-deployed DBs.
+  // ALTER is needed for already-deployed DBs. Existing NULL rows are
+  // deliberately invalid: their issuing secret is unknowable and assigning
+  // the current one would let a compromised pre-rotation token survive.
   try {
     _db.exec(`ALTER TABLE mcp_oauth_tokens ADD COLUMN secret_hash TEXT`);
   } catch {
@@ -607,14 +609,16 @@ CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
 -- filed into the Obsidian/Dropbox vault as one Markdown note each by the
 -- maintenance sweep (lib/conversationWiki.ts). Upsert by conversation_key so a
 -- growing conversation re-exported keeps ONE record (latest full content);
--- filed_at is cleared on update so it re-files.
+-- filed_at/linked_at are cleared on update so it re-files and re-enters the
+-- librarian linking queue.
 CREATE TABLE IF NOT EXISTS mcp_conversations (
   conversation_key TEXT PRIMARY KEY,    -- client-supplied id, or generated
   title            TEXT,
   content          TEXT NOT NULL,       -- full verbatim transcript
   created_at       TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
-  filed_at         TEXT                 -- when last filed to the vault; NULL = needs filing
+  filed_at         TEXT,                -- when last filed to the vault; NULL = needs filing
+  linked_at        TEXT                 -- when last entity-linked; NULL = needs linking
 );
 
 -- Standalone AI-written reflections, saved via the MCP save_reflection write
@@ -670,6 +674,41 @@ CREATE TABLE IF NOT EXISTS entity_conversation_notes (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (kind, name_norm)
 );
+
+-- Explicit, predicate-labeled relationships between named entities, asserted
+-- by a provenance-scoped writer. The provenance columns are part of the
+-- primary key so one conversation can be corrected by replacing only its own
+-- assertions without clobbering another source's matching edge.
+CREATE TABLE IF NOT EXISTS entity_relationships (
+  subject_kind  TEXT NOT NULL CHECK (subject_kind IN ('person', 'place', 'project')),
+  subject_norm  TEXT NOT NULL,
+  subject_name  TEXT NOT NULL,
+  predicate     TEXT NOT NULL,
+  object_kind   TEXT NOT NULL CHECK (object_kind IN ('person', 'place', 'project')),
+  object_norm   TEXT NOT NULL,
+  object_name   TEXT NOT NULL,
+  source_kind   TEXT NOT NULL,
+  source_key    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (
+    subject_kind,
+    subject_norm,
+    predicate,
+    object_kind,
+    object_norm,
+    source_kind,
+    source_key
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_entity_rel_subject
+  ON entity_relationships(subject_kind, subject_norm);
+
+CREATE INDEX IF NOT EXISTS idx_entity_rel_object
+  ON entity_relationships(object_kind, object_norm);
+
+CREATE INDEX IF NOT EXISTS idx_entity_rel_source
+  ON entity_relationships(source_kind, source_key);
 `;
 
 export function getSetting(key: string): string | null {

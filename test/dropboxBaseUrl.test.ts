@@ -22,7 +22,8 @@ describe("resolveAppBaseUrl", () => {
     delete process.env.APP_BASE_URL;
   });
   afterEach(() => {
-    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    if (originalNodeEnv === undefined)
+      delete (process.env as Record<string, string | undefined>).NODE_ENV;
     else (process.env as Record<string, string>).NODE_ENV = originalNodeEnv;
     if (originalBaseUrl === undefined) delete process.env.APP_BASE_URL;
     else process.env.APP_BASE_URL = originalBaseUrl;

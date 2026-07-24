@@ -233,13 +233,13 @@ Unlike the Dropbox-vault tools, this one does **not** require the Dropbox write
 scope — the entry is saved to your database regardless; the Dropbox day file
 just also updates if you have the export on.
 
-## Linking conversations and reflections into your entity wiki (OFF by default)
+## Linking conversations, reflections, and decisions into your entity wiki (OFF by default)
 
-Once conversations/reflections are being saved (above), a second optional
+Once conversations/reflections/decisions are being saved (above), a second optional
 piece links them into the same wiki your diary already builds — so a person
-or place you discussed with Claude, or that came up in a reflection, shows up
-connected to your diary's people/places/projects, not sitting in an isolated
-note.
+or place you discussed with Claude, that came up in a reflection, or that a
+decision concerns, shows up connected to your diary's people/places/projects,
+not sitting in an isolated note.
 
 **Step 1 — turn on linking.** In Railway, set:
 
@@ -257,25 +257,26 @@ MCP_AUTO_TAG_EXPORTS=true
 
 With both flags on, Remarkabler tags every export **itself** — it calls
 Claude (its own API budget, not your subscription) right after
-`export_conversation`/`save_reflection` saves, so a conversation or
-reflection is linked within seconds, every time, with nothing for any Claude
-session to remember to do. This mirrors how your diary's own pages already
-get tagged on upload. Leave `MCP_AUTO_TAG_EXPORTS` off and only
-`MCP_ALLOW_WIKI_LINKING=true` set if you'd rather keep tagging entirely on
-your own Claude subscription (see the librarian below) instead of this app's
-API budget — that's the previous, fully-opportunistic behavior.
+`export_conversation`/`save_reflection`/`save_decision` saves, so a
+conversation, reflection, or decision is linked within seconds, every time,
+with nothing for any Claude session to remember to do. This mirrors how your
+diary's own pages already get tagged on upload. Leave `MCP_AUTO_TAG_EXPORTS`
+off and only `MCP_ALLOW_WIKI_LINKING=true` set if you'd rather keep tagging
+entirely on your own Claude subscription (see the librarian below) instead of
+this app's API budget — that's the previous, fully-opportunistic behavior.
 
 You can check it's working on `/memory`, under "Conversation librarian" — it
 shows the last time a tag/note write happened.
 
 **Optional — the librarian agent, for enrichment beyond a mechanical tag.**
-Once `MCP_ALLOW_WIKI_LINKING=true` is on, `export_conversation`'s and
-`save_reflection`'s own instructions nudge any connected Claude to look up
-`get_entity_wiki` and add its own notes via `update_entity_conversation_notes`
-for anything worth *remembering*, not just tagging — the judgment a re-read
-gives you that a mechanical extraction can't. This is genuinely optional now
-that auto-tag guarantees the base case; skip it if you don't want an extra
-tool call per export.
+Once `MCP_ALLOW_WIKI_LINKING=true` is on, the vault write tools nudge any
+connected Claude to enrich what the mechanical tagger cannot judge. For
+conversations, it can call `relate_entities` to record typed assertions such
+as `works_at`, `lives_in`, or `friend_of`. For any entity, it can call
+`get_entity_wiki` and then `update_entity_conversation_notes` for anything
+worth *remembering*, not just tagging. This is genuinely optional now that
+auto-tag guarantees the base case; skip it if you don't want extra tool calls
+per export.
 
 If you want a periodic catch-up pass too (useful mainly for conversations
 exported before you turned any of this on, or if you're running WITHOUT
@@ -290,13 +291,18 @@ separate from anything Remarkabler runs) — set one up with a prompt like:
 > `get_entity_wiki` for each to see what's already recorded, then call
 > `tag_conversation_entities` with what you found (an empty list is fine if
 > nothing applies) and, only if there's something new worth keeping,
-> `update_entity_conversation_notes`. Always finish by calling
+> `update_entity_conversation_notes`. If the conversation clearly states how
+> two named entities relate, call `relate_entities` with the full set of
+> relationship assertions for that conversation using only the supported
+> predicate values; pass an empty list if there are none or if you're
+> correcting prior assertions away. Do not create a relationship to "the
+> author" or infer one from vibes. Always finish by calling
 > `record_librarian_heartbeat`, even if there was nothing to do.
 
 A low frequency (once a day, or even manually) is enough for a catch-up
-sweep. (This catch-up prompt only covers conversations — reflections are
-tagged automatically when `MCP_AUTO_TAG_EXPORTS` is on, which is why that
-flag is the recommended default.)
+sweep. (This catch-up prompt only covers conversations — reflections and
+decisions are tagged automatically when `MCP_AUTO_TAG_EXPORTS` is on, which is
+why that flag is the recommended default.)
 
 Requirements + how it behaves:
 - The session needs the Remarkabler MCP connector available — same connector
@@ -316,11 +322,12 @@ Requirements + how it behaves:
 - If the connector ever seems to stop seeing a newly-deployed tool, a manual
   disconnect/reconnect of the Remarkabler connector (Step 2's dialog) forces
   a refresh — this is a platform behavior, not something Remarkabler controls.
-- Once linked, a conversation/reflection's own note gets a "## Connects to"
+- Once linked, a conversation/reflection/decision note gets a "## Connects to"
   section linking to the People/Places/Projects it mentions, and each of
-  those entity pages gets a "## Conversations & reflections" section linking
-  back — real, clickable Obsidian graph edges in both directions, not just an
-  internal ranking.
+  those entity pages gets a "## Related notes" section linking back. Typed
+  relationship assertions render as `## Relationships` in entity pages.
+  Obsidian shows the connected nodes; the relationship labels live in the note
+  body, not as graph-edge labels.
 
 ## Sensitive tools are OFF by default
 

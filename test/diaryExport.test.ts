@@ -518,6 +518,37 @@ describe("buildEntityStubFiles", () => {
     expect(withEmpty).toBe(withUndefined);
   });
 
+  it("renders outgoing and incoming relationships with readable labels and wikilinks", () => {
+    const files = buildEntityStubFiles({
+      stubs: [
+        stub({
+          relationships: [
+            { predicate: "works_at", otherName: "Samsung", direction: "out" },
+            { predicate: "lives_in", otherName: "Suwon", direction: "in" },
+          ],
+        }),
+      ],
+      exportedAt: "x",
+    });
+    const jin = files.get("People/Jin.md") as string;
+    expect(jin).toContain("## Relationships");
+    expect(jin).toContain("- works at [[Samsung]]");
+    expect(jin).toContain("- [[Suwon]] — lives in");
+    expect(jin.indexOf("## Relationships")).toBeLessThan(jin.indexOf("## Mentions"));
+  });
+
+  it("omits Relationships when empty (additive only)", () => {
+    const withUndefined = buildEntityStubFiles({ stubs: [stub({})], exportedAt: "x" }).get(
+      "People/Jin.md"
+    );
+    const withEmpty = buildEntityStubFiles({
+      stubs: [stub({ relationships: [] })],
+      exportedAt: "x",
+    }).get("People/Jin.md");
+    expect(withUndefined).not.toContain("## Relationships");
+    expect(withEmpty).toBe(withUndefined);
+  });
+
   it("a conversation-only entity (zero days) skips Mentions and says so", () => {
     const files = buildEntityStubFiles({
       stubs: [

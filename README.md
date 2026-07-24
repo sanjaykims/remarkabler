@@ -98,15 +98,14 @@ Remarkabler continuously writes your diary out as an **Obsidian-native vault**:
 - **One Markdown file per day**, with `[[wikilinks]]` to the people, places,
   and projects each entry mentions.
 - **Entity pages** (`People/`, `Places/`, `Projects/`) — one per person/place/
-  project, with a Claude-written "life wiki" bio and backlinks to every day and
-  note that mentions them.
+  project, with a Claude-written "life wiki" bio, typed relationships such as
+  `works_at`/`lives_in`, and backlinks to every day and note that mentions them.
 - **A `Home.md` dashboard**, `People.md`/`Places.md`/`Projects.md` index pages,
   and a `Profile.md` — the knowledge-architecture layer (inspired by
   obsidian-mind), generated deterministically so Remarkabler stays the sole
   writer of the vault.
-- **Reflections and Decisions** (saved via the connector below) filed into
-  their own `Reflections/`/`Decisions/` folders and auto-linked into the same
-  graph.
+- **Conversation archives, Reflections, and Decisions** (saved via the connector
+  below) filed into their own vault folders and linked into the same graph.
 
 ## Chat with your diary from your Claude subscription (optional)
 
@@ -114,10 +113,11 @@ Set `MCP_AUTH_TOKEN` and Remarkabler exposes a **read-only MCP endpoint** at
 `/api/mcp`. Add it to the **claude.ai app** as a custom connector (OAuth) or to
 **Claude Code**, and you can talk to your diary on your existing Claude
 subscription instead of per-token API billing. It's read-only and fail-closed
-by default; a set of opt-in write tools (`export_conversation`,
-`save_reflection`, `save_decision`, plus a "librarian" that links exported
-content into your entity graph) are each behind their own flag. Full setup and
-the security model: [`docs/mcp-setup.md`](./docs/mcp-setup.md).
+by default; opt-in write tools (`export_conversation`, `save_reflection`,
+`save_decision`, `save_diary_entry`, plus a "librarian" that links exported
+content and typed relationships into your entity graph) are behind explicit
+flags. Full setup and the security model:
+[`docs/mcp-setup.md`](./docs/mcp-setup.md).
 
 ## Configuration
 
@@ -161,8 +161,8 @@ for the full walkthrough and security model.
 | `MCP_ALLOW_REFLECTION_SAVE` | Enable the `save_reflection` write tool (a standalone reflection Claude wrote about you). |
 | `MCP_ALLOW_DECISION_SAVE` | Enable the `save_decision` write tool (a structured Decision Record). |
 | `MCP_ALLOW_DIARY_WRITE` | Enable the `save_diary_entry` write tool — compose a **real diary entry** by talking to Claude (feeds your profile + analytics, unlike the vault-only tools above). |
-| `MCP_ALLOW_WIKI_LINKING` | Enable linking exported content into your entity graph (the "librarian" tools + reads). |
-| `MCP_AUTO_TAG_EXPORTS` | Layered on top of the above — the app auto-tags entities itself right after each export (guaranteed, not opportunistic). |
+| `MCP_ALLOW_WIKI_LINKING` | Enable linking exported content into your entity graph (the librarian reads/writes: tags, notes, and typed relationships). |
+| `MCP_AUTO_TAG_EXPORTS` | Layered on top of the above — the app auto-tags entities itself right after conversation/reflection/decision saves (guaranteed, not opportunistic). |
 | `MCP_ALLOW_SENSITIVE_TOOLS` | Opt in to exposing location + chat-history tools over MCP (excluded by default for physical-safety reasons). |
 | `MCP_EXCLUDE_TOOLS` | Comma-separated tool names to drop from the MCP surface. |
 

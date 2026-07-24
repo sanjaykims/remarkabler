@@ -44,7 +44,14 @@ afterEach(() => {
   delete process.env.MCP_ALLOW_WIKI_LINKING;
   delete process.env.MCP_AUTO_TAG_EXPORTS;
   mcp.resetMcpThrottle();
+  vi.restoreAllMocks();
 });
+
+async function flushAsyncWork(times = 5): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
 
 describe("mcpToolList", () => {
   it("mirrors every non-sensitive chat tool plus get_profile, schemas passed through", () => {
@@ -197,6 +204,7 @@ describe("export_conversation write tool (Phase B — opt-in, add-only)", () => 
       .find((t) => t.name === mcp.EXPORT_TOOL_NAME)!;
     expect(withLibrarian.description).toContain("tag_conversation_entities");
     expect(withLibrarian.description).toContain("get_entity_wiki");
+    expect(withLibrarian.description).toContain("relate_entities");
   });
 });
 
@@ -399,7 +407,7 @@ describe("save_diary_entry write tool (opt-in, real diary write)", () => {
   });
 });
 
-describe("librarian tools (Phase C — opt-in, one flag for all six)", () => {
+describe("librarian tools (Phase C — opt-in, one flag for all seven)", () => {
   it("are ALL hidden and refused by default, including the reads", async () => {
     const names = mcp.mcpToolList().map((t) => t.name);
     for (const name of [
@@ -407,6 +415,7 @@ describe("librarian tools (Phase C — opt-in, one flag for all six)", () => {
       mcp.GET_CONVERSATION_TOOL_NAME,
       mcp.GET_ENTITY_WIKI_TOOL_NAME,
       mcp.TAG_ENTITIES_TOOL_NAME,
+      mcp.RELATE_TOOL_NAME,
       mcp.UPDATE_NOTES_TOOL_NAME,
       mcp.HEARTBEAT_TOOL_NAME,
     ]) {
@@ -416,13 +425,14 @@ describe("librarian tools (Phase C — opt-in, one flag for all six)", () => {
     }
   });
 
-  it("all six appear once MCP_ALLOW_WIKI_LINKING=true", () => {
+  it("all seven appear once MCP_ALLOW_WIKI_LINKING=true", () => {
     process.env.MCP_ALLOW_WIKI_LINKING = "true";
     const names = mcp.mcpToolList().map((t) => t.name);
     expect(names).toContain(mcp.LIST_UNLINKED_TOOL_NAME);
     expect(names).toContain(mcp.GET_CONVERSATION_TOOL_NAME);
     expect(names).toContain(mcp.GET_ENTITY_WIKI_TOOL_NAME);
     expect(names).toContain(mcp.TAG_ENTITIES_TOOL_NAME);
+    expect(names).toContain(mcp.RELATE_TOOL_NAME);
     expect(names).toContain(mcp.UPDATE_NOTES_TOOL_NAME);
     expect(names).toContain(mcp.HEARTBEAT_TOOL_NAME);
   });
@@ -499,6 +509,191 @@ describe("librarian tools (Phase C — opt-in, one flag for all six)", () => {
     expect(mcp.mcpToolList().map((t) => t.name)).not.toContain(mcp.TAG_ENTITIES_TOOL_NAME);
     const out = JSON.parse(
       await mcp.callMcpTool(mcp.TAG_ENTITIES_TOOL_NAME, { conversation_key: "x", entities: [] })
+    );
+    expect(out.error).toContain("not available");
+  });
+
+  it("relate_entities requires a known conversation_key and scoped-replaces that key's edges", async () => {
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    process.env.MCP_ALLOW_WIKI_LINKING = "true";
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM entity_relationships").run();
+    db().prepare("DELETE FROM mcp_conversations").run();
+
+    const missing = JSON.parse(
+      await mcp.callMcpTool(mcp.RELATE_TOOL_NAME, {
+        conversation_key: "missing",
+        relationships: [],
+      })
+    );
+    expect(missing.error).toContain("Unknown conversation_key");
+
+    await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, {
+      content: "User: Jin works at Samsung. Mina lives in Suwon.",
+      conversation_id: "c1",
+    });
+    await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, {
+      content: "User: Mina lives in Suwon.",
+      conversation_id: "c2",
+    });
+
+    const first = JSON.parse(
+      await mcp.callMcpTool(mcp.RELATE_TOOL_NAME, {
+        conversation_key: "c1",
+        relationships: [
+          {
+            subject_kind: "person",
+            subject_name: "Jin",
+            predicate: "works_at",
+            object_kind: "project",
+            object_name: "Samsung",
+          },
+        ],
+      })
+    );
+    expect(first.related).toBe(1);
+
+    await mcp.callMcpTool(mcp.RELATE_TOOL_NAME, {
+      conversation_key: "c2",
+      relationships: [
+        {
+          subject_kind: "person",
+          subject_name: "Mina",
+          predicate: "lives_in",
+          object_kind: "place",
+          object_name: "Suwon",
+        },
+      ],
+    });
+    await mcp.callMcpTool(mcp.RELATE_TOOL_NAME, {
+      conversation_key: "c1",
+      relationships: [
+        {
+          subject_kind: "person",
+          subject_name: "Jin",
+          predicate: "studied_at",
+          object_kind: "project",
+          object_name: "SNU",
+        },
+      ],
+    });
+
+    const rows = db()
+      .prepare(
+        `SELECT source_key, predicate, object_name
+         FROM entity_relationships
+         ORDER BY source_key, predicate`
+      )
+      .all() as Array<{ source_key: string; predicate: string; object_name: string }>;
+    expect(rows).toEqual([
+      { source_key: "c1", predicate: "studied_at", object_name: "SNU" },
+      { source_key: "c2", predicate: "lives_in", object_name: "Suwon" },
+    ]);
+  });
+
+  it("get_entity_wiki returns known relationships", async () => {
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    process.env.MCP_ALLOW_WIKI_LINKING = "true";
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM entity_relationships").run();
+    db().prepare("DELETE FROM mcp_conversations").run();
+    await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, {
+      content: "User: Jin works at Samsung.",
+      conversation_id: "c1",
+    });
+    await mcp.callMcpTool(mcp.RELATE_TOOL_NAME, {
+      conversation_key: "c1",
+      relationships: [
+        {
+          subject_kind: "person",
+          subject_name: "Jin",
+          predicate: "works_at",
+          object_kind: "project",
+          object_name: "Samsung",
+        },
+      ],
+    });
+
+    const wiki = JSON.parse(
+      await mcp.callMcpTool(mcp.GET_ENTITY_WIKI_TOOL_NAME, {
+        kind: "person",
+        name: "Jin",
+      })
+    );
+    expect(wiki.relationships).toEqual([
+      {
+        predicate: "works_at",
+        otherKind: "project",
+        otherName: "Samsung",
+        direction: "out",
+      },
+    ]);
+  });
+
+  it("deletes stale relationship-only stubs after a scoped retraction", async () => {
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    process.env.MCP_ALLOW_WIKI_LINKING = "true";
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM entity_relationships").run();
+    db().prepare("DELETE FROM entity_conversation_notes").run();
+    db().prepare("DELETE FROM entity_wiki").run();
+    db().prepare("DELETE FROM entry_entities").run();
+    db().prepare("DELETE FROM mcp_conversations").run();
+    db().prepare("DELETE FROM pages").run();
+    db().prepare("DELETE FROM notebooks").run();
+    const dropbox = await import("@/lib/dropbox");
+    const exportSpy = vi
+      .spyOn(dropbox, "maybeExportDiaryToDropbox")
+      .mockResolvedValue({ ok: true, written: 0 });
+    const deleteSpy = vi
+      .spyOn(dropbox, "deleteDiaryExportFiles")
+      .mockResolvedValue({ deleted: 0, failed: 0 });
+    await flushAsyncWork();
+    exportSpy.mockClear();
+    deleteSpy.mockClear();
+
+    await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, {
+      content: "User: Jin lives in Suwon.",
+      conversation_id: "c-retract",
+    });
+    await mcp.callMcpTool(mcp.RELATE_TOOL_NAME, {
+      conversation_key: "c-retract",
+      relationships: [
+        {
+          subject_kind: "person",
+          subject_name: "Jin",
+          predicate: "lives_in",
+          object_kind: "place",
+          object_name: "Suwon",
+        },
+      ],
+    });
+    await flushAsyncWork();
+    expect(exportSpy).toHaveBeenLastCalledWith({
+      onlyEntityStubs: ["People/Jin.md", "Places/Suwon.md"],
+    });
+    expect(deleteSpy).not.toHaveBeenCalled();
+
+    exportSpy.mockClear();
+    await mcp.callMcpTool(mcp.RELATE_TOOL_NAME, {
+      conversation_key: "c-retract",
+      relationships: [],
+    });
+    await flushAsyncWork();
+
+    expect(exportSpy).toHaveBeenCalledWith({ onlyEntityStubs: [] });
+    expect(deleteSpy).toHaveBeenCalledWith(["People/Jin.md", "Places/Suwon.md"]);
+  });
+
+  it("MCP_EXCLUDE_TOOLS blocks relate_entities too", async () => {
+    process.env.MCP_ALLOW_WIKI_LINKING = "true";
+    process.env.MCP_EXCLUDE_TOOLS = "relate_entities";
+    expect(mcp.mcpToolList().map((t) => t.name)).not.toContain(mcp.RELATE_TOOL_NAME);
+    const out = JSON.parse(
+      await mcp.callMcpTool(mcp.RELATE_TOOL_NAME, {
+        conversation_key: "x",
+        relationships: [],
+      })
     );
     expect(out.error).toContain("not available");
   });

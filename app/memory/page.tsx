@@ -1756,10 +1756,10 @@ export default function MemoryPage() {
               A recurring Claude Code agent (billed to your Claude
               subscription, not this app&rsquo;s API key) links your exported
               conversations into the diary&rsquo;s entity wiki — tagging who
-              and what they mention, and keeping its own notes about a person,
-              place, or project separate from the diary&rsquo;s own written
-              bio. This app doesn&rsquo;t run it; it only shows its last
-              heartbeat below.
+              and what they mention, recording typed relationships between
+              named entities, and keeping its own notes about a person, place,
+              or project separate from the diary&rsquo;s own written bio. This
+              app doesn&rsquo;t run it; it only shows its last heartbeat below.
             </p>
             <p className="text-xs opacity-70">
               {librarian.lastRunAt ? (

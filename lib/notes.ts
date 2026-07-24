@@ -1014,7 +1014,7 @@ export const CONVERSATIONS_NOTEBOOK_ID = "mcp-conversations";
 // a reflection flow through the same entry_entities pipeline. Kept as a
 // SEPARATE constant (not folded into CONVERSATIONS_NOTEBOOK_ID) so a
 // reflection's synthetic page is never mistaken for a real conversation's
-// when either notebook needs to be told apart (e.g. day-file/stub
+// when synthetic notebooks need to be told apart (e.g. day-file/stub
 // filename derivation in lib/diaryExportDb.ts).
 export const REFLECTIONS_NOTEBOOK_ID = "mcp-reflections";
 

@@ -119,8 +119,9 @@ export function renderConversationNote(
 
 // --- Store (the write path) ----------------------------------------------
 // Upsert by conversation_key: a growing conversation re-exported keeps ONE
-// record (latest full content), and filed_at is cleared so it re-files. Only
-// ever touches mcp_conversations — never diary/pages/profile.
+// record (latest full content), and filed_at/linked_at are cleared so it
+// re-files and the librarian/auto-tag pass can refresh entities against the
+// new text. Only ever touches mcp_conversations — never diary/pages/profile.
 export function saveExportedConversation(input: {
   content: string;
   title?: string;
@@ -138,7 +139,8 @@ export function saveExportedConversation(input: {
          title = excluded.title,
          content = excluded.content,
          updated_at = datetime('now'),
-         filed_at = NULL`
+         filed_at = NULL,
+         linked_at = NULL`
     )
     .run(key, title, input.content);
   return { key };

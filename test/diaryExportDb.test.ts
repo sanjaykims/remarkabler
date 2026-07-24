@@ -29,6 +29,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   const d = dbMod.db();
+  d.prepare(`DELETE FROM entity_relationships`).run();
   d.prepare(`DELETE FROM entry_entities`).run();
   d.prepare(`DELETE FROM entry_analysis`).run();
   d.prepare(`DELETE FROM entity_wiki`).run();
@@ -291,6 +292,36 @@ describe("renderEntityStubFiles", () => {
         `INSERT INTO entry_entities(page_id, kind, name, name_norm) VALUES(?,?,?,?)`
       )
       .run(pageId, kind, name, norm);
+  }
+  function addRelationship(
+    sourceKey: string,
+    subjectKind: string,
+    subjectNorm: string,
+    subjectName: string,
+    predicate: string,
+    objectKind: string,
+    objectNorm: string,
+    objectName: string
+  ) {
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO entity_relationships(
+           subject_kind, subject_norm, subject_name, predicate,
+           object_kind, object_norm, object_name, source_kind, source_key
+         ) VALUES(?,?,?,?,?,?,?,?,?)`
+      )
+      .run(
+        subjectKind,
+        subjectNorm,
+        subjectName,
+        predicate,
+        objectKind,
+        objectNorm,
+        objectName,
+        "librarian_conversation",
+        sourceKey
+      );
   }
 
   it("writes one stub per entity listing the days it appears", () => {
@@ -558,6 +589,61 @@ describe("renderEntityStubFiles", () => {
     expect(kim.indexOf("mentor")).toBeLessThan(kim.indexOf("## Recent conversations"));
     expect(kim.indexOf("## Recent conversations")).toBeLessThan(kim.indexOf("## Mentions"));
   });
+
+  it("renders relationships with diary canonical casing and dedupes multi-source assertions", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "entry", "2026-06-19");
+    addEntity(p0, "person", "Jin", "jin");
+    addEntity(p0, "project", "Samsung", "samsung");
+    addRelationship(
+      "c1",
+      "person",
+      "jin",
+      "jin",
+      "works_at",
+      "project",
+      "samsung",
+      "samsung"
+    );
+    addRelationship(
+      "c2",
+      "person",
+      "jin",
+      "Jin",
+      "works_at",
+      "project",
+      "samsung",
+      "Samsung"
+    );
+
+    const files = exportMod.renderEntityStubFiles();
+    const jin = files.get("People/Jin.md") as string;
+    const samsung = files.get("Projects/Samsung.md") as string;
+    expect(jin.match(/works at \[\[Samsung\]\]/g)?.length).toBe(1);
+    expect(samsung.match(/\[\[Jin\]\] — works at/g)?.length).toBe(1);
+    expect(jin).not.toContain("[[samsung]]");
+  });
+
+  it("gives relationship-endpoint-only entities bare stubs", () => {
+    addRelationship(
+      "c1",
+      "person",
+      "jin",
+      "Jin",
+      "lives_in",
+      "place",
+      "suwon",
+      "Suwon"
+    );
+
+    const files = exportMod.renderEntityStubFiles();
+    const jin = files.get("People/Jin.md") as string;
+    const suwon = files.get("Places/Suwon.md") as string;
+    expect(jin).toContain("mentioned only in conversations so far");
+    expect(jin).toContain("- lives in [[Suwon]]");
+    expect(suwon).toContain("- [[Jin]] — lives in");
+    expect(jin).not.toContain("## Mentions");
+  });
 });
 
 describe("affectedEntityStubFileNames", () => {
@@ -685,7 +771,7 @@ describe("renderVaultStructureFiles", () => {
     expect(stub).toContain("- [[2026-06-20]]");
   });
 
-  it("includes conversation/reflection-only entities in the index, labeled distinctly", () => {
+  it("includes exported-note-only entities in the index, labeled distinctly", () => {
     addNotebook(
       notesMod.CONVERSATIONS_NOTEBOOK_ID,
       "Conversations (subscription Claude)",
@@ -700,7 +786,7 @@ describe("renderVaultStructureFiles", () => {
     addEntity(cp, "person", "Chat Friend", "chat friend");
 
     const people = exportMod.renderVaultStructureFiles().get("People.md") as string;
-    expect(people).toContain("[[Chat Friend]] — from conversations");
+    expect(people).toContain("[[Chat Friend]] — from exported notes");
   });
 
   it("Home surfaces recent reflections/conversations/decisions linked to their filed notes", () => {

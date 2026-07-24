@@ -98,20 +98,20 @@ and generate an accumulating record of "insights" about themselves.
   entity graph. The tool's description instructs the calling Claude to write
   in the person's first-person voice and get their approval before saving. OFF
   by default.
-  Optional `MCP_ALLOW_WIKI_LINKING=true` enables the six Phase C "librarian" tools
-  (`lib/conversationEntities.ts`) so a SEPARATE, recurring Claude Code agent
+  Optional `MCP_ALLOW_WIKI_LINKING=true` enables the seven Phase C/librarian tools
+  (`lib/conversationEntities.ts` / `lib/entityRelationships.ts`) so a SEPARATE, recurring Claude Code agent
   — set up by the user as a cron Routine, billed to their own Claude
   subscription rather than this app's `ANTHROPIC_API_KEY` — can tag which
-  people/places/projects a conversation mentions and keep its own notes
-  about them, linking conversations into the same entity graph/Obsidian
-  wiki the diary builds. This app never runs that agent itself; it only
+  people/places/projects a conversation mentions, record typed relationships
+  between them, and keep its own notes about them, linking conversations into
+  the same entity graph/Obsidian wiki the diary builds. This app never runs that agent itself; it only
   exposes the tools and a status heartbeat (`GET /api/librarian`, surfaced
   on `/memory`). OFF by default. Optional `MCP_AUTO_TAG_EXPORTS=true`
   (layered ON TOP of `MCP_ALLOW_WIKI_LINKING` — see `lib/entityTagging.ts`)
   makes tagging GUARANTEED instead of opportunistic: the app itself calls
   Claude (its own `ANTHROPIC_API_KEY`, not the external agent's subscription)
-  right after `export_conversation`/`save_reflection` saves, for BOTH
-  conversations and reflections — mirroring how diary pages already get
+  right after `export_conversation`/`save_reflection`/`save_decision` saves,
+  for conversations, reflections, and decisions — mirroring how diary pages already get
   tagged on upload, rather than waiting on an external Claude session to
   choose to call the librarian tools. OFF by default (adds app-side API
   cost). Setup guide: `docs/mcp-setup.md`.
@@ -169,6 +169,10 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `entity_conversation_notes` (the librarian agent's own notes about an
   entity — kept in a table SEPARATE from `entity_wiki` so the two authors
   can never clobber each other's writes; see `lib/conversationEntities.ts`),
+  `entity_relationships` (typed librarian assertions such as `works_at` /
+  `lives_in`; provenance columns `source_kind`/`source_key` are part of the
+  primary key so one conversation can be corrected without clobbering another
+  source; see `lib/entityRelationships.ts`),
   `mcp_reflections` (standalone AI-written reflections saved via the
   `save_reflection` write tool — deliberately a SEPARATE table from
   `mcp_conversations`: a reflection is Claude's own one-sided writing about
@@ -232,23 +236,25 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   two surfaces can never drift; these three exist ONLY on MCP because the in-app
   chat gets the same content via its system prompt + auto-recall — plus the
   write tool `export_conversation` (Phase B, off unless
-  `MCP_ALLOW_CONVERSATION_EXPORT=true`) — plus the six "librarian" tools
+  `MCP_ALLOW_CONVERSATION_EXPORT=true`) — plus the seven "librarian" tools
   (Phase C, all gated behind ONE flag `MCP_ALLOW_WIKI_LINKING=true`, via
   `librarianToolsEnabled`): reads `list_unlinked_conversations`,
   `get_conversation` (full verbatim read-back — the one MCP read that exposes
   raw conversation content, so it shares the write tools' opt-in gate rather
   than being ungated like the other reads), `get_entity_wiki`; writes
-  `tag_conversation_entities`, `update_entity_conversation_notes`,
-  `record_librarian_heartbeat` — see `lib/conversationEntities.ts`), `callMcpTool`
+  `tag_conversation_entities`, `relate_entities`,
+  `update_entity_conversation_notes`, `record_librarian_heartbeat` — see
+  `lib/conversationEntities.ts` / `lib/entityRelationships.ts`), `callMcpTool`
   (special-cases the MCP-only tools, else dispatch via `executeTool`), and
   the fail-closed bearer auth (`checkMcpAuth`, timing-safe, `MIN_TOKEN_LENGTH`).
   Served by `app/api/mcp/route.ts` (mcp-handler, Streamable HTTP, stateless,
   SSE disabled) so Claude on the user's subscription (claude.ai custom
   connector / Claude Code) can query the diary. Read-only by default (the
-  sanctioned writes are `export_conversation`, `save_reflection`, and the
-  three librarian write tools, see the do-not-regress rule). Both write
-  tools' dispatch also fires `lib/entityTagging.ts`'s `autoTagConversation`/
-  `autoTagReflection` (fire-and-forget, no-ops internally unless
+  sanctioned writes are `export_conversation`, `save_reflection`,
+  `save_decision`, `save_diary_entry`, and the librarian write tools; see the
+  do-not-regress rule). The vault-only writes' dispatch also fires
+  `lib/entityTagging.ts`'s `autoTagConversation`/
+  `autoTagReflection`/`autoTagDecision` (fire-and-forget, no-ops internally unless
   `MCP_AUTO_TAG_EXPORTS` is on) — this is an app-initiated background
   process, not an additional externally-callable MCP write, so it doesn't
   change the sanctioned-write count above.
@@ -309,6 +315,15 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   status section on `/memory` (no "run now" — the app doesn't run the
   external librarian agent itself; see `lib/entityTagging.ts` for the part
   the app DOES run).
+- `lib/entityPredicates.ts` + `lib/entityRelationships.ts` — explicit typed
+  relationship assertions between named entities. Predicates are a controlled
+  enum (`friend_of`, `works_at`, `lives_in`, etc.), not free text. The
+  `relate_entities` MCP tool is a scoped replace by known `conversation_key`:
+  it deletes/reinserts only that conversation's
+  `source_kind='librarian_conversation'` rows, so a correction can retract one
+  conversation's claims without touching another conversation or future
+  diary-sourced assertions. `getRelationshipsFor` is read by `get_entity_wiki`;
+  `allRelationshipRows` feeds Obsidian stub rendering.
 - `lib/reflectionEntities.ts` — the REFLECTION-side mirror of
   `lib/conversationEntities.ts`'s page/tagging logic (`ensureReflectionPage`,
   `tagReflectionEntities`, under `REFLECTIONS_NOTEBOOK_ID`), trimmed to just
@@ -337,21 +352,22 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `analyzePending`, re-export the day file. Kept as its own notebook only so
   handwritten vs talked entries stay distinguishable (labeled per-entry in the
   day files); it fully counts toward profile/heatmap/Mind/day-files/graph.
-- `lib/entityTagging.ts` — guaranteed, APP-INITIATED entity-tagging for both
-  conversations and reflections, gated by `autoTagExportsEnabled()`
+- `lib/entityTagging.ts` — guaranteed, APP-INITIATED entity-tagging for
+  conversations, reflections, and decisions, gated by `autoTagExportsEnabled()`
   (`MCP_AUTO_TAG_EXPORTS=true` AND `MCP_ALLOW_WIKI_LINKING=true` — layered,
   not a peer flag: wiki-linking is the privacy decision of whether linking
   happens at all, auto-tag is a refinement of who does it). `autoTagConversation`/
-  `autoTagReflection` call `extractTaggingEntities` (`lib/claude.ts`) on a
-  bounded, evenly-sampled slice of the content (`sampleForTagging` — a long
-  transcript's entities from the middle/end aren't lost to a flat
-  truncation), write the tags via `tagConversationEntities`/
-  `tagReflectionEntities`, then re-export the affected entity stubs so a
-  freshly-tagged entity's page doesn't sit stale in Dropbox. In-flight
+  `autoTagReflection`/`autoTagDecision` call `extractTaggingEntities`
+  (`lib/claude.ts`) on a bounded, evenly-sampled slice of the content
+  (`sampleForTagging` — a long transcript's entities from the middle/end
+  aren't lost to a flat truncation), write the tags via
+  `tagConversationEntities`/`tagReflectionEntities`/`tagDecisionEntities`,
+  then re-export the affected entity stubs so a freshly-tagged entity's page
+  doesn't sit stale in Dropbox. In-flight
   guarded per key; fired inline from `lib/mcp.ts`'s export/save dispatch and
   backstopped by `maybeAutoTagUnlinkedConversations`/
-  `maybeAutoTagUnlinkedReflections` in the maintenance sweep. Shared across
-  both content types deliberately — NOT folded into
+  `maybeAutoTagUnlinkedReflections`/`maybeAutoTagUnlinkedDecisions` in the
+  maintenance sweep. Shared across all three content types deliberately — NOT folded into
   `lib/conversationEntities.ts`, which stays scoped to the external-agent-
   facing Phase C surface.
 - `lib/mcpOauth.ts` — minimal OAuth 2.1 authorization server backing the
@@ -377,7 +393,10 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   variants / cross-script pairs Claude won't risk; records an alias even for
   a variant not yet extracted, so a future ingest auto-folds). Because every reader keys on
   `name_norm`, a merge is a data rewrite with no read-path changes; the
-  `entity_aliases` record makes it stick for future ingests. Claude call +
+  `entity_aliases` record makes it stick for future ingests. The same
+  transaction must also rewrite both subject/object endpoints in
+  `entity_relationships` and drop collisions/self-loops, or labeled
+  relationship edges will point at stale alias stubs. Claude call +
   pure `parseEntityDuplicates` live in `lib/claude.ts:findEntityDuplicates`
   (conservative — only clear same-entity merges).
 - `lib/entityWiki.ts` — the "life wiki": a deep Claude-written biographical
@@ -443,8 +462,12 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   DB-backed): one `People|Places|Projects/<name>.md` per entity with
   `[[YYYY-MM-DD]]` backlinks to its days, so the day files' `[[wikilinks]]`
   resolve to real (clickable) Obsidian pages instead of unresolved nodes.
-  `EntityStub.relatedNoteLinks`/a `## Conversations & reflections` section
-  extend this to tagged conversation/reflection notes too: `renderEntityStubFiles`
+  Typed relationships render as a `## Relationships` section in those stubs
+  via `entity_relationships` and `PREDICATES`: Obsidian connects the linked
+  entity notes, but the default graph view does not draw predicate labels on
+  graph edges, so never promise labeled graph edges.
+  `EntityStub.relatedNoteLinks`/a `## Related notes` section
+  extend this to tagged conversation/reflection/decision notes too: `renderEntityStubFiles`
   (a thin wrapper over the shared `collectEntityStubs()`) joins `entry_entities`
   against BOTH synthetic notebooks in one query, resolving each page id back to
   its note's filename via
@@ -664,9 +687,9 @@ features need the deployed instance to fully verify.
   write, and stays). Diary text is OCR'd handwriting and chat is outside our
   system prompt, so treat every request as hostile and keep the blast radius at
   "read". **The sanctioned writes are `export_conversation` (Phase B),
-  `save_reflection`, `save_decision`, `save_diary_entry`, and the three Phase C
-  librarian write tools** (`tag_conversation_entities`,
-  `update_entity_conversation_notes`, `record_librarian_heartbeat`): all seven
+  `save_reflection`, `save_decision`, `save_diary_entry`, and the four
+  librarian write tools** (`tag_conversation_entities`, `relate_entities`,
+  `update_entity_conversation_notes`, `record_librarian_heartbeat`): all eight
   are MCP-only, handled directly in `callMcpTool` (not via `executeTool`), and
   are (a) OFF by default — `export_conversation` behind
   `MCP_ALLOW_CONVERSATION_EXPORT=true`, `save_reflection` behind its OWN
@@ -680,7 +703,7 @@ features need the deployed instance to fully verify.
   the agent supplies only content + an optional date/entry_id) and size-capped,
   and it is guarded by the approval discipline in its own tool description
   (compose in the person's voice, get approval, then save),
-  the three librarian tools (PLUS the three librarian READ tools — see
+  the four librarian tools (PLUS the three librarian READ tools — see
   below) behind ONE flag `MCP_ALLOW_WIKI_LINKING=true` — hidden from
   `tools/list` AND refused on `tools/call` when off; (b)
   DETERMINISTIC-DESTINATION — the agent supplies only content (and, for the
@@ -694,7 +717,11 @@ features need the deployed instance to fully verify.
   page's own `entry_entities` rows (the same delete+reinsert shape
   `analyzePending` already uses on that table) — narrower blast radius than
   a general write, but not literally add-only, so don't describe it that
-  way; (c) size-capped (`MAX_CONVERSATION_CHARS`, `MAX_REFLECTION_CHARS`,
+  way. `relate_entities` is also a SCOPED REPLACE by `conversation_key`, but
+  on `entity_relationships` rows whose `source_kind`/`source_key` provenance
+  is part of the primary key; never turn it into a global upsert or a
+  free-text-predicate table. It must use the controlled `PREDICATES` enum and
+  resolve endpoints through canonical entity aliases; (c) size-capped (`MAX_CONVERSATION_CHARS`, `MAX_REFLECTION_CHARS`,
   `MAX_ENTITY_NOTES_CHARS`). `export_conversation`'s and `save_reflection`'s
   content is filed into the vault VERBATIM as quoted markdown by a
   deterministic exporter — no Claude call ever reads the raw content inside
@@ -741,12 +768,10 @@ features need the deployed instance to fully verify.
   longer configured — so **rotating** the token (not just unsetting it) truly
   revokes tokens minted under the old value, which is the documented
   revocation path for a compromised connector. Keep that binding; don't let a
-  token validate solely because *some* `MCP_AUTH_TOKEN` is set. (One bridge:
-  `backfillLegacyTokenSecrets` adopts pre-migration rows whose `secret_hash` is
-  NULL into the *current* secret once, at first use — so the migration deploy
-  doesn't log an existing connector out; after adoption they revoke on rotation
-  like any other token. Don't turn that into a general "NULL = always valid".)
-  Registration
+  token validate solely because *some* `MCP_AUTH_TOKEN` is set. Pre-migration
+  rows have a NULL `secret_hash` and must remain invalid: their issuer cannot
+  be determined safely, so accepting them under the current secret could let a
+  compromised token survive rotation. Registration
   is open (public clients) ON PURPOSE — it grants nothing without passing the
   consent gate. Don't relax any of these.
 - **The librarian's synthetic notebooks need BOTH an inclusion and an
@@ -759,9 +784,9 @@ features need the deployed instance to fully verify.
   (`lib/mind.ts`; this one fix also transitively protects `getThemes`/
   `getSentimentSeries`/`getEmbeddingMap`, since none of them have any other
   notebook filter and rely entirely on `entry_analysis` never containing
-  either notebook's rows), `getHeatmap`, `generateAxisLabels`, `entityWiki.ts`'s
+  those synthetic notebooks' rows), `getHeatmap`, `generateAxisLabels`, `entityWiki.ts`'s
   `candidates`/`mentions` (protects the ownership separation below),
-  `diaryExportDb.ts`'s `fetchDiaryData` (day files — a conversation/reflection
+  `diaryExportDb.ts`'s `fetchDiaryData` (day files — a conversation/reflection/decision
   already gets its own note, a day file would duplicate it) and
   `affectedDayFileNames`, and `chatTools.ts`'s `getEntriesByDate`/
   `getRecentEntries`/`listNotebooks`. The shared helpers
@@ -775,16 +800,16 @@ features need the deployed instance to fully verify.
   `getTopEntities`, `entityMerge.ts`'s dedup candidates, `diaryExportDb.ts`'s
   `fetchCanonicalEntityNames`/`renderEntityStubFiles`/
   `affectedEntityStubFileNames` — that inclusion is what makes a person only
-  ever discussed in a subscription conversation or reflection still show up
+  ever discussed in a subscription conversation, reflection, or decision still show up
   in the entity graph, rankings, and get a real Obsidian stub page (these
   surfaces filter on `DISCIPLINE_ID` alone, so a new synthetic notebook is
   automatically included with ZERO code change there — do not "fix" that by
-  adding an exclusion). Do not "clean up" by excluding either notebook
+  adding an exclusion). Do not "clean up" by excluding any synthetic notebook
   everywhere discipline is excluded, and do not forget the exclusions above
   just because the graph/stub side stays inclusive.
 - **Remarkabler is the SOLE writer of the vault it exports — keep it
   deterministic.** The whole Obsidian/Dropbox vault (day files, entity stubs,
-  conversation/reflection notes, AND the vault-structure notes `Home.md`/
+  conversation/reflection/decision notes, AND the vault-structure notes `Home.md`/
   `People|Places|Projects.md`/`Profile.md`) is generated from the DB by
   `lib/diaryExport*.ts` and uploaded by `maybeExportDiaryToDropbox`. This is
   the deliberate reason the vendored `obsidian-mind`/`obsidian-second-brain`
@@ -795,19 +820,22 @@ features need the deployed instance to fully verify.
   incremental syncs refresh it) — do NOT introduce a second writer that edits
   these files in place. The ONE sanctioned exception is the librarian's
   `entity_conversation_notes` (a SEPARATE table rendered into a separate stub
-  section, never an in-place edit of a generated file) — any future
-  agent-authored content must follow that same "own table, composed at render
-  time" pattern, never mutate the exporter's output.
+  section, never an in-place edit of a generated file) plus
+  `entity_relationships` (same ownership pattern, rendered into
+  `## Relationships`) — any future agent-authored content must follow that
+  same "own table, composed at render time" pattern, never mutate the
+  exporter's output.
 - **`MCP_AUTO_TAG_EXPORTS` is layered ON TOP of `MCP_ALLOW_WIKI_LINKING`, not
   a peer flag — do not let it work independently.** `autoTagExportsEnabled()`
   (`lib/entityTagging.ts`) requires BOTH; `MCP_ALLOW_WIKI_LINKING` is the
-  user's privacy decision about whether conversation/reflection content gets
-  linked into their diary's entity graph AT ALL, while auto-tag is a
+  user's privacy decision about whether conversation/reflection/decision
+  content gets linked into their diary's entity graph AT ALL, while auto-tag is a
   refinement of HOW (the app tags immediately and guaranteed, on its own
   `ANTHROPIC_API_KEY`, vs. purely opportunistic external Claude sessions
   calling the Phase C tools). A user with wiki-linking off who mistakenly
   sets auto-tag on must get the safe no-op, matching this repo's fail-safe
-  posture everywhere else. `autoTagConversation`/`autoTagReflection` are
+  posture everywhere else. `autoTagConversation`/`autoTagReflection`/
+  `autoTagDecision` are
   in-flight-guarded per key (dedupes the inline fire against a concurrent
   sweep retry), bound the Claude call's input via `sampleForTagging` (an
   evenly-sampled chunk slice, NOT `analyzeEntryContent`'s flat 8000-char
@@ -834,6 +862,17 @@ features need the deployed instance to fully verify.
   and renders them as separate sections (the diary bio, then a "## Recent
   conversations" heading) on the same stub note — that's the only place they
   ever appear together, and it's read-only composition, not a merge.
+- **Typed relationships are provenance-scoped assertions, not inferred
+  co-occurrence.** `entity_relationships` stores controlled predicates from
+  `PREDICATES` only; `source_kind` + `source_key` are part of the primary key
+  and `relate_entities` replaces only one known `conversation_key` at a time
+  (empty list = retract that conversation's assertions). `mergeEntity` must
+  rewrite relationship subject AND object endpoints in the same transaction as
+  `entry_entities`, including collision/self-loop cleanup. In
+  `diaryExportDb.ts`, keep the `kind\0name` accumulator key shape when attaching
+  relationships to stubs — a plain space silently forks keys for multi-word
+  names. Obsidian gets connected nodes via `[[wikilinks]]`; predicate labels are
+  rendered in the note body, not as default graph-edge labels.
 - **Chat memory recall is fail-open AND embedding-optional.** `chatOverNotes`
   accepts `recalledMemories` as a pre-rendered text block; it lives in the
   dynamic context block (never cached). Recall must never throw — chat must

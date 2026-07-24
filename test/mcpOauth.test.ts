@@ -43,7 +43,6 @@ beforeAll(async () => {
 beforeEach(() => {
   process.env.MCP_AUTH_TOKEN = TOKEN; // canonical, even if a rotation test left it changed
   oauth.clearAuthCodes();
-  oauth.resetLegacyAdoption();
   mcp.resetMcpThrottle();
   dbMod.db().prepare("DELETE FROM mcp_oauth_clients").run();
   dbMod.db().prepare("DELETE FROM mcp_oauth_tokens").run();
@@ -335,11 +334,11 @@ describe("secret rotation revokes issued OAuth tokens", () => {
     expect(mcp.checkMcpAuth(`Bearer ${access}`)).toBe("disabled");
   });
 
-  // Codex P2 on #142: the migration NULLs secret_hash for pre-existing rows, so
-  // a plain deploy must NOT log the user's current connector out.
-  it("adopts a legacy NULL-secret token into the current secret (survives a plain deploy)", () => {
-    // Simulate a token issued before the secret-binding migration.
+  it("rejects a legacy NULL-secret token rather than binding it to a rotated secret", () => {
+    // A pre-secret_hash token cannot be safely associated with the current
+    // MCP_AUTH_TOKEN. Treat it as revoked; reconnecting is required.
     const legacy = "legacy-access-token-preexisting-0001";
+    const legacyRefresh = "legacy-refresh-token-preexisting-0001";
     const nowSec = Math.floor(Date.now() / 1000);
     dbMod
       .db()
@@ -347,15 +346,18 @@ describe("secret rotation revokes issued OAuth tokens", () => {
         `INSERT INTO mcp_oauth_tokens(token_hash, kind, client_id, secret_hash, expires_at) VALUES(?,?,?,?,?)`
       )
       .run(sha256hex(legacy), "access", "mcpc_legacy", null, nowSec + 99999);
+    dbMod
+      .db()
+      .prepare(
+        `INSERT INTO mcp_oauth_tokens(token_hash, kind, client_id, secret_hash, expires_at) VALUES(?,?,?,?,?)`
+      )
+      .run(sha256hex(legacyRefresh), "refresh", "mcpc_legacy", null, null);
 
-    // Same secret still configured (a normal deploy) → adopted + valid, not
-    // rejected for having a NULL secret.
-    expect(mcp.checkMcpAuth(`Bearer ${legacy}`)).toBe("ok");
+    expect(mcp.checkMcpAuth(`Bearer ${legacy}`)).toBe("unauthorized");
+    expect(oauth.refreshAccessToken(legacyRefresh, "mcpc_legacy")).toBeNull();
 
-    // Adoption bound it to the current secret, so a later rotation still
-    // revokes it (P1 preserved — a legacy token isn't a permanent bypass).
+    // A later secret rotation must not make this token valid either.
     process.env.MCP_AUTH_TOKEN = "different-rotated-secret-000000000";
-    oauth.resetLegacyAdoption();
     expect(mcp.checkMcpAuth(`Bearer ${legacy}`)).toBe("unauthorized");
   });
 });

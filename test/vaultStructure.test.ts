@@ -106,13 +106,13 @@ describe("buildEntityIndexNote", () => {
     expect(md).toContain("[[Anna]] — 1 day");
   });
 
-  it("labels a conversation/reflection-only entity (0 days) distinctly", () => {
+  it("labels an exported-note-only entity (0 days) distinctly", () => {
     const md = buildEntityIndexNote({
       kind: "person",
       entries: [{ name: "Chat Friend", days: 0 }],
       exportedAt: "",
     });
-    expect(md).toContain("[[Chat Friend]] — from conversations");
+    expect(md).toContain("[[Chat Friend]] — from exported notes");
     expect(md).not.toContain("0 days");
   });
 

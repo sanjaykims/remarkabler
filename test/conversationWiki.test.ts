@@ -89,22 +89,31 @@ describe("saveExportedConversation (upsert, add-only)", () => {
     expect(row.filed_at).toBeNull();
   });
 
-  it("re-exporting the same conversation_id UPDATES one record and re-files", () => {
+  it("re-exporting the same conversation_id UPDATES one record and re-files/re-links", () => {
     cw.saveExportedConversation({ content: "turn 1", conversationId: "sess-1" });
     cw.markConversationsFiled(["sess-1"]); // simulate it was filed
+    cw.markConversationsLinked(["sess-1"]); // and linked by the librarian
     expect(cw.unfiledConversationCount()).toBe(0);
+    expect(cw.listUnlinkedConversations().map((r) => r.conversation_key)).not.toContain(
+      "sess-1"
+    );
 
     // Growing conversation re-exported with the same id → same row, new content,
-    // filed_at cleared so it re-files.
+    // filed_at + linked_at cleared so it re-files and gets re-linked.
     cw.saveExportedConversation({ content: "turn 1\nturn 2", conversationId: "sess-1" });
-    const rows = dbMod.db().prepare("SELECT content, filed_at FROM mcp_conversations").all() as Array<{
+    const rows = dbMod.db().prepare("SELECT content, filed_at, linked_at FROM mcp_conversations").all() as Array<{
       content: string;
       filed_at: string | null;
+      linked_at: string | null;
     }>;
     expect(rows.length).toBe(1); // ONE record, not two
     expect(rows[0].content).toBe("turn 1\nturn 2");
     expect(rows[0].filed_at).toBeNull();
+    expect(rows[0].linked_at).toBeNull();
     expect(cw.unfiledConversationCount()).toBe(1);
+    expect(cw.listUnlinkedConversations().map((r) => r.conversation_key)).toContain(
+      "sess-1"
+    );
   });
 });
 

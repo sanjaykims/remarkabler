@@ -8,6 +8,7 @@ import {
 } from "./notes";
 import { allEntityWikiRows } from "./entityWiki";
 import { allConversationNotesRows } from "./conversationEntities";
+import { allRelationshipRows } from "./entityRelationships";
 import { allConversationFileNames } from "./conversationWiki";
 import { allReflectionFileNames } from "./reflectionWiki";
 import { allDecisionFileNames } from "./decisionWiki";
@@ -173,7 +174,7 @@ export function renderDiaryDayFiles(): Map<string, string> {
 }
 
 // Compute the full EntityStub[] (one per person/place/project) from the
-// diary walk + conversation/reflection tags — the shared source of truth for
+// diary walk + conversation/reflection/decision tags — the shared source of truth for
 // both the stub notes (renderEntityStubFiles) and the entity index notes
 // (renderVaultStructureFiles), so an entity's day count is identical in both.
 export function collectEntityStubs(): EntityStub[] {
@@ -219,22 +220,86 @@ export function collectEntityStubs(): EntityStub[] {
     }
   }
 
-  // Entities that only ever appear on a librarian-tagged conversation or
-  // reflection page (lib/entityTagging.ts / lib/conversationEntities.ts's
-  // tag_conversation_entities / lib/reflectionEntities.ts's
-  // tagReflectionEntities) don't appear in `acc` at all — the diary walk
-  // above only ever sees `rows` from fetchDiaryData, which deliberately
-  // EXCLUDES both synthetic notebooks (their pages aren't real diary
-  // entries). Unlike that exclusion, stub generation is meant to stay
-  // inclusive of conversation/reflection-tagged entities (see the
+  // Entities that only ever appear on a librarian-tagged conversation,
+  // reflection, or decision page (lib/entityTagging.ts /
+  // lib/conversationEntities.ts's tag_conversation_entities /
+  // lib/reflectionEntities.ts's tagReflectionEntities /
+  // lib/decisionEntities.ts's tagDecisionEntities) don't appear in `acc` at all
+  // — the diary walk above only ever sees `rows` from fetchDiaryData, which
+  // deliberately EXCLUDES those synthetic notebooks (their pages aren't real
+  // diary entries). Unlike that exclusion, stub generation is meant to stay
+  // inclusive of conversation/reflection/decision-tagged entities (see the
   // notebook-exclusion table in the design), so add a bare entry for
   // anything tagged there — canonical-name resolution reuses the same
   // fetchCanonicalEntityNames() the diary walk already relies on, so a
-  // conversation/reflection-only tag and a diary mention of the same person
-  // converge on one casing/stub. This same pass also builds the direct
-  // back-links to the tagged note itself (Part C's "## Conversations &
-  // reflections" section) — one query, not two.
+  // conversation/reflection/decision-only tag and a diary mention of the same
+  // person converge on one casing/stub. This same pass also builds the direct
+  // back-links to the tagged note itself (Phase C's "## Related notes" section)
+  // — one query, not two.
   const canonicalNames = fetchCanonicalEntityNames();
+  const relationshipsByKey = new Map<
+    string,
+    Array<{ predicate: string; otherName: string; direction: "out" | "in" }>
+  >();
+  const seenRelationshipsByKey = new Map<string, Set<string>>();
+  const addRelationship = (
+    key: string,
+    rel: { predicate: string; otherName: string; direction: "out" | "in" }
+  ) => {
+    let seen = seenRelationshipsByKey.get(key);
+    if (!seen) {
+      seen = new Set();
+      seenRelationshipsByKey.set(key, seen);
+    }
+    const dedupeKey = `${rel.direction}\0${rel.predicate}\0${rel.otherName}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    let list = relationshipsByKey.get(key);
+    if (!list) {
+      list = [];
+      relationshipsByKey.set(key, list);
+    }
+    list.push(rel);
+  };
+
+  for (const r of allRelationshipRows()) {
+    const subjectName = sanitizeEntityName(
+      canonicalNames.get(`${r.subject_kind} ${r.subject_norm}`) ?? r.subject_name
+    );
+    const objectName = sanitizeEntityName(
+      canonicalNames.get(`${r.object_kind} ${r.object_norm}`) ?? r.object_name
+    );
+    if (!subjectName || !objectName) continue;
+    const subjectKey = `${r.subject_kind}\0${subjectName}`;
+    const objectKey = `${r.object_kind}\0${objectName}`;
+    if (!acc.has(subjectKey)) {
+      acc.set(subjectKey, {
+        kind: r.subject_kind,
+        name: subjectName,
+        dates: new Set(),
+        undated: false,
+      });
+    }
+    if (!acc.has(objectKey)) {
+      acc.set(objectKey, {
+        kind: r.object_kind,
+        name: objectName,
+        dates: new Set(),
+        undated: false,
+      });
+    }
+    addRelationship(subjectKey, {
+      predicate: r.predicate,
+      otherName: objectName,
+      direction: "out",
+    });
+    addRelationship(objectKey, {
+      predicate: r.predicate,
+      otherName: subjectName,
+      direction: "in",
+    });
+  }
+
   const fileNamesByNotebook: Record<string, Map<string, string>> = {
     [CONVERSATIONS_NOTEBOOK_ID]: allConversationFileNames(),
     [REFLECTIONS_NOTEBOOK_ID]: allReflectionFileNames(),
@@ -315,6 +380,7 @@ export function collectEntityStubs(): EntityStub[] {
       summary: summaryByKey.get(`${a.kind}|${a.name}`) ?? null,
       conversationNotes: notesByKey.get(`${a.kind}|${a.name}`) ?? null,
       relatedNoteLinks: relatedNoteLinks ? [...relatedNoteLinks].sort() : undefined,
+      relationships: relationshipsByKey.get(`${a.kind}\0${a.name}`),
     };
   });
   stubs.sort((x, y) => x.kind.localeCompare(y.kind) || x.name.localeCompare(y.name));
@@ -326,6 +392,14 @@ export function collectEntityStubs(): EntityStub[] {
 // carry-forward so an entity's day list matches exactly where it's mentioned.
 export function renderEntityStubFiles(): Map<string, string> {
   return buildEntityStubFiles({ stubs: collectEntityStubs(), exportedAt: fmtExportedAt() });
+}
+
+// Current entity-stub paths after all diary tags, conversation/reflection/decision
+// tags, librarian notes, and typed relationships are applied. Used by
+// incremental export paths that need to distinguish "rewrite this touched
+// stub" from "delete this now-orphaned touched stub".
+export function currentEntityStubFileNames(): string[] {
+  return collectEntityStubs().map((stub) => entityStubFileName(stub.kind, stub.name));
 }
 
 // The fixed vault-root "second brain" note names, so the incremental Dropbox
@@ -504,9 +578,8 @@ export function affectedEntityStubFileNames(notebookId: string): string[] {
  */
 export function affectedDayFileNames(notebookId: string): string[] {
   // None of the three synthetic notebooks produce day files — discipline
-  // never has, and mcp-conversations/mcp-reflections pages each get their
-  // own note (renderConversationNote/renderReflectionNote) instead, per the
-  // fetchDiaryData exclusion above.
+  // never has, and mcp-conversations/mcp-reflections/mcp-decisions pages each
+  // get their own note instead, per the fetchDiaryData exclusion above.
   if (
     notebookId === DISCIPLINE_ID ||
     notebookId === CONVERSATIONS_NOTEBOOK_ID ||

@@ -14,12 +14,22 @@ import { saveDecision, MAX_DECISION_CHARS } from "@/lib/decisionWiki";
 import { saveChatDiaryEntry, MAX_DIARY_ENTRY_CHARS } from "@/lib/chatDiary";
 import {
   wikiLinkingEnabled,
+  resolveConversationEntityName,
   tagConversationEntities,
   updateConversationNotes,
   recordLibrarianHeartbeat,
   getCombinedEntityWiki,
   MAX_ENTITY_NOTES_CHARS,
 } from "@/lib/conversationEntities";
+import {
+  getRelationshipsFor,
+  relateEntities,
+  PREDICATES,
+} from "@/lib/entityRelationships";
+import {
+  currentEntityStubFileNames,
+  entityStubRelPathForName,
+} from "@/lib/diaryExportDb";
 import { isValidAccessToken } from "@/lib/mcpOauth";
 import { CONVERSATIONS_NOTEBOOK_ID } from "@/lib/notes";
 
@@ -303,7 +313,7 @@ const DIARY_TOOL: McpToolDef = {
 // who/what a conversation mentions, and keeping its own notes about an entity
 // SEPARATE from the in-app Claude-composed diary bio (entity_wiki.summary), so
 // the two authors can never clobber each other (see lib/conversationEntities.ts).
-// All six gate behind ONE flag: OFF by default keeps the endpoint exactly as
+// All seven gate behind ONE flag: OFF by default keeps the endpoint exactly as
 // read-only/private as before this feature existed — including the read-back
 // tool, since it exposes full conversation content the endpoint could not
 // previously return. Same discipline as export_conversation throughout: the
@@ -349,8 +359,9 @@ const GET_ENTITY_WIKI_TOOL: McpToolDef = {
   description:
     "Look up what's already recorded about a person/place/project before you " +
     "add to it — the in-app diary-written bio AND your own prior conversation " +
-    "notes for that same entity. Call this before update_entity_conversation_notes " +
-    "so you append/revise instead of duplicating what's already there.",
+    "notes for that same entity, plus known typed relationships. Call this " +
+    "before update_entity_conversation_notes or relate_entities so you " +
+    "append/revise instead of duplicating what's already there.",
   inputSchema: {
     type: "object",
     properties: {
@@ -389,6 +400,46 @@ const TAG_ENTITIES_TOOL: McpToolDef = {
       },
     },
     required: ["conversation_key", "entities"],
+  },
+};
+
+export const RELATE_TOOL_NAME = "relate_entities";
+const RELATE_TOOL: McpToolDef = {
+  name: RELATE_TOOL_NAME,
+  description:
+    "Record how people/places/projects mentioned in a conversation relate — " +
+    "for example subject 'Jin' (person) works_at object 'Samsung' (project). " +
+    "Requires the conversation_key from export_conversation. Re-calling with " +
+    "the same key REPLACES that conversation's relationships, so send the full " +
+    "set; an empty list retracts them. Call get_entity_wiki first to see " +
+    "what's already recorded.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      conversation_key: { type: "string" },
+      relationships: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            subject_kind: { type: "string", enum: ["person", "place", "project"] },
+            subject_name: { type: "string" },
+            predicate: { type: "string", enum: Object.keys(PREDICATES) },
+            object_kind: { type: "string", enum: ["person", "place", "project"] },
+            object_name: { type: "string" },
+          },
+          required: [
+            "subject_kind",
+            "subject_name",
+            "predicate",
+            "object_kind",
+            "object_name",
+          ],
+        },
+        description: "Up to 40 relationship assertions. Can be empty to retract.",
+      },
+    },
+    required: ["conversation_key", "relationships"],
   },
 };
 
@@ -478,6 +529,19 @@ export function sensitiveToolsAllowed(): boolean {
   return process.env.MCP_ALLOW_SENSITIVE_TOOLS === "true";
 }
 
+async function refreshRelationshipStubs(stubPaths: string[]): Promise<void> {
+  const touched = [...new Set(stubPaths)];
+  if (touched.length === 0) return;
+  const current = new Set(currentEntityStubFileNames());
+  const existing = touched.filter((path) => current.has(path));
+  const stale = touched.filter((path) => !current.has(path));
+  const dropbox = await import("@/lib/dropbox");
+  await dropbox.maybeExportDiaryToDropbox({ onlyEntityStubs: existing });
+  if (stale.length > 0) {
+    await dropbox.deleteDiaryExportFiles(stale);
+  }
+}
+
 // Manual exclusions from env (comma-separated names) — operator's own list.
 export function excludedToolNames(): Set<string> {
   return new Set(
@@ -526,9 +590,11 @@ export function mcpToolList(): McpToolDef[] {
       ? " After saving, while you still have this conversation in mind: call " +
         "get_entity_wiki for anyone/anywhere/anything worth remembering it " +
         "mentioned, then tag_conversation_entities (and update_entity_" +
-        "conversation_notes if there's something new worth keeping). Doing " +
-        "this now, while the content is already in front of you, is much " +
-        "cheaper than a separate pass re-reading it later."
+        "conversation_notes if there's something new worth keeping), and call " +
+        "relate_entities if the conversation reveals how two named people, " +
+        "places, or projects relate. Doing this now, while the content is " +
+        "already in front of you, is much cheaper than a separate pass " +
+        "re-reading it later."
       : "";
     tools.push({ ...EXPORT_TOOL, description: EXPORT_TOOL.description + nudge });
   }
@@ -568,7 +634,8 @@ export function mcpToolList(): McpToolDef[] {
   if (diaryWriteEnabled() && !excluded.has(DIARY_TOOL_NAME)) {
     tools.push(DIARY_TOOL);
   }
-  // The librarian tools (Phase C) — all six gate behind one flag, including
+  // The librarian tools (Phase C + relationship enrichment) — all seven gate
+  // behind one flag, including
   // the reads, since get_conversation exposes full conversation content the
   // endpoint could not previously return at all.
   if (librarianToolsEnabled()) {
@@ -577,6 +644,7 @@ export function mcpToolList(): McpToolDef[] {
       [GET_CONVERSATION_TOOL_NAME, GET_CONVERSATION_TOOL],
       [GET_ENTITY_WIKI_TOOL_NAME, GET_ENTITY_WIKI_TOOL],
       [TAG_ENTITIES_TOOL_NAME, TAG_ENTITIES_TOOL],
+      [RELATE_TOOL_NAME, RELATE_TOOL],
       [UPDATE_NOTES_TOOL_NAME, UPDATE_NOTES_TOOL],
       [HEARTBEAT_TOOL_NAME, HEARTBEAT_TOOL],
     ] as const) {
@@ -771,6 +839,7 @@ export async function callMcpTool(
     GET_CONVERSATION_TOOL_NAME,
     GET_ENTITY_WIKI_TOOL_NAME,
     TAG_ENTITIES_TOOL_NAME,
+    RELATE_TOOL_NAME,
     UPDATE_NOTES_TOOL_NAME,
     HEARTBEAT_TOOL_NAME,
   ];
@@ -802,7 +871,12 @@ export async function callMcpTool(
       if (!["person", "place", "project"].includes(kind) || !entityName) {
         return JSON.stringify({ error: "kind (person|place|project) and name are required." });
       }
-      return JSON.stringify(getCombinedEntityWiki(kind, entityName));
+      const combined = getCombinedEntityWiki(kind, entityName);
+      const resolved = resolveConversationEntityName(kind, entityName);
+      return JSON.stringify({
+        ...combined,
+        relationships: getRelationshipsFor(kind, resolved.norm),
+      });
     }
     if (name === TAG_ENTITIES_TOOL_NAME) {
       const conversationKey =
@@ -827,6 +901,34 @@ export async function callMcpTool(
           .catch((e) =>
             console.warn("[mcp] entity-stub re-export failed:", (e as Error).message)
           );
+      }
+      return JSON.stringify(result);
+    }
+    if (name === RELATE_TOOL_NAME) {
+      const conversationKey =
+        typeof a.conversation_key === "string" ? a.conversation_key : "";
+      if (!conversationKey) {
+        return JSON.stringify({ error: "conversation_key is required." });
+      }
+      const relationships = Array.isArray(a.relationships)
+        ? (a.relationships as Array<Record<string, unknown>>).map((r) => ({
+            subject_kind:
+              typeof r?.subject_kind === "string" ? r.subject_kind : "",
+            subject_name:
+              typeof r?.subject_name === "string" ? r.subject_name : "",
+            predicate: typeof r?.predicate === "string" ? r.predicate : "",
+            object_kind: typeof r?.object_kind === "string" ? r.object_kind : "",
+            object_name: typeof r?.object_name === "string" ? r.object_name : "",
+          }))
+        : [];
+      const result = relateEntities({ conversationKey, relationships });
+      if (!("error" in result) && result.endpoints.length > 0) {
+        const stubPaths = result.endpoints.map((e) =>
+          entityStubRelPathForName(e.kind, e.name)
+        );
+        refreshRelationshipStubs(stubPaths).catch((e) =>
+          console.warn("[mcp] relationship-stub refresh failed:", (e as Error).message)
+        );
       }
       return JSON.stringify(result);
     }
