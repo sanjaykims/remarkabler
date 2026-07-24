@@ -58,7 +58,7 @@ and an accumulating record of "insights" about them. It's a long-horizon
 | `entityTagging.ts` | Guaranteed, APP-INITIATED entity-tagging for conversations/reflections/decisions, gated by `autoTagExportsEnabled()` (`MCP_AUTO_TAG_EXPORTS=true` AND `MCP_ALLOW_WIKI_LINKING=true` — layered, not peer). `autoTag*` call `extractTaggingEntities` on a bounded evenly-sampled slice (`sampleForTagging`), tag, then re-export the affected entity stubs; backstopped by `maybeAutoTagUnlinked*` in the sweep. Shared across all three content types on purpose (not folded into `conversationEntities.ts`). |
 | `entityPredicates.ts` / `entityRelationships.ts` | Controlled relationship predicates (`friend_of`, `works_at`, `lives_in`, etc.) + `relateEntities`: provenance-scoped replace by `conversation_key`, canonical endpoint resolution, two-direction reads for `get_entity_wiki`, and deduped rows for stub rendering. Never free-text predicates; never a blind global upsert. |
 | `entityWiki.ts` | The "life wiki": a deep Claude-written biographical profile per entity (`composeEntityWiki`), content-addressed by `source_hash` over its diary mentions, embedded atop the entity's Obsidian stub. `refreshEntityWiki`/`maybeRefreshEntityWiki` (opt-in via "Build life wiki", batched, in-flight guarded). |
-| `entityGraph.ts` / `entityMerge.ts` | Pure `computeRelatedEntities` (co-occurrence edges behind `related_entities`; distinct from typed `entity_relationships`); entity de-dup (`applyEntityAlias`/`mergeEntity`/`mergeEntitiesManually`/`dedupeAllEntities`, all keyed on `name_norm` so a merge is a pure data rewrite). `mergeEntity` must rewrite both `entry_entities` and `entity_relationships` endpoints in the same transaction. |
+| `entityGraph.ts` / `diaryGraph.ts` / `entityMerge.ts` | Pure `computeRelatedEntities` (co-occurrence edges behind `related_entities`; distinct from typed `entity_relationships`); `buildDiaryGraph` (DB-backed payload for `/graph`, combining diary days, exported notes, co-occurrence, typed relationships, and evidence while excluding Discipline); entity de-dup (`applyEntityAlias`/`mergeEntity`/`mergeEntitiesManually`/`dedupeAllEntities`, all keyed on `name_norm` so a merge is a pure data rewrite). `mergeEntity` must rewrite both `entry_entities` and `entity_relationships` endpoints in the same transaction. |
 | `diaryExport.ts` / `diaryExportDb.ts` | Diary→Markdown, Obsidian-native. Pure builders (`buildDiaryMarkdown`, `buildDayFiles`, entity **stub notes**, and the **vault-structure "second brain" notes** `Home.md`/`People|Places|Projects.md`/`Profile.md`) + DB renderers (`renderDiaryDayFiles`, `renderEntityStubFiles`, `renderVaultStructureFiles`/`vaultStructureFileNames`). Entity mentions render as `[[wikilinks]]`; stub notes carry `## Relationships` for typed assertions plus `## Related notes` back-links to tagged conversations/reflections/decisions (the reverse of those notes' own `## Connects to`). Obsidian connects nodes; labels live in note bodies, not graph-edge labels. Remarkabler is the SOLE deterministic writer of this vault (see CLAUDE.md). |
 | `notebookDedup.ts` / `notebookDedupDb.ts` | Flags old (Dropbox/manual) notebooks whose diary dates are already covered by a reMarkable-cloud import — `/notebooks` "Possible duplicates", manual delete only. |
 | `mcpOauth.ts` | Minimal OAuth 2.1 authorization server so the claude.ai connector (whose web UI has no static-header field) can complete its OAuth handshake. Metadata (RFC 9728 / 8414), dynamic client registration, PKCE-S256 authorize+token, opaque tokens stored HASHED. The `/authorize` consent screen reuses `MCP_AUTH_TOKEN` as the password (the security anchor). Endpoints under `app/api/mcp/oauth/*`; well-known paths via `next.config.mjs` rewrites. |
@@ -81,7 +81,8 @@ and an accumulating record of "insights" about them. It's a long-horizon
 ### `app/` — UI + API
 - Pages: `/` (dashboard), `/notebooks`, `/chat`, `/insights`, `/memory`,
   `/mind` (heatmap, theme cloud, mood timeline, 3D embedding map —
-  `app/mind/Map3D.tsx`), `/usage` (cost calendar).
+  `app/mind/Map3D.tsx`), `/graph` (interactive diary/entity relationship
+  map), `/usage` (cost calendar).
 - `app/api/*` — one route per feature. All data-reading routes set
   `runtime = "nodejs"` and `dynamic = "force-dynamic"`. Notable groups:
   - `notebooks`, `chat` (POST + GET + DELETE), `chat/attachment/[id]`,
@@ -89,7 +90,7 @@ and an accumulating record of "insights" about them. It's a long-horizon
     soft delete), `chat/memories/retry/[batchId]` (POST reset stuck
     batch), `chat/memories/backfill-all` (POST chunked re-process, with
     `?reset=true` for destructive clean re-run).
-  - `insights`, `usage`, `memory` (the profile, not chat memory), `diary`.
+  - `insights`, `usage`, `memory` (the profile, not chat memory), `diary`, `graph`.
   - `mind` (+ `mind/analyze`, `mind/reanalyze`, `mind/axis-labels`,
     `mind/reparse-dates`, `mind/merge-entities` = Claude-driven entity dedup,
     `mind/build-wiki` = batched life-wiki build), `embeddings/status`.

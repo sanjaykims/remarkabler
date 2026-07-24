@@ -14,6 +14,7 @@ const LINKS = [
   { href: "/notebooks", label: "Notebooks" },
   { href: "/chat", label: "Chat" },
   { href: "/mind", label: "Mind" },
+  { href: "/graph", label: "Graph" },
   { href: "/insights", label: "Insights" },
   { href: "/memory", label: "Memory" },
   { href: "/usage", label: "Cost" },

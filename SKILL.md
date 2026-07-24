@@ -1,6 +1,6 @@
 ---
 name: remarkabler
-description: Self-hosted Next.js app that ingests reMarkable tablet PDFs, OCRs every handwritten page with Claude, builds an evolving profile of the owner, and surfaces it via chat (with durable cross-session memory), reflections, a 3D /mind embedding map, an Insights record, a cost calendar, and weekly off-site backup. Long-horizon personal record, single-user. Use this skill whenever the working directory is `remarkable-feed`.
+description: Self-hosted Next.js app that ingests reMarkable tablet PDFs, OCRs every handwritten page with Claude, builds an evolving profile of the owner, and surfaces it via chat (with durable cross-session memory), reflections, a 3D /mind embedding map, a native /graph entity relationship map, an Insights record, a cost calendar, and weekly off-site backup. Long-horizon personal record, single-user. Use this skill whenever the working directory is `remarkable-feed`.
 ---
 
 # Remarkabler — one-page project index
@@ -8,8 +8,8 @@ description: Self-hosted Next.js app that ingests reMarkable tablet PDFs, OCRs e
 A long-horizon (5–10 year) personal record. Owner exports a notebook as PDF
 from their reMarkable, uploads (or auto-ingests via Dropbox), and Claude
 transcribes every handwritten page. The owner then chats over their notes,
-generates insights, watches a 3D map of their themes, and accumulates a
-profile Claude continuously refines.
+generates insights, watches a 3D map of their themes plus a native entity
+relationship graph, and accumulates a profile Claude continuously refines.
 
 Companion docs — read in order if any is unfamiliar:
 
@@ -50,6 +50,7 @@ Companion docs — read in order if any is unfamiliar:
 | `profile.ts` | The evolving "memory of you" (versioned `profile` table). |
 | `mind.ts` | `/mind` analytics: heatmap, theme cloud, sentiment timeline, 3D embedding map. Shared PCA + persisted axis labels. The `analyzePending` in-flight-guard pattern is reused by `chatMemory`. Excludes discipline + all three synthetic notebooks. |
 | `entityGraph.ts` | Pure `computeRelatedEntities` — ranks entities that share diary days with a target (the co-occurrence graph behind `related_entities` + the Obsidian graph). |
+| `diaryGraph.ts` | DB-backed graph payload for `/graph`: canonical entities, diary days, exported conversations/reflections/decisions, co-occurrence edges, typed `entity_relationships`, source evidence, and Discipline exclusion. |
 | `entityMerge.ts` | Entity de-dup: `applyEntityAlias` (fold on insert), `mergeEntity`/`mergeEntitiesManually`, the Claude-driven `dedupeAllEntities`. Keyed on `name_norm`, so a merge is a data rewrite with no read-path changes. |
 | `entityWiki.ts` | The "life wiki": a deep Claude-written bio per entity (`composeEntityWiki`), content-addressed by `source_hash`, embedded atop the entity's Obsidian stub. `refreshEntityWiki`/`maybeRefreshEntityWiki` (opt-in, batched). |
 | `mcp.ts` | MCP bridge — derives the remote tool list from `CHAT_TOOLS` + MCP-only reads (`get_profile`/`recall_memories`/`get_guidance`), the write tools, and fail-closed bearer auth. See the MCP route below. |
@@ -110,7 +111,7 @@ Companion docs — read in order if any is unfamiliar:
   `chat/attachment/[id]`, `chat/memories` (GET list+status), `chat/memories/[id]` (DELETE soft-delete),
   `chat/memories/retry/[batchId]` (POST reset stuck batch),
   `chat/memories/backfill-all` (POST chunked re-process, `?reset=true` for destructive clean re-run).
-- **Notes:** `notebooks`, `notebooks/[id]/pages`, `diary`.
+- **Notes:** `notebooks`, `notebooks/[id]/pages`, `diary`, `graph`.
 - **Memory/profile:** `memory` (the `/memory` page's profile editor — *not* chat memory).
 - **Insights:** `insights`.
 - **Mind:** `mind`, `mind/analyze`, `mind/reanalyze`, `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities` (Claude-driven entity dedup), `mind/build-wiki` (batched life-wiki build).
@@ -177,6 +178,7 @@ Companion docs — read in order if any is unfamiliar:
 | `/chat` | Conversational chat with Claude over the profile. Image/PDF attachments. Voice in/out (Android). Clear button (= archive + chat-memory extraction). Tools include `top_entities` (aggregate "who/where/what do I mention most?") and `pages_for_entity` (drill down to actual pages for a named entity). |
 | `/insights` | History of reflections. "Generate now" button (Opus). |
 | `/mind` | Heatmap (6 months) + theme cloud + "Who, where, what" (top people/places/projects) + sentiment timeline + 3D embedding map (`Map3D.tsx`). Axis labels under the map. "Re-analyse" / "Re-label" / "Merge duplicate names" / "Merge specific names" / "Build life wiki" buttons. |
+| `/graph` | Interactive native diary graph. Renders entities, diary days, exported Claude notes, co-occurrence links, typed relationships, filters/search, highlighting, and source evidence. |
 | `/memory` | Profile editor (the textarea) + Discipline, Location, OwnTracks, Models, Voyage status, Dropbox (+ vault auto-export toggle), Backup, reMarkable import/auto-sync, **Chat memory** (collapsible), Librarian heartbeat status, Export sections. |
 | `/usage` | Cost calendar (daily/monthly), feature breakdown. KST timezone. |
 
@@ -275,7 +277,7 @@ attribute cost to features and surfaces.
 9. **Behind Railway's proxy, `req.url` reports `localhost:8080`.** Never build absolute URLs from it.
 10. **One throttled `runMaintenanceSweep`** drives every background job.
 11. **The MCP endpoint is read-only by default and fails closed.** Every write tool is OFF behind its own flag, deterministic-destination, size-capped; a missing/short `MCP_AUTH_TOKEN` returns 503 (never "open"); sensitive tools stay excluded unless `MCP_ALLOW_SENSITIVE_TOOLS=true`.
-12. **Synthetic notebooks excluded from analytics, included in the entity graph; Remarkabler is the SOLE deterministic writer of its vault.** `CHAT_DIARY_NOTEBOOK_ID` is the one synthetic-notebook exception — it's REAL diary and stays on every list.
+12. **Synthetic notebooks excluded from analytics, included in entity stubs and `/graph`; Remarkabler is the SOLE deterministic writer of its vault.** `CHAT_DIARY_NOTEBOOK_ID` is the one synthetic-notebook exception — it's REAL diary and stays on every list.
 13. **Every data API route gates behind the app lock — `test/authGuard.test.ts` enforces it.** There's no `middleware.ts`; each route calls `isAuthenticated()`/`requireAuth()` (`lib/auth.ts`) and the layout gates the UI. Only login + the MCP bearer endpoint + the OAuth handshake (+ `csp-report`) are on the PUBLIC allowlist. Lock-off (`APP_PASSCODE` unset) is loud now: boot warning + red in-app banner. Baseline hardening headers (HSTS/COOP/CORP/etc.) live in `next.config.mjs`.
 
 ## Known intentional limits
@@ -317,15 +319,15 @@ See `docs/graphify-phase-a.md` for the exact commands and ignored local cache
 files.
 
 The **one piece of Graphify's idea that fit the diary product itself** —
-structured
-entities (people / places / projects) for aggregate queries Claude
-can't answer cheaply by grepping — is built native here as the
-**entities layer**: `analyzeEntryContent` extracts entities alongside
-themes / sentiment / summary, persists them to `entry_entities`, and
-exposes the `top_entities` chat tool for aggregate queries. Future sessions:
-use Graphify for developer navigation only. If new diary structural-retrieval
-needs come up, extend the native entities layer or add a focused chat tool —
-don't route user diary queries through the external graph engine.
+structured entities (people / places / projects) for aggregate queries Claude
+can't answer cheaply by grepping — is built native here as the **entities
+layer**: `analyzeEntryContent` extracts entities alongside themes / sentiment /
+summary, persists them to `entry_entities`, exposes the `top_entities` chat
+tool for aggregate queries, and now renders `/graph` via `lib/diaryGraph.ts`.
+Future sessions: use Graphify for developer navigation only. If new diary
+structural-retrieval needs come up, extend the native entities layer or add a
+focused chat tool — don't route user diary queries through the external graph
+engine.
 
 ## Working with the owner
 

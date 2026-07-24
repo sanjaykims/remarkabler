@@ -107,6 +107,10 @@ Remarkabler continuously writes your diary out as an **Obsidian-native vault**:
 - **Conversation archives, Reflections, and Decisions** (saved via the connector
   below) filed into their own vault folders and linked into the same graph.
 
+The in-app **Graph** tab renders the same native entity system directly:
+diary days, exported Claude notes, co-occurrence links, and typed relationships
+with their evidence.
+
 ## Chat with your diary from your Claude subscription (optional)
 
 Set `MCP_AUTH_TOKEN` and Remarkabler exposes a **read-only MCP endpoint** at
@@ -197,7 +201,7 @@ your existing plan instead of per-token billing.
 - `lib/profile.ts` — the versioned "profile of you".
 - `lib/embeddings.ts` — Voyage embeddings for semantic search + the `/mind` map.
 - `lib/chatTools.ts` · `lib/chatMemory.ts` — the tools chat calls on demand + the durable chat-memory layer.
-- `lib/entityWiki.ts` · `lib/entityGraph.ts` · `lib/entityMerge.ts` — the "life wiki" bios, the co-occurrence graph, and entity de-duplication.
+- `lib/entityWiki.ts` · `lib/entityGraph.ts` · `lib/diaryGraph.ts` · `lib/entityMerge.ts` — the "life wiki" bios, co-occurrence helpers, the in-app Graph payload, and entity de-duplication.
 - `lib/diaryExport.ts` · `lib/diaryExportDb.ts` — the Obsidian vault renderer (day files, entity stubs, Home/index/Profile notes).
 - `lib/dropbox.ts` — Dropbox auto-ingest + the vault export.
 - `lib/remarkableCloud.ts` · `lib/remarkableSync.ts` · `lib/rmRender.ts` — the reMarkable-cloud secondary source (pair, download, render, zero-tap sync).
@@ -205,8 +209,8 @@ your existing plan instead of per-token billing.
 - `lib/conversationWiki.ts` · `lib/reflectionWiki.ts` · `lib/decisionWiki.ts` (+ their `*Entities.ts`) — exported conversations, reflections, and decisions, filed into the vault and linked into the graph.
 - `lib/owntracks.ts` · `lib/location.ts` — automatic OwnTracks route + the one-tap "Log my location" path.
 - `lib/auth.ts` · `lib/webauthn.ts` — session cookie + passkey lock.
-- `app/api/*` — routes for each feature (including `/api/mcp` + `/api/mcp/oauth/*`).
-- `app/*` — the pages: Dashboard, Notebooks, Chat, Insights, **Mind**, Memory, Cost.
+- `app/api/*` — routes for each feature (including `/api/graph`, `/api/mcp` + `/api/mcp/oauth/*`).
+- `app/*` — the pages: Dashboard, Notebooks, Chat, Insights, **Mind**, **Graph**, Memory, Cost.
 
 A two-page visual overview lives in
 [`remarkabler-architecture.pdf`](./remarkabler-architecture.pdf); the

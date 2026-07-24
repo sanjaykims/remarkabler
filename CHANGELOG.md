@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-07-25 (Diary Graph: native relationship map)
+
+Added a first-class in-app graph for the diary's own entity system.
+
+- **New graph data layer.** `lib/diaryGraph.ts` assembles a compact graph from
+  canonical people/places/projects, real diary days, exported
+  conversations/reflections/decisions, co-occurrence links, and typed
+  relationship assertions with source evidence. Discipline content stays
+  excluded; chat-diary entries stay included as real diary.
+- **New locked graph API and UI.** `/api/graph` returns the graph payload behind
+  the app lock, and `/graph` renders an interactive SVG workspace with search,
+  node/edge filters, relationship labels, highlighting, and an evidence
+  inspector.
+- **Navigation and tests.** Added the Graph tab and `test/diaryGraph.test.ts`
+  covering diary-day links, synthetic conversation evidence, relationship-only
+  endpoints, and discipline exclusion.
+
 ## 2026-07-25 (Graphify Phase A: code-only repository graph)
 
 Finalized Phase A as a committed, inspectable Graphify developer artifact.
