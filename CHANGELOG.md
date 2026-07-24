@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-25 (Diary Graph mobile framing)
+
+Fixed the `/graph` mobile map framing so the SVG viewBox fits the visible node
+bounds with padding instead of using the fixed desktop coordinate system. This
+keeps dense graphs from being clipped off the right edge on phones. The graph
+timestamp also now renders in a deterministic KST format to avoid hydration
+mismatch warnings.
+
 ## 2026-07-25 (Diary Graph: native relationship map)
 
 Added a first-class in-app graph for the diary's own entity system.

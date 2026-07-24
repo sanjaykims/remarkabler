@@ -21,6 +21,13 @@ type LayoutNode = DiaryGraphNode & {
   r: number;
 };
 
+type GraphViewBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 const WIDTH = 1180;
 const HEIGHT = 760;
 
@@ -216,9 +223,59 @@ function midpoint(source: LayoutNode, target: LayoutNode, edge: DiaryGraphEdge) 
   return { x: mx + (-dy / len) * bend, y: my + (dx / len) * bend };
 }
 
+function fitGraphViewBox(nodes: LayoutNode[]): GraphViewBox {
+  if (nodes.length === 0) {
+    return { x: 0, y: 0, width: WIDTH, height: HEIGHT };
+  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const node of nodes) {
+    const labelPad = node.type === "day" ? 18 : 44;
+    minX = Math.min(minX, node.x - node.r - labelPad);
+    maxX = Math.max(maxX, node.x + node.r + labelPad);
+    minY = Math.min(minY, node.y - node.r - labelPad);
+    maxY = Math.max(maxY, node.y + node.r + labelPad + 18);
+  }
+  const pad = 70;
+  minX -= pad;
+  minY -= pad;
+  maxX += pad;
+  maxY += pad;
+
+  // Keep the graph large enough that a few active filters don't over-zoom,
+  // but let dense mobile views center on the actual occupied bounds instead
+  // of the fixed desktop coordinate system.
+  const minWidth = 520;
+  const minHeight = 440;
+  let width = maxX - minX;
+  let height = maxY - minY;
+  if (width < minWidth) {
+    const extra = (minWidth - width) / 2;
+    minX -= extra;
+    width = minWidth;
+  }
+  if (height < minHeight) {
+    const extra = (minHeight - height) / 2;
+    minY -= extra;
+    height = minHeight;
+  }
+  return { x: minX, y: minY, width, height };
+}
+
 function metricLabel(value: number, total?: number): string {
   if (total && total > value) return `${value}/${total}`;
   return String(value);
+}
+
+function formatGeneratedAt(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return `${kst.toISOString().slice(0, 10)} ${kst
+    .toISOString()
+    .slice(11, 19)} KST`;
 }
 
 function ToggleButton({
@@ -590,6 +647,10 @@ export default function DiaryGraphClient({
     () => buildLayout(filtered.nodes, filtered.edges),
     [filtered.edges, filtered.nodes]
   );
+  const graphViewBox = useMemo(
+    () => fitGraphViewBox(layoutNodes),
+    [layoutNodes]
+  );
   const layoutById = useMemo(
     () => new Map(layoutNodes.map((node) => [node.id, node])),
     [layoutNodes]
@@ -650,6 +711,7 @@ export default function DiaryGraphClient({
     notes: NODE_COLORS.conversation,
     relationships: EDGE_COLORS.relationship,
   };
+  const generatedAtLabel = formatGeneratedAt(graph.generatedAt);
 
   return (
     <div className="relative left-1/2 w-screen max-w-[1520px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
@@ -663,7 +725,7 @@ export default function DiaryGraphClient({
         </div>
         <div className="flex items-center gap-2">
           <p className="font-mono text-[11px] text-slate-500">
-            {new Date(graph.generatedAt).toLocaleString()}
+            {generatedAtLabel}
           </p>
           <Button
             type="button"
@@ -798,10 +860,11 @@ export default function DiaryGraphClient({
               </div>
             ) : (
               <svg
-                viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+                viewBox={`${graphViewBox.x} ${graphViewBox.y} ${graphViewBox.width} ${graphViewBox.height}`}
+                preserveAspectRatio="xMidYMid meet"
                 role="img"
                 aria-label="Diary entity graph"
-                className="block h-[540px] w-full sm:h-[680px]"
+                className="block h-[72vh] min-h-[560px] w-full sm:h-[680px]"
               >
                 <defs>
                   <marker
