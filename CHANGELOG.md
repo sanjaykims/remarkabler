@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-07-25 (Graphify Phase A: code-only repository graph)
+
+Finalized Phase A as a committed, inspectable Graphify developer artifact.
+
+- **Generated a code-only Graphify snapshot.** `graphify-out/graph.json`,
+  `graphify-out/graph.html`, and `graphify-out/GRAPH_REPORT.md` were generated
+  with `graphify 0.9.25`, `--code-only`, and `--no-label`, so no docs/PDFs/images
+  were sent to an LLM and community labels remain deterministic placeholders.
+- **Added extraction hygiene.** `.graphifyignore` excludes generated folders,
+  local data, env files, binary/reference artifacts, and build output from the
+  crawl. `.gitignore` excludes Graphify cache/root/manifest internals that carry
+  local paths, mtimes, or cache state.
+- **Documented the repeatable workflow.** `docs/graphify-phase-a.md` records the
+  exact commands, snapshot stats, committed files, and intentionally ignored
+  files.
+
 ## 2026-07-25 (MCP Phase B/C completion: relationship lifecycle, re-linking, setup docs)
 
 Finished the remaining Phase B/C sharp edges around exported conversations and

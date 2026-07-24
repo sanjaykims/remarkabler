@@ -1,0 +1,30 @@
+# Keep Graphify's code-only pass focused on source we maintain.
+.git/
+.next/
+node_modules/
+out/
+tmp/
+data/
+data/files/
+design-system/
+graphify-out/
+.claude/skills/
+docs/reference/
+
+# Local secrets and generated build metadata.
+.env
+.env.*
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.tsbuildinfo
+next-env.d.ts
+
+# Binary/reference artifacts are intentionally skipped in the Phase A pilot.
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp

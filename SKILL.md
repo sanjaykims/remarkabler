@@ -288,13 +288,13 @@ attribute cost to features and surfaces.
 - PWA share target + voice input work on Android Chrome only.
 - ~5 second async-gap window after Clear before new chat memories surface. Acceptable for v1.
 
-## Evaluated and rejected: Graphify
+## Graphify Phase A
 
 [safishamsi/graphify](https://github.com/safishamsi/graphify) is a CLI +
 MCP server that builds a JSON knowledge graph from ingested files and
-exposes `query_graph` / `get_neighbors` / `shortest_path` tools to an
-agent. Evaluated 2026-06-19 for use in Remarkabler's chat, rejected for
-three reasons:
+exposes graph query/path/explain tools to an agent. It was originally evaluated
+2026-06-19 for use in Remarkabler's chat and rejected as a runtime diary feature
+for three reasons:
 
 1. **The core innovation is tree-sitter ASTs over code.** Diary text
    has no equivalent structural skeleton; for non-code content,
@@ -309,15 +309,23 @@ three reasons:
    Chat is already at ~$0.014/turn with caching — savings ceiling is
    maybe $0.50-1/month. Net loss after engineering + operational cost.
 
-The **one piece of Graphify's idea that did fit** — structured
+Phase A was finalized on 2026-07-25 as a **code-only developer artifact**, not
+as an app feature. The committed `graphify-out/` snapshot contains
+`graph.html`, `graph.json`, and `GRAPH_REPORT.md`, generated with
+`graphify extract . --code-only` and `graphify cluster-only . --no-label`.
+See `docs/graphify-phase-a.md` for the exact commands and ignored local cache
+files.
+
+The **one piece of Graphify's idea that fit the diary product itself** —
+structured
 entities (people / places / projects) for aggregate queries Claude
 can't answer cheaply by grepping — is built native here as the
 **entities layer**: `analyzeEntryContent` extracts entities alongside
 themes / sentiment / summary, persists them to `entry_entities`, and
-exposes the `top_entities` chat tool for aggregate queries. Future
-sessions: do not re-litigate the Graphify integration. If new
-structural-retrieval needs come up, extend the entities layer or add a
-focused chat tool — don't wholesale-import an external graph engine.
+exposes the `top_entities` chat tool for aggregate queries. Future sessions:
+use Graphify for developer navigation only. If new diary structural-retrieval
+needs come up, extend the native entities layer or add a focused chat tool —
+don't route user diary queries through the external graph engine.
 
 ## Working with the owner
 

@@ -10,6 +10,10 @@ data/*.db-shm
 data/*.db-wal
 data/files/
 design-system/
+graphify-out/.graphify_analysis.json
+graphify-out/.graphify_root
+graphify-out/cache/
+graphify-out/manifest.json
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
