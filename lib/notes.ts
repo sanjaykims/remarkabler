@@ -1199,6 +1199,11 @@ function getMaybeRunWeeklyBackup(): () => void {
  * each time.
  */
 export function runMaintenanceSweep(): void {
+  // The relationship-export race fix shipped after some relationship rows had
+  // already been written. Run this before the coarse maintenance throttle so a
+  // fresh deploy reconciles the vault immediately on boot.
+  maybeReconcileRelationshipExportRace();
+
   const now = Date.now();
   // In-memory check is the cheap fast path; consult the persisted timestamp
   // when the in-memory one looks "fresh" (i.e. just started — Railway can
@@ -1279,7 +1284,6 @@ export function runMaintenanceSweep(): void {
   // inline fire (from the MCP export tool) missed into the Obsidian vault.
   // No-op unless Dropbox export is on and there are unfiled conversations.
   try {
-    maybeReconcileRelationshipExportRace();
     void import("./dropbox")
       .then((m) => m.maybeExportConversationsToDropbox())
       .catch((e) =>
