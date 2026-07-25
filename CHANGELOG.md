@@ -9,6 +9,13 @@ one unscoped follow-up run after the active writer exits. This makes exported
 Obsidian entity stubs converge from fresh DB state instead of relying on a
 bounded retry budget that normal vault sizes can exceed.
 
+Added a one-time maintenance reconciliation for already-written relationship
+rows: on the next production boot/sweep, if typed relationships exist and the
+race-fix repair has not been marked complete, Remarkabler performs one full
+Dropbox diary/stub export using the normal exporter. This refreshes stale
+Jin/Minji-style relationship stubs without requiring a private MCP token in the
+operator shell.
+
 ## 2026-07-25 (Diary Graph mobile framing)
 
 Fixed the `/graph` mobile map framing so the SVG viewBox fits the visible node

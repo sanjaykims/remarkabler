@@ -396,6 +396,61 @@ let autoSyncingDiscipline = false;
 // the weekly location distill, weekly backup.
 const MAINTENANCE_INTERVAL_MS = 5 * 60 * 1000;
 let lastMaintenanceAt = 0;
+const RELATIONSHIP_EXPORT_RECONCILED_KEY =
+  "relationship_export_race_reconciled_at";
+const RELATIONSHIP_EXPORT_RECONCILE_ATTEMPT_KEY =
+  "relationship_export_race_reconcile_attempt_at";
+const RELATIONSHIP_EXPORT_RECONCILE_RETRY_MS = 6 * 60 * 60 * 1000;
+
+function maybeReconcileRelationshipExportRace(): void {
+  if (getSetting(RELATIONSHIP_EXPORT_RECONCILED_KEY)) return;
+
+  let relationshipCount = 0;
+  try {
+    relationshipCount = (
+      db()
+        .prepare(`SELECT COUNT(*) AS c FROM entity_relationships`)
+        .get() as { c: number }
+    ).c;
+  } catch {
+    return;
+  }
+
+  if (relationshipCount === 0) {
+    setSetting(RELATIONSHIP_EXPORT_RECONCILED_KEY, new Date().toISOString());
+    return;
+  }
+
+  const lastAttempt = Date.parse(
+    getSetting(RELATIONSHIP_EXPORT_RECONCILE_ATTEMPT_KEY) || ""
+  );
+  if (
+    Number.isFinite(lastAttempt) &&
+    Date.now() - lastAttempt < RELATIONSHIP_EXPORT_RECONCILE_RETRY_MS
+  ) {
+    return;
+  }
+
+  const attemptAt = new Date().toISOString();
+  setSetting(RELATIONSHIP_EXPORT_RECONCILE_ATTEMPT_KEY, attemptAt);
+  void import("./dropbox")
+    .then((m) => m.maybeExportDiaryToDropbox())
+    .then((result) => {
+      if (
+        result.ok ||
+        result.skipped === "in-flight" ||
+        result.skipped === "nothing"
+      ) {
+        setSetting(RELATIONSHIP_EXPORT_RECONCILED_KEY, attemptAt);
+      }
+    })
+    .catch((e) =>
+      console.warn(
+        "[sweep] relationship export reconciliation failed:",
+        (e as Error).message
+      )
+    );
+}
 
 // Pull the user's own diary timestamp ("YYYY-MM-DD-HHMM-KST") out of a page
 // of OCR'd text. Used to group entries by the date the user wrote them, not
@@ -1224,6 +1279,7 @@ export function runMaintenanceSweep(): void {
   // inline fire (from the MCP export tool) missed into the Obsidian vault.
   // No-op unless Dropbox export is on and there are unfiled conversations.
   try {
+    maybeReconcileRelationshipExportRace();
     void import("./dropbox")
       .then((m) => m.maybeExportConversationsToDropbox())
       .catch((e) =>
