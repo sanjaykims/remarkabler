@@ -94,17 +94,19 @@ or how many callers pile up while it's running.
 ```ts
 // lib/dropbox.ts
 let exportInFlight = false;
-// Sticky flag: a caller's request arrived while an export was already
-// running and got { skipped: "in-flight" }. Rather than retry-with-backoff
-// (probabilistic — fails once the in-flight export legitimately takes longer
-// than the retry budget, which happens in normal use once the vault has
-// enough entities/files), guarantee the dropped request's data actually
-// lands: run exactly ONE more full export as soon as the current one
-// finishes. Every export re-renders fresh from the DB, so one unscoped
-// follow-up run is a strict superset of whatever narrower request(s) (e.g.
-// onlyEntityStubs) were coalesced into this flag — no need to track WHICH
-// requests were dropped, only that at least one was.
-let exportPending = false;
+// A diary/stub export request that arrives while any Dropbox writer holds the
+// shared lock must be reconciled after the current writer exits. Each run
+// re-renders from the DB, so one unscoped follow-up covers all coalesced asks.
+let diaryExportPending = false;
+
+function finishExport(): void {
+  exportInFlight = false;
+  if (!diaryExportPending) return;
+  diaryExportPending = false;
+  void maybeExportDiaryToDropbox().catch((e) =>
+    console.warn("[dropbox] coalesced follow-up export failed:", (e as Error).message)
+  );
+}
 
 export async function maybeExportDiaryToDropbox(
   opts?: { /* ...existing options... */ }
@@ -112,7 +114,7 @@ export async function maybeExportDiaryToDropbox(
   if (!dropboxExportEnabled()) return { ok: false, skipped: "disabled" };
   if (!dropboxConnected()) return { ok: false, skipped: "not-connected" };
   if (exportInFlight) {
-    exportPending = true;
+    diaryExportPending = true;
     return { ok: false, skipped: "in-flight" };
   }
   exportInFlight = true;
@@ -120,26 +122,19 @@ export async function maybeExportDiaryToDropbox(
     // ...existing render + upload logic, unchanged...
     return result;
   } finally {
-    exportInFlight = false;
-    if (exportPending) {
-      exportPending = false;
-      // Fire-and-forget the guaranteed follow-up. Deliberately UNSCOPED (no
-      // opts) so it re-renders and re-checks everything, not just what the
-      // dropped caller(s) asked for.
-      void maybeExportDiaryToDropbox().catch((e) =>
-        console.warn("[dropbox] coalesced follow-up export failed:", (e as Error).message)
-      );
-    }
+    finishExport();
   }
 }
 ```
 
 This is a small, local change to the existing lock (add one boolean + check
-it in the existing `finally` block) — NOT the larger promise-chained-queue
-rewrite considered and rejected in the earlier draft. It doesn't touch the
-other four exporters' call sites (`lib/entityWiki.ts`, diary/conversation/
-reflection/decision) at all; they get the guarantee for free since they all
-go through this same function.
+it in shared export cleanup) — NOT the larger promise-chained-queue rewrite
+considered and rejected in the earlier draft. The caller sites stay unchanged,
+but every exporter that shares `exportInFlight`
+(`maybeExportDiaryToDropbox`, `maybeExportConversationsToDropbox`,
+`maybeExportReflectionsToDropbox`, `maybeExportDecisionsToDropbox`) must call
+`finishExport()` from its `finally` block. That way a diary/stub export skipped
+while a conversation/reflection/decision export is active is still reconciled.
 
 With this in place, `refreshRelationshipStubs` (`lib/mcp.ts:532-543`) and the
 `tag_conversation_entities` export trigger (`lib/mcp.ts:899-903`) need **no
@@ -166,29 +161,16 @@ this is safe and idempotent) to force a fresh export that now benefits from
 the coalesced follow-up if it's still needed. Do not build a special one-off
 repair script for two rows.
 
-## Tests to add
+## Tests added
 
-`test/dropbox*.test.ts` (wherever `maybeExportDiaryToDropbox`'s existing
-tests live — check for a `dropboxExport`/similar file first rather than
-guessing a new one):
-- Given `exportInFlight` is true when `maybeExportDiaryToDropbox` is called,
-  confirm it returns `{ skipped: "in-flight" }` immediately (existing
-  behavior, pin it) AND sets the pending flag.
-- Given a call arrives while one is in flight, confirm that once the in-flight
-  export's `finally` block runs, exactly ONE follow-up export fires
-  automatically (mock the render/upload internals so this is fast and
-  deterministic — don't hit real Dropbox in the test).
-- Given TWO calls arrive while one is in flight (the pending flag is a
-  boolean, not a counter), confirm only ONE follow-up run fires — not two —
-  since a single unscoped re-render already covers both.
-- Given no call arrives while exporting, confirm no follow-up fires (the
-  pending flag must default false and stay false on the happy path — a
-  regression here would mean every export silently double-runs).
-- A regression test simulating the actual originally-reported race: call
-  `tag_conversation_entities` then immediately `relate_entities` for the same
-  conversation with the underlying Dropbox upload mocked to hold an
-  artificial delay on the first call; assert the relationship-carrying
-  content eventually gets uploaded via the coalesced follow-up, not dropped.
+`test/dropboxExportLock.test.ts` covers:
+- no skipped diary export → no follow-up double-run;
+- one skipped diary export while another diary export is active → one
+  guaranteed unscoped follow-up;
+- two skipped diary exports while one export is active → still one coalesced
+  follow-up, not one per skipped caller;
+- a skipped diary export while the conversation exporter holds the shared lock
+  → the conversation export's `finally` also drains the pending diary follow-up.
 
 ## Verification
 - `npx vitest run` and `npm run build` green.

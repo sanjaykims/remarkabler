@@ -721,11 +721,12 @@ features need the deployed instance to fully verify.
   on `entity_relationships` rows whose `source_kind`/`source_key` provenance
   is part of the primary key; never turn it into a global upsert or a
   free-text-predicate table. It must use the controlled `PREDICATES` enum and
-  resolve endpoints through canonical entity aliases. The MCP
-  fire-and-forget stub exports for both `tag_conversation_entities` and
-  `relate_entities` must retry `maybeExportDiaryToDropbox` when it returns
-  `skipped: "in-flight"`; otherwise the DB write can be correct while the
-  Dropbox vault is left with stale entity notes; (c) size-capped (`MAX_CONVERSATION_CHARS`, `MAX_REFLECTION_CHARS`,
+  resolve endpoints through canonical entity aliases. `lib/dropbox.ts`'s
+  shared export lock must coalesce any diary/stub export request that returns
+  `skipped: "in-flight"` into one unscoped follow-up run after the active
+  Dropbox writer exits; do not regress this to a bounded retry loop, because
+  normal vault sizes can outlast a retry budget and leave correct DB rows
+  missing from exported entity notes; (c) size-capped (`MAX_CONVERSATION_CHARS`, `MAX_REFLECTION_CHARS`,
   `MAX_ENTITY_NOTES_CHARS`). `export_conversation`'s and `save_reflection`'s
   content is filed into the vault VERBATIM as quoted markdown by a
   deterministic exporter — no Claude call ever reads the raw content inside

@@ -762,6 +762,19 @@ export async function deleteDiaryExportFiles(
 }
 
 let exportInFlight = false;
+// A diary/stub export request that arrives while any Dropbox writer holds the
+// shared lock must be reconciled after the current writer exits. Each run
+// re-renders from the DB, so one unscoped follow-up covers all coalesced asks.
+let diaryExportPending = false;
+
+function finishExport(): void {
+  exportInFlight = false;
+  if (!diaryExportPending) return;
+  diaryExportPending = false;
+  void maybeExportDiaryToDropbox().catch((e) =>
+    console.warn("[dropbox] coalesced follow-up export failed:", (e as Error).message)
+  );
+}
 
 export type DiaryExportResult = {
   ok: boolean;
@@ -800,7 +813,10 @@ export async function maybeExportDiaryToDropbox(
 ): Promise<DiaryExportResult> {
   if (!dropboxExportEnabled()) return { ok: false, skipped: "disabled" };
   if (!dropboxConnected()) return { ok: false, skipped: "not-connected" };
-  if (exportInFlight) return { ok: false, skipped: "in-flight" };
+  if (exportInFlight) {
+    diaryExportPending = true;
+    return { ok: false, skipped: "in-flight" };
+  }
   exportInFlight = true;
   try {
     // filename -> markdown: day files (2026-06-19.md) + entity stub notes
@@ -890,7 +906,7 @@ export async function maybeExportDiaryToDropbox(
     console.warn("[dropbox] diary export failed:", msg);
     return { ok: false, error: msg };
   } finally {
-    exportInFlight = false;
+    finishExport();
   }
 }
 
@@ -954,7 +970,7 @@ export async function maybeExportConversationsToDropbox(): Promise<DiaryExportRe
     console.warn("[dropbox] conversation export failed:", msg);
     return { ok: false, error: msg };
   } finally {
-    exportInFlight = false;
+    finishExport();
   }
 }
 
@@ -1020,7 +1036,7 @@ export async function maybeExportReflectionsToDropbox(): Promise<DiaryExportResu
     console.warn("[dropbox] reflection export failed:", msg);
     return { ok: false, error: msg };
   } finally {
-    exportInFlight = false;
+    finishExport();
   }
 }
 
@@ -1080,7 +1096,7 @@ export async function maybeExportDecisionsToDropbox(): Promise<DiaryExportResult
     console.warn("[dropbox] decision export failed:", msg);
     return { ok: false, error: msg };
   } finally {
-    exportInFlight = false;
+    finishExport();
   }
 }
 

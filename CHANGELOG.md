@@ -1,13 +1,13 @@
 # Changelog
 
-## 2026-07-25 (MCP relationship export retry)
+## 2026-07-25 (Dropbox coalesced diary export follow-up)
 
-Fixed a Dropbox vault export race between the MCP librarian write tools.
-`tag_conversation_entities` and `relate_entities` now retry boundedly when the
-shared Dropbox exporter reports `in-flight`, so a relationship written to the
-database is not silently left out of the exported Obsidian entity stubs.
-Regression tests cover retry success, retry caps, and the relationship-stub
-refresh path.
+Fixed a Dropbox vault export race between the MCP librarian write tools. When a
+diary/stub export request arrives while any Dropbox writer holds the shared
+export lock, `lib/dropbox.ts` now records a pending diary export and guarantees
+one unscoped follow-up run after the active writer exits. This makes exported
+Obsidian entity stubs converge from fresh DB state instead of relying on a
+bounded retry budget that normal vault sizes can exceed.
 
 ## 2026-07-25 (Diary Graph mobile framing)
 
