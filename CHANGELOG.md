@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-25 (MCP relationship export retry)
+
+Fixed a Dropbox vault export race between the MCP librarian write tools.
+`tag_conversation_entities` and `relate_entities` now retry boundedly when the
+shared Dropbox exporter reports `in-flight`, so a relationship written to the
+database is not silently left out of the exported Obsidian entity stubs.
+Regression tests cover retry success, retry caps, and the relationship-stub
+refresh path.
+
 ## 2026-07-25 (Diary Graph mobile framing)
 
 Fixed the `/graph` mobile map framing so the SVG viewBox fits the visible node

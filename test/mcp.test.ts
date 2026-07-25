@@ -630,6 +630,111 @@ describe("librarian tools (Phase C — opt-in, one flag for all seven)", () => {
     ]);
   });
 
+  it("retries a Dropbox export that loses the shared in-flight lock", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, skipped: "in-flight" })
+      .mockResolvedValueOnce({ ok: false, skipped: "in-flight" })
+      .mockResolvedValueOnce({ ok: true, written: 2 });
+
+    const result = await mcp.withExportRetry(run, 4, 1);
+
+    expect(result).toEqual({ ok: true, written: 2 });
+    expect(run).toHaveBeenCalledTimes(3);
+  });
+
+  it("caps Dropbox export retries instead of spinning forever", async () => {
+    const run = vi.fn().mockResolvedValue({ ok: false, skipped: "in-flight" });
+
+    const result = await mcp.withExportRetry(run, 3, 1);
+
+    expect(result).toEqual({ ok: false, skipped: "in-flight" });
+    expect(run).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries the tag_conversation_entities stub export when Dropbox is busy", async () => {
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    process.env.MCP_ALLOW_WIKI_LINKING = "true";
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM entry_entities").run();
+    db().prepare("DELETE FROM mcp_conversations").run();
+    db().prepare("DELETE FROM pages").run();
+    db().prepare("DELETE FROM notebooks").run();
+    const { CONVERSATIONS_NOTEBOOK_ID } = await import("@/lib/notes");
+    const dropbox = await import("@/lib/dropbox");
+    const exportSpy = vi
+      .spyOn(dropbox, "maybeExportDiaryToDropbox")
+      .mockResolvedValueOnce({ ok: false, skipped: "in-flight" })
+      .mockResolvedValueOnce({ ok: true, written: 1 });
+
+    await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, {
+      content: "User: Jin visited Suwon.",
+      conversation_id: "c-tag-busy",
+    });
+    await mcp.callMcpTool(mcp.TAG_ENTITIES_TOOL_NAME, {
+      conversation_key: "c-tag-busy",
+      entities: [{ kind: "person", name: "Jin" }],
+    });
+    await flushAsyncWork();
+
+    expect(exportSpy).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await flushAsyncWork();
+
+    expect(exportSpy).toHaveBeenCalledTimes(2);
+    expect(exportSpy).toHaveBeenLastCalledWith({
+      notebookId: CONVERSATIONS_NOTEBOOK_ID,
+    });
+  });
+
+  it("eventually refreshes relationship stubs when the first export is busy", async () => {
+    process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
+    process.env.MCP_ALLOW_WIKI_LINKING = "true";
+    const { db } = await import("@/lib/db");
+    db().prepare("DELETE FROM entity_relationships").run();
+    db().prepare("DELETE FROM entity_conversation_notes").run();
+    db().prepare("DELETE FROM entity_wiki").run();
+    db().prepare("DELETE FROM entry_entities").run();
+    db().prepare("DELETE FROM mcp_conversations").run();
+    db().prepare("DELETE FROM pages").run();
+    db().prepare("DELETE FROM notebooks").run();
+    const dropbox = await import("@/lib/dropbox");
+    const exportSpy = vi
+      .spyOn(dropbox, "maybeExportDiaryToDropbox")
+      .mockResolvedValueOnce({ ok: false, skipped: "in-flight" })
+      .mockResolvedValueOnce({ ok: true, written: 2 });
+    vi
+      .spyOn(dropbox, "deleteDiaryExportFiles")
+      .mockResolvedValue({ deleted: 0, failed: 0 });
+
+    await mcp.callMcpTool(mcp.EXPORT_TOOL_NAME, {
+      content: "User: Jin lives in Suwon.",
+      conversation_id: "c-busy",
+    });
+    await mcp.callMcpTool(mcp.RELATE_TOOL_NAME, {
+      conversation_key: "c-busy",
+      relationships: [
+        {
+          subject_kind: "person",
+          subject_name: "Jin",
+          predicate: "lives_in",
+          object_kind: "place",
+          object_name: "Suwon",
+        },
+      ],
+    });
+    await flushAsyncWork();
+
+    expect(exportSpy).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await flushAsyncWork();
+
+    expect(exportSpy).toHaveBeenCalledTimes(2);
+    expect(exportSpy).toHaveBeenLastCalledWith({
+      onlyEntityStubs: ["People/Jin.md", "Places/Suwon.md"],
+    });
+  });
+
   it("deletes stale relationship-only stubs after a scoped retraction", async () => {
     process.env.MCP_ALLOW_CONVERSATION_EXPORT = "true";
     process.env.MCP_ALLOW_WIKI_LINKING = "true";

@@ -529,6 +529,21 @@ export function sensitiveToolsAllowed(): boolean {
   return process.env.MCP_ALLOW_SENSITIVE_TOOLS === "true";
 }
 
+// The Dropbox vault writers share one lock; MCP stub refreshes run in the
+// background, so an in-flight skip needs a short retry instead of vanishing.
+export async function withExportRetry<T extends { ok: boolean; skipped?: string }>(
+  run: () => Promise<T>,
+  attempts = 4,
+  delayMs = 750
+): Promise<T> {
+  let result = await run();
+  for (let tries = 1; result.skipped === "in-flight" && tries < attempts; tries++) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    result = await run();
+  }
+  return result;
+}
+
 async function refreshRelationshipStubs(stubPaths: string[]): Promise<void> {
   const touched = [...new Set(stubPaths)];
   if (touched.length === 0) return;
@@ -536,7 +551,12 @@ async function refreshRelationshipStubs(stubPaths: string[]): Promise<void> {
   const existing = touched.filter((path) => current.has(path));
   const stale = touched.filter((path) => !current.has(path));
   const dropbox = await import("@/lib/dropbox");
-  await dropbox.maybeExportDiaryToDropbox({ onlyEntityStubs: existing });
+  const result = await withExportRetry(() =>
+    dropbox.maybeExportDiaryToDropbox({ onlyEntityStubs: existing })
+  );
+  if (!result.ok && result.skipped === "in-flight") {
+    console.warn(`[mcp] relationship-stub export skipped after retries: ${result.skipped}`);
+  }
   if (stale.length > 0) {
     await dropbox.deleteDiaryExportFiles(stale);
   }
@@ -897,7 +917,16 @@ export async function callMcpTool(
         // tag (this closes that gap for the external-librarian path; the
         // auto-tag path in lib/entityTagging.ts fires the equivalent itself).
         import("@/lib/dropbox")
-          .then((m) => m.maybeExportDiaryToDropbox({ notebookId: CONVERSATIONS_NOTEBOOK_ID }))
+          .then(async (m) => {
+            const exportResult = await withExportRetry(() =>
+              m.maybeExportDiaryToDropbox({ notebookId: CONVERSATIONS_NOTEBOOK_ID })
+            );
+            if (!exportResult.ok && exportResult.skipped === "in-flight") {
+              console.warn(
+                `[mcp] entity-stub re-export skipped after retries: ${exportResult.skipped}`
+              );
+            }
+          })
           .catch((e) =>
             console.warn("[mcp] entity-stub re-export failed:", (e as Error).message)
           );
