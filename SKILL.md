@@ -17,8 +17,8 @@ Companion docs — read in order if any is unfamiliar:
 |---|---|
 | **this file** | One-page index. Where things live, what they do, what env vars exist. Skim first. |
 | **`ARCHITECTURE.md`** | The whole-app structure map: data-flow + layer diagrams, annotated file tree, lib modules by domain, data model, external services. |
-| **`AGENTS.md`** | Tool-agnostic onboarding (works for any AI agent, not just Claude). Includes the "what an AI can/can't do in this container" boundaries. |
-| **`CLAUDE.md`** | Claude-specific deep detail + the load-bearing "do not regress" rules with full reasoning. |
+| **`AGENTS.md`** | Tool-agnostic onboarding (works for any AI agent, not just Claude). Includes the "what an AI can/can't do in this container" boundaries and Graphify-first orientation rule. |
+| **`CLAUDE.md`** | Claude-specific deep detail + the load-bearing "do not regress" rules with full reasoning. Claude Code's mandatory Graphify workflow is at the top. |
 | **`DESIGN.md`** | UI tokens: single-font Clear Sans, amber accent, color/spacing/focus rules. **Read before any UI change.** |
 | **`CHANGELOG.md`** | What changed and why, newest first. |
 | **`docs/design/mockup.html`** | Self-contained visual reference of the design tokens (light + dark side-by-side). |

@@ -8,7 +8,9 @@ one pass without re-deriving what we already know.
 > **Companion docs (read in this order if you're new):**
 > 1. **`SKILL.md`** — one-page index of the whole project (modules, tables,
 >    routes, pages, env vars). Skim this first to know what exists.
-> 2. **`CLAUDE.md`** — project specifics + hard rules that override defaults.
+> 2. **`CLAUDE.md`** — project specifics + hard rules that override defaults,
+>    including the standing Claude Code rule to use the committed Graphify
+>    snapshot before broad code exploration.
 > 3. **This file** — orientation, structure map, how to work, what you (the
 >    agent) can and can't do in this environment.
 > 4. **`DESIGN.md`** — UI tokens (single-font Clear Sans, amber accent,
@@ -112,6 +114,11 @@ and an accumulating record of "insights" about them. It's a long-horizon
 
 ## 3. How to work here
 
+- **Use Graphify before broad exploration.** For unfamiliar or cross-cutting
+  code paths, start with `graphify query` / `graphify path` against
+  `graphify-out/graph.json`, then verify by reading source. The mandatory
+  Claude Code details live at the top of `CLAUDE.md`; generation details live
+  in `docs/graphify-phase-a.md`.
 - **Build must pass:** `npm run build`. `npm test` runs Vitest over
   `test/*.test.ts` — pure-logic units + DB-backed integration tests with
   throwaway SQLite. Lint: `npm run lint`. The build, the tests, and a careful read are the

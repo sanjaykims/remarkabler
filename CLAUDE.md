@@ -8,6 +8,37 @@ Guidance for Claude Code working on this repository.
 > environment). This file holds the Claude-specific deep detail with the
 > "do not regress" rules.
 
+## Claude Code must use Graphify for orientation
+
+Before doing broad repository exploration, cross-module debugging, or any
+change where the affected files are not already obvious, use the committed
+Graphify code graph first. This is a standing workflow rule for Claude Code in
+this repo because it reduces context spent rediscovering the architecture.
+
+Use the snapshot already committed in `graphify-out/graph.json`:
+
+```bash
+graphify query "where is <feature or behavior> implemented" --graph graphify-out/graph.json
+graphify path "<source symbol>()" "<target symbol>()" --graph graphify-out/graph.json
+```
+
+If `graphify` is not installed, use the isolated install pattern from
+`docs/graphify-phase-a.md`:
+
+```bash
+GRAPHIFY_VENV="${TMPDIR:-/tmp}/graphify-phase-a-venv"
+python3.14 -m venv "$GRAPHIFY_VENV"
+"$GRAPHIFY_VENV/bin/python" -m pip install graphifyy
+"$GRAPHIFY_VENV/bin/graphify" query "where is <feature or behavior> implemented" --graph graphify-out/graph.json
+```
+
+Graphify is a map, not proof. Treat its results as a fast way to find the
+right neighborhood, then read the actual files before editing or making
+claims. It is for developer navigation only; do not route runtime diary/user
+queries through Graphify. If maintained app/test source has changed since the
+snapshot's source commit, refresh the graph with the documented code-only
+commands before relying on it for large work.
+
 ## What this is
 
 "Remarkabler" (formerly "Feed Claude"): a self-hosted Next.js app. The user

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-25 (Claude Code Graphify orientation rule)
+
+Made the Graphify developer workflow unavoidable for future Claude Code
+sessions. `CLAUDE.md` now starts with the standing rule: use the committed
+`graphify-out/graph.json` snapshot for broad repository orientation and
+cross-module tracing, then verify by reading source before editing. `AGENTS.md`
+and `SKILL.md` now point agents back to that rule during normal onboarding.
+
 ## 2026-07-25 (Dropbox coalesced diary export follow-up)
 
 Fixed a Dropbox vault export race between the MCP librarian write tools. When a
