@@ -22,7 +22,7 @@ versioned.
 
 ## Generation Command
 
-Generated on 2026-07-25 with `graphify 0.9.25`:
+Generated on 2026-07-25 with `graphify 0.9.26`:
 
 ```bash
 GRAPHIFY_QUERY_LOG_DISABLE=1 graphify extract . --code-only --max-workers 4
@@ -39,11 +39,11 @@ bundled assistant skills or reference projects.
 
 ## Current Snapshot
 
-- Built from commit: `f3a4592b4fb6954a93e3bfd1931cf0854e684c82`
-- Nodes: 1,407
-- Edges: 3,550
-- Communities: 104
-- Extraction confidence: 3,542 `EXTRACTED`, 8 `INFERRED`
+- Built from commit: `b12d95904973d3b0b368bed687fc95c254dba8c1`
+- Nodes: 1,505
+- Edges: 3,740
+- Communities: 109
+- Extraction confidence: 3,731 `EXTRACTED`, 9 `INFERRED`
 
 Graphify warned that one JSON/config file produced zero nodes:
 
@@ -65,3 +65,11 @@ python3.14 -m venv "$GRAPHIFY_VENV"
 ```
 
 Then review size/churn before committing the refreshed `graphify-out/` files.
+
+If an incremental refresh accidentally pulls stale docs or local cache into the
+graph, generate into a fresh temporary output directory and copy only the three
+versioned artifacts back:
+
+- `graphify-out/graph.html`
+- `graphify-out/graph.json`
+- `graphify-out/GRAPH_REPORT.md`
