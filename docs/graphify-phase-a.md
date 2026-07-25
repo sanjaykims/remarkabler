@@ -39,7 +39,7 @@ bundled assistant skills or reference projects.
 
 ## Current Snapshot
 
-- Built from commit: `b12d95904973d3b0b368bed687fc95c254dba8c1`
+- Built from source commit: `b12d95904973d3b0b368bed687fc95c254dba8c1`
 - Nodes: 1,505
 - Edges: 3,740
 - Communities: 109
@@ -65,6 +65,9 @@ python3.14 -m venv "$GRAPHIFY_VENV"
 ```
 
 Then review size/churn before committing the refreshed `graphify-out/` files.
+After the generated artifacts are committed, repository `HEAD` will usually be
+one commit newer than the source commit Graphify scanned. Treat the graph as
+stale only when maintained app/test source changed after the scanned commit.
 
 If an incremental refresh accidentally pulls stale docs or local cache into the
 graph, generate into a fresh temporary output directory and copy only the three

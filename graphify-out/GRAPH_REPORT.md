@@ -9,9 +9,9 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b12d9590`
-- Run `git rev-parse HEAD` and compare to check if the graph is stale.
-- Run `graphify update .` after code changes (no API cost).
+- Built from source commit: `b12d9590`
+- Artifact commits can make repository `HEAD` newer than the source commit scanned.
+- Run `graphify update .` after maintained app/test source changes (no API cost).
 
 ## Community Hubs (Navigation)
 - Community 0
