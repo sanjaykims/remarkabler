@@ -71,72 +71,90 @@ This is a real, already-reproduced bug, not a hypothetical race.
 
 ## The fix
 
-Bounded retry-with-backoff when an export is skipped due to `in-flight`,
-applied to BOTH fire-and-forget export call sites (the second one to fire is
-usually the one that loses, but don't assume the ordering — apply it
-symmetrically so either can retry).
+> **Revision note:** an earlier draft of this doc recommended a bounded
+> retry-with-backoff (4 attempts × 750ms). Codex's own automated PR review
+> (on #162) correctly flagged that this is insufficient, not just in a rare
+> edge case but during **normal use**: the `tag_conversation_entities` export
+> touches every entity ever tagged in the whole conversations notebook *plus*
+> the vault-structure files (`Home.md`, `People/Places/Projects` indexes,
+> `Profile.md`), each separated by a 150ms delay — that alone exceeds a 2.25s
+> retry budget once the notebook accumulates roughly 15+ files, which will
+> happen naturally as this feature gets used. A bigger retry budget just
+> raises the threshold, it doesn't fix the underlying problem: retries are a
+> **probabilistic** fix for what needs to be a **guaranteed** one. Use the
+> design below instead.
 
-Add a small helper near `refreshRelationshipStubs` in `lib/mcp.ts`:
+**Coalesced pending-flag** in `lib/dropbox.ts`, not a retry loop. Every export
+already recomputes everything fresh from the DB on each run (no incremental
+deltas) — so the lock doesn't need to remember *what* changed while it was
+busy, only *that* something did, and guarantee exactly one more full run once
+it's free. This is correct regardless of how long the in-flight export takes
+or how many callers pile up while it's running.
 
 ```ts
-// Both tag_conversation_entities and relate_entities fire their own
-// fire-and-forget Dropbox export, and lib/dropbox.ts's maybeExportDiaryToDropbox
-// shares ONE process-wide lock across every exporter. When two of these race
-// (the guided flow calls tag then relate back-to-back for one conversation),
-// the loser gets `{ skipped: "in-flight" }` and — without this retry — is
-// silently dropped forever; nothing else ever re-triggers that entity's stub.
-async function withExportRetry<T extends { ok: boolean; skipped?: string }>(
-  run: () => Promise<T>,
-  attempts = 4,
-  delayMs = 750
-): Promise<T> {
-  let result = await run();
-  for (let tries = 1; result.skipped === "in-flight" && tries < attempts; tries++) {
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    result = await run();
+// lib/dropbox.ts
+let exportInFlight = false;
+// Sticky flag: a caller's request arrived while an export was already
+// running and got { skipped: "in-flight" }. Rather than retry-with-backoff
+// (probabilistic — fails once the in-flight export legitimately takes longer
+// than the retry budget, which happens in normal use once the vault has
+// enough entities/files), guarantee the dropped request's data actually
+// lands: run exactly ONE more full export as soon as the current one
+// finishes. Every export re-renders fresh from the DB, so one unscoped
+// follow-up run is a strict superset of whatever narrower request(s) (e.g.
+// onlyEntityStubs) were coalesced into this flag — no need to track WHICH
+// requests were dropped, only that at least one was.
+let exportPending = false;
+
+export async function maybeExportDiaryToDropbox(
+  opts?: { /* ...existing options... */ }
+): Promise<DiaryExportResult> {
+  if (!dropboxExportEnabled()) return { ok: false, skipped: "disabled" };
+  if (!dropboxConnected()) return { ok: false, skipped: "not-connected" };
+  if (exportInFlight) {
+    exportPending = true;
+    return { ok: false, skipped: "in-flight" };
   }
-  return result;
+  exportInFlight = true;
+  try {
+    // ...existing render + upload logic, unchanged...
+    return result;
+  } finally {
+    exportInFlight = false;
+    if (exportPending) {
+      exportPending = false;
+      // Fire-and-forget the guaranteed follow-up. Deliberately UNSCOPED (no
+      // opts) so it re-renders and re-checks everything, not just what the
+      // dropped caller(s) asked for.
+      void maybeExportDiaryToDropbox().catch((e) =>
+        console.warn("[dropbox] coalesced follow-up export failed:", (e as Error).message)
+      );
+    }
+  }
 }
 ```
 
-Update `refreshRelationshipStubs` (line 532-543):
-```ts
-async function refreshRelationshipStubs(stubPaths: string[]): Promise<void> {
-  const touched = [...new Set(stubPaths)];
-  if (touched.length === 0) return;
-  const current = new Set(currentEntityStubFileNames());
-  const existing = touched.filter((path) => current.has(path));
-  const stale = touched.filter((path) => !current.has(path));
-  const dropbox = await import("@/lib/dropbox");
-  const result = await withExportRetry(() =>
-    dropbox.maybeExportDiaryToDropbox({ onlyEntityStubs: existing })
-  );
-  if (!result.ok && result.skipped) {
-    console.warn(`[mcp] relationship-stub export skipped after retries: ${result.skipped}`);
-  }
-  if (stale.length > 0) {
-    await dropbox.deleteDiaryExportFiles(stale);
-  }
-}
-```
+This is a small, local change to the existing lock (add one boolean + check
+it in the existing `finally` block) — NOT the larger promise-chained-queue
+rewrite considered and rejected in the earlier draft. It doesn't touch the
+other four exporters' call sites (`lib/entityWiki.ts`, diary/conversation/
+reflection/decision) at all; they get the guarantee for free since they all
+go through this same function.
 
-Apply the SAME `withExportRetry` wrapper to the `tag_conversation_entities`
-export call at `lib/mcp.ts:899-903` (currently a bare
-`import(...).then(...).catch(...)` chain — wrap the `maybeExportDiaryToDropbox`
-call the same way, keep the `.catch()` for genuine failures).
+With this in place, `refreshRelationshipStubs` (`lib/mcp.ts:532-543`) and the
+`tag_conversation_entities` export trigger (`lib/mcp.ts:899-903`) need **no
+changes** — the guarantee lives entirely in `lib/dropbox.ts`, transparently to
+every caller. Simpler than the retry approach in both the fix itself and what
+callers have to do.
 
-**Why bounded retry, not a proper queue/mutex:** a promise-chained queue
-(callers await their turn instead of polling) is the more "correct" fix, but
-it's a larger change to a shared primitive four other exporters
-(`lib/entityWiki.ts`, diary/conversation/reflection/decision exporters) also
-depend on, with real risk of introducing a new bug (deadlock, unbounded queue
-growth) in code you can't fully re-verify end-to-end without a live account.
-For a single-user app, 4 attempts × 750ms (≤ ~2.25s extra background latency,
-never blocking the MCP tool's response to the caller) comfortably covers the
-realistic case. **Only reach for the queue-based rewrite if retries prove
-insufficient in practice** (e.g., very large notebooks where Export A's
-upload loop legitimately exceeds ~3 seconds) — note that possibility in the
-PR description rather than building it preemptively.
+**One thing to verify while implementing:** confirm the `opts` used elsewhere
+(`notebookId`, `onlyNewest`, `extraDayFiles`, `onlyEntityStubs`) don't have a
+caller that relies on the follow-up run being *scoped* the same way the
+original call was — re-read every call site listed in the "Live evidence /
+Root cause" section above before assuming an unscoped follow-up is always
+safe. If any caller's correctness depends on scoping (unlikely, since
+`renderEntityStubFiles()`/`renderDiaryDayFiles()` etc. are always fresh
+reads), note it in the PR rather than silently narrowing the follow-up.
 
 ## Repairing the currently-stuck data
 
@@ -144,24 +162,33 @@ The fix only prevents *future* drops. Jin's and Minji's stubs are stuck stale
 right now. After the fix ships, tell the user to re-run `relate_entities` once
 more for the same `conversation_key` with the same relationships (it's a
 scoped replace — see `docs/plans/relationship-audit-and-next-steps.md` — so
-this is safe and idempotent) to force a fresh, now-retrying export. Do not
-build a special one-off repair script for two rows.
+this is safe and idempotent) to force a fresh export that now benefits from
+the coalesced follow-up if it's still needed. Do not build a special one-off
+repair script for two rows.
 
 ## Tests to add
 
-`test/mcp.test.ts`, near the existing `relate_entities`/librarian-tool tests:
-- `withExportRetry` (export it for testing, or test indirectly via
-  `refreshRelationshipStubs`'s effect): given a mock/stub export function that
-  returns `{ ok: false, skipped: "in-flight" }` N times then `{ ok: true }`,
-  confirm it retries until success (within the attempt cap) rather than
-  giving up after one try.
-- Given a mock that always returns `{ ok: false, skipped: "in-flight" }`,
-  confirm it stops after the attempt cap (doesn't retry forever) and logs a
-  warning rather than throwing.
-- A regression test simulating the actual race: call `tag_conversation_entities`
-  then immediately `relate_entities` for the same conversation with Dropbox
-  export mocked so the first call holds an artificial delay; assert the
-  relationship-carrying export eventually succeeds instead of being dropped.
+`test/dropbox*.test.ts` (wherever `maybeExportDiaryToDropbox`'s existing
+tests live — check for a `dropboxExport`/similar file first rather than
+guessing a new one):
+- Given `exportInFlight` is true when `maybeExportDiaryToDropbox` is called,
+  confirm it returns `{ skipped: "in-flight" }` immediately (existing
+  behavior, pin it) AND sets the pending flag.
+- Given a call arrives while one is in flight, confirm that once the in-flight
+  export's `finally` block runs, exactly ONE follow-up export fires
+  automatically (mock the render/upload internals so this is fast and
+  deterministic — don't hit real Dropbox in the test).
+- Given TWO calls arrive while one is in flight (the pending flag is a
+  boolean, not a counter), confirm only ONE follow-up run fires — not two —
+  since a single unscoped re-render already covers both.
+- Given no call arrives while exporting, confirm no follow-up fires (the
+  pending flag must default false and stay false on the happy path — a
+  regression here would mean every export silently double-runs).
+- A regression test simulating the actual originally-reported race: call
+  `tag_conversation_entities` then immediately `relate_entities` for the same
+  conversation with the underlying Dropbox upload mocked to hold an
+  artificial delay on the first call; assert the relationship-carrying
+  content eventually gets uploaded via the coalesced follow-up, not dropped.
 
 ## Verification
 - `npx vitest run` and `npm run build` green.
@@ -178,16 +205,21 @@ build a special one-off repair script for two rows.
   race no longer drops data on a clean run, not just the repaired one.
 
 ## Constraints (repo-wide, still apply)
-- Every fire-and-forget async call needs its own `.catch()` — `withExportRetry`
-  itself doesn't throw for `in-flight`, but the caller's outer `.catch()` must
-  stay for genuine exceptions.
+- Every fire-and-forget async call needs its own `.catch()` — the coalesced
+  follow-up call (`void maybeExportDiaryToDropbox().catch(...)`) must keep
+  its own `.catch()`; a rejected follow-up must never become an unhandled
+  rejection (see the hard rule in `CLAUDE.md` about this — it's fatal under
+  modern Node).
 - Don't touch `lib/entityMerge.ts`'s relationship-endpoint rewrite, the `\0`
   map-key separator in `lib/diaryExportDb.ts`, or the closed predicate enum —
-  all verified correct in the prior audit; this fix is scoped to the export
-  trigger only.
+  all verified correct in the prior audit; this fix is scoped to
+  `lib/dropbox.ts`'s export lock only.
 - Keep `CLAUDE.md` / `CHANGELOG.md` in sync: this is exactly the kind of
-  "do-not-regress" lesson that doc curates (add a bullet: fire-and-forget
-  exports sharing one lock need retry-on-skip, or data is silently lost, not
-  just delayed).
+  "do-not-regress" lesson that doc curates (add a bullet: the export lock in
+  `lib/dropbox.ts` MUST guarantee a coalesced follow-up run for any request
+  dropped while busy — do not regress this back to a bare `{ skipped:
+  "in-flight" }` with no reconciliation, and do not "fix" it with a retry
+  loop instead, since retry budgets are probabilistic and this bug was
+  specifically caused by one being insufficient).
 - `npx vitest run` + `npm run build` must both pass. Ask the owner before
   merging.
