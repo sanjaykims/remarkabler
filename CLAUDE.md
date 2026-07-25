@@ -8,19 +8,25 @@ Guidance for Claude Code working on this repository.
 > environment). This file holds the Claude-specific deep detail with the
 > "do not regress" rules.
 
-## Claude Code must use Graphify for orientation
+## Codex, Claude Code, and Antigravity must use Graphify first
 
 Before doing broad repository exploration, cross-module debugging, or any
 change where the affected files are not already obvious, use the committed
-Graphify code graph first. This is a standing workflow rule for Claude Code in
-this repo because it reduces context spent rediscovering the architecture.
+Graphify code graph first. This is a standing workflow rule for Codex, Claude
+Code, Antigravity, and any other coding agent in this repo because it reduces
+context spent rediscovering the architecture.
 
 Use the snapshot already committed in `graphify-out/graph.json`:
 
 ```bash
 graphify query "where is <feature or behavior> implemented" --graph graphify-out/graph.json
+graphify explain "<symbol or concept>" --graph graphify-out/graph.json
 graphify path "<source symbol>()" "<target symbol>()" --graph graphify-out/graph.json
 ```
+
+Antigravity-specific rules live in `.agents/rules/graphify.md`, with a
+`.agents/workflows/graphify.md` workflow entry so Antigravity can catch this
+without needing to infer it from Claude-only docs.
 
 If `graphify` is not installed, use the isolated install pattern from
 `docs/graphify-phase-a.md`:
@@ -37,7 +43,8 @@ right neighborhood, then read the actual files before editing or making
 claims. It is for developer navigation only; do not route runtime diary/user
 queries through Graphify. If maintained app/test source has changed since the
 snapshot's source commit, refresh the graph with the documented code-only
-commands before relying on it for large work.
+commands before relying on it for large work. Commit only portable graph
+artifacts and repo rules, not local hook/cache files.
 
 ## What this is
 

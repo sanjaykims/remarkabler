@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-25 (Graphify-first rule expanded to Antigravity)
+
+Expanded the standing Graphify workflow from Claude Code-only wording to a
+repo-wide agent rule: Codex, Claude Code, Antigravity, and any other coding
+agent should query the committed `graphify-out/graph.json` before broad
+cross-module exploration. Added Antigravity `.agents` rules/workflow so the
+requirement is visible outside Claude-specific docs too.
+
 ## 2026-07-25 (Claude Code Graphify orientation rule)
 
 Made the Graphify developer workflow unavoidable for future Claude Code
