@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-08-17 (SessionStart hook: make the repo's own Graphify rule satisfiable)
+
+`.agents/rules/graphify.md` is `trigger: always_on` and instructs every coding
+agent to query `graphify-out/graph.json` before broad repository exploration —
+but nothing installed the `graphify` CLI, so in a fresh Claude Code on the web
+container that rule was impossible to follow. Same gap for `node_modules`:
+CLAUDE.md requires `npm run build` before calling a task done, and a fresh
+container has no dependencies. New `.claude/hooks/session-start.sh` (registered
+as a `SessionStart` hook) installs both. Remote-only (`CLAUDE_CODE_REMOTE`
+guard, so local checkouts are untouched), idempotent (each step guarded by an
+existence check), and deliberately non-fatal — a PyPI hiccup degrades the
+session to "explore by reading files" rather than blocking startup. Runs
+synchronously so deps are guaranteed present before the agent acts; the
+container is snapshotted afterwards, so the cost is per-container, not
+per-session. Measured ~32s for `npm install`, plus ~30-60s for graphify on a
+cold cache.
+
 ## 2026-07-19 (MCP Phase C follow-up: nudge inline tagging instead of polling)
 
 Found that the "recurring Claude Code session" scheduling mechanism assumed
