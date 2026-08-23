@@ -23,7 +23,7 @@ flowchart TB
     subgraph ENV["Remote execution environment (Claude Code on the web)"]
         direction TB
         CONTAINER["Ephemeral container<br/>• repo cloned fresh on start<br/>• reclaimed after inactivity<br/>• outbound network governed by a policy"]
-        REPO["/home/user/remarkable-feed<br/>(git working tree)"]
+        REPO["/home/user/remarkabler<br/>(git working tree)"]
         ENVVARS["env vars + setup scripts<br/>(ANTHROPIC_API_KEY etc. NOT present here —<br/>they live on Railway, not in this container)"]
         CONTAINER --- REPO
         CONTAINER --- ENVVARS
@@ -77,7 +77,7 @@ flowchart TB
     end
 
     SUBA -->|final message only| CTX
-    MCP --- GH["GitHub MCP server<br/>sanjaykims/remarkable-feed only<br/>+ PR webhook activity events"]
+    MCP --- GH["GitHub MCP server<br/>sanjaykims/remarkabler only<br/>+ PR webhook activity events"]
 ```
 
 ---
@@ -166,7 +166,7 @@ Grouped by what they do:
 
 ### 8. GitHub integration
 - All GitHub work goes through the **GitHub MCP server**, restricted to
-  `sanjaykims/remarkable-feed`. No `gh` CLI, no direct API.
+  `sanjaykims/remarkabler`. No `gh` CLI, no direct API.
 - The harness can subscribe to **PR activity events** (comments, CI,
   reviews) which arrive as `<github-webhook-activity>` messages — though
   this session created and merged PRs directly rather than watching them.

@@ -53,7 +53,7 @@ You'll need an [Anthropic API key](https://console.anthropic.com).
 
 ### Hosted (Railway) — recommended
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fsanjaykims%2Fremarkable-feed)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fsanjaykims%2Fremarkabler)
 
 The button starts a new Railway project from this repo. Then, in your new project:
 

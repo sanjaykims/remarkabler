@@ -73,7 +73,7 @@ second brain you can chat with, analyse, and browse as an Obsidian graph.
 ## 3. Directory tree (annotated)
 
 ```
-remarkable-feed/
+remarkabler/
 ├── app/
 │   ├── layout.tsx, page.tsx        # shell (self-hosted Clear Sans font), home
 │   ├── Nav.tsx, AutoLock.tsx, LockScreen.tsx, PostHogProvider.tsx

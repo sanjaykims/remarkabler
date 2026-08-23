@@ -55,7 +55,7 @@ and generate an accumulating record of "insights" about themselves.
 
 ## Repo & deployment
 
-- **This repo (`remarkable-feed`) is the source of truth — develop directly
+- **This repo (`remarkabler`) is the source of truth — develop directly
   here.** It was previously a generated mirror of
   `korean-news-study-en/remarkable-app` via a "split" workflow; that bridge is
   retired. Do not recreate it, and ignore the old repo.

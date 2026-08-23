@@ -1,6 +1,6 @@
 ---
 name: remarkabler
-description: Self-hosted Next.js app that ingests reMarkable tablet PDFs, OCRs every handwritten page with Claude, builds an evolving profile of the owner, and surfaces it via chat (with durable cross-session memory), reflections, a 3D /mind embedding map, a native /graph entity relationship map, an Insights record, a cost calendar, and weekly off-site backup. Long-horizon personal record, single-user. Use this skill whenever the working directory is `remarkable-feed`.
+description: Self-hosted Next.js app that ingests reMarkable tablet PDFs, OCRs every handwritten page with Claude, builds an evolving profile of the owner, and surfaces it via chat (with durable cross-session memory), reflections, a 3D /mind embedding map, a native /graph entity relationship map, an Insights record, a cost calendar, and weekly off-site backup. Long-horizon personal record, single-user. Use this skill whenever the working directory is `remarkabler`.
 ---
 
 # Remarkabler — one-page project index

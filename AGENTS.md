@@ -154,7 +154,7 @@ full picture; the essentials:
     chat directly.
 - **The user's PDFs live on Railway's `/data` volume**, not in the repo. To
   inspect a real diary page, ask the user to upload it.
-- **GitHub access is via MCP tools, restricted to `sanjaykims/remarkable-feed`.**
+- **GitHub access is via MCP tools, restricted to `sanjaykims/remarkabler`.**
   No `gh` CLI, no direct API, no other repos.
 - **Do not put model identifiers or internal harness IDs in commits, PRs,
   or code** — keep those to chat replies only.
