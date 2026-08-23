@@ -22,5 +22,19 @@
       "marketplace": "sanjaykims-agent-skills",
       "plugin": "agent-skills"
     }
-  ]
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh",
+            "timeout": 600,
+            "statusMessage": "Installing graphify + node dependencies..."
+          }
+        ]
+      }
+    ]
+  }
 }
