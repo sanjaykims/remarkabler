@@ -4,7 +4,9 @@ import fs from "fs";
 import { chunkedBackfillForConversation } from "./chatMemoryBackfill";
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(/* turbopackIgnore: true */ DATA_DIR)) {
+  fs.mkdirSync(/* turbopackIgnore: true */ DATA_DIR, { recursive: true });
+}
 
 export { DATA_DIR };
 
@@ -419,14 +421,25 @@ export function db(): Database.Database {
   } catch {
     // best-effort; the sweep would retry on the next process startup
   }
-  // Any notebook still "processing" at startup was interrupted by a restart.
-  _db
-    .prepare(
-      `UPDATE notebooks SET status='error',
-         error='Transcription was interrupted. Delete and re-add this notebook.'
-       WHERE status='processing'`
-    )
-    .run();
+  // Resume interrupted whole-PDF jobs when their durable source file exists.
+  // Incremental reMarkable sync also uses "processing" but has no notebook
+  // PDF, so those rows retain the older explicit-error recovery behavior.
+  const interrupted = _db
+    .prepare(`SELECT id FROM notebooks WHERE status = 'processing'`)
+    .all() as Array<{ id: string }>;
+  const resume = _db.prepare(
+    `UPDATE notebooks SET status='queued', error=NULL WHERE id = ?`
+  );
+  const fail = _db.prepare(
+    `UPDATE notebooks SET status='error',
+       error='Transcription was interrupted. Retry this reMarkable sync.'
+     WHERE id = ?`
+  );
+  for (const row of interrupted) {
+    const pdfPath = path.join(DATA_DIR, "files", row.id, "notebook.pdf");
+    if (fs.existsSync(/* turbopackIgnore: true */ pdfPath)) resume.run(row.id);
+    else fail.run(row.id);
+  }
 
   return _db;
 }
@@ -442,6 +455,33 @@ CREATE TABLE IF NOT EXISTS notebooks (
   name TEXT NOT NULL,
   synced_at TEXT
 );
+
+-- Public Android share-target submissions stay inert here until the owner
+-- approves them behind the app lock. notebook_id is allocated up front so an
+-- interrupted approval can be retried idempotently without creating a second
+-- notebook.
+CREATE TABLE IF NOT EXISTS pending_shares (
+  id TEXT PRIMARY KEY,
+  notebook_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  source_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_shares_created
+  ON pending_shares(created_at);
+
+-- Persist the small public-share throttle across cold starts. Source values
+-- are one-way hashes, not raw client addresses.
+CREATE TABLE IF NOT EXISTS share_rate_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_share_rate_source_created
+  ON share_rate_events(source_hash, created_at);
 
 -- Dropbox files the user has deleted from the app. Deleting a notebook
 -- removes its dropbox_file_id dedup marker, so without this tombstone the
@@ -504,6 +544,18 @@ CREATE TABLE IF NOT EXISTS credentials (
   transports TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Server-side session state makes inactivity and revocation per device. The
+-- cookie carries only this random id + expiry under an HMAC signature.
+CREATE TABLE IF NOT EXISTS app_sessions (
+  id TEXT PRIMARY KEY,
+  last_activity_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_sessions_expires
+  ON app_sessions(expires_at);
 
 CREATE TABLE IF NOT EXISTS chat_attachments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

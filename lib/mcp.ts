@@ -1,5 +1,7 @@
 import { createHash, timingSafeEqual } from "crypto";
 import { db } from "@/lib/db";
+import { clientIp } from "@/lib/clientIp";
+export { clientIp } from "@/lib/clientIp";
 import { CHAT_TOOLS, executeTool } from "@/lib/chatTools";
 import { getCurrentProfile } from "@/lib/profile";
 import { recallChatMemories } from "@/lib/chatMemory";
@@ -1117,16 +1119,6 @@ export function resetMcpThrottle(): void {
 // a plain per-IP rate limit on registration attempts, kept in its own
 // bucket so it can't starve or be starved by real auth-failure throttling.
 export const REGISTER_THROTTLE_BUCKET = "register";
-
-// First value of X-Forwarded-For (Railway's proxy sets it), else "unknown".
-export function clientIp(headers: Headers): string {
-  const xff = headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return "unknown";
-}
 
 // --- Audit trail ----------------------------------------------------------
 // Best-effort by design: auditing must never take the endpoint down, so

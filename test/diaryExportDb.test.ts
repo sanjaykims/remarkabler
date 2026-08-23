@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
@@ -431,6 +431,30 @@ describe("renderEntityStubFiles", () => {
     expect(day).toContain("[[Dr Kim MD]]");
     // ...and the stub's basename matches it exactly, so the link resolves.
     expect(stubFiles.has("People/Dr Kim MD.md")).toBe(true);
+  });
+
+  it("warns without renaming when distinct entities collide on an established stub path", () => {
+    addNotebook("nb1", "Diary 2026", "2026-06-19 00:00:00");
+    const p0 = addPage("nb1", 0, "entry", "2026-06-19");
+    addEntity(p0, "person", "A/B", "a/b");
+    addEntity(p0, "person", "A:B", "a:b");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      const files = exportMod.renderEntityStubFiles();
+      expect(files.has("People/A B.md")).toBe(true);
+      expect(
+        [...files.keys()].filter((file) => file === "People/A B.md")
+      ).toHaveLength(1);
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0][0]).toContain("Distinct person entities");
+      expect(warn.mock.calls[0][0]).toContain('"nameNorm":"a/b"');
+      expect(warn.mock.calls[0][0]).toContain('"nameNorm":"a:b"');
+      expect(warn.mock.calls[0][0]).toContain('"People/A B.md"');
+      expect(warn.mock.calls[0][0]).toContain("filename mapping was preserved");
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("INCLUDES entities tagged only via the mcp-conversations notebook (Phase C — deliberate, unlike discipline)", () => {

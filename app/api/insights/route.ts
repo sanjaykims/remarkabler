@@ -56,7 +56,7 @@ async function backfillTitles() {
 }
 
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   // Fire-and-forget — the user shouldn't wait for title backfill on every
   // page load. The throttle above caps cost; the response still ships the
   // current state and titles populate over subsequent refreshes.
@@ -73,7 +73,7 @@ export async function GET() {
 // PATCH { weeklyEnabled } — toggle the weekly automatic insight (an Opus
 // full-corpus call). OFF by default; the manual Generate button always works.
 export async function PATCH(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const body = (await req.json().catch(() => ({}))) as {
     weeklyEnabled?: boolean;
   };
@@ -86,7 +86,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function POST() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const noteCount = db()
     .prepare(
       `SELECT COUNT(*) AS c FROM pages WHERE ocr_text IS NOT NULL AND ocr_text != ''`

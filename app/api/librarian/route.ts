@@ -12,6 +12,6 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 // Routine), not something this app's own server process runs. This route
 // just surfaces its last-heartbeat status so /memory can show it.
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   return NextResponse.json(librarianStatus());
 }

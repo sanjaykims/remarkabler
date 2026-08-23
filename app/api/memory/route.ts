@@ -21,7 +21,7 @@ function hasNotes(): boolean {
 }
 
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   // Fire-and-forget the background sweep — gated internally to ≤ once per
   // 5 min. /memory is the dashboard, so visits here are a natural place to
   // pick up new Dropbox exports + run the other background work without
@@ -36,7 +36,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || "");
 

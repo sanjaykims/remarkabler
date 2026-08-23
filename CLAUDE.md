@@ -171,7 +171,7 @@ and generate an accumulating record of "insights" about themselves.
 
 ## Stack
 
-Next.js 14 (App Router, TypeScript), better-sqlite3, @anthropic-ai/sdk,
+Next.js 16 (App Router, TypeScript), better-sqlite3, @anthropic-ai/sdk,
 Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 `DATA_DIR` (defaults to `./data`).
 
@@ -461,7 +461,8 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   discipline notebook is excluded everywhere here, same as themes/sentiment.
 - `lib/profile.ts` — the evolving "profile of you" (`profile` table, versioned):
   `getCurrentProfile`, `getCurrentProfileRow`, `hasProfile`, `saveProfile`.
-- `lib/notes.ts` — `createNotebook` (fast: save PDF + DB row), `processNotebook`
+- `lib/notes.ts` — `createNotebook` (fast: save PDF + queued DB row),
+  `queueNotebookProcessing` + the internal OCR worker
   (background OCR → embed → fold into profile → auto-analyse fresh pages for
   `/mind`), `deleteNotebook`, `buildNotesContext`, `buildChatContext`,
   `ensureProfileSeed`, `extractEntryDate` / `reparseAllEntryDates` (diary-date
@@ -544,7 +545,7 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   image's `rm2pdf` (per page) + `pypdf` (merge), with per-page failure
   isolation. `renderersAvailable()` is false off-image, so local/CI/build
   never render. `lib/remarkableImport.ts` — `importRemarkableNotebook` ties
-  download → render → the normal createNotebook/processNotebook pipeline, with
+  download → render → the normal createNotebook/OCR-queue pipeline, with
   `remarkable_doc_id`/`remarkable_doc_hash` dedupe (skip unchanged; replace on
   change, but only after a good render). `lib/remarkableSync.ts` — Phase 2
   zero-tap sweep sync (see Known limits for the full invariant list): pure
@@ -577,15 +578,15 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   opened the app, defeating the "write, close the cover, done" promise. The
   scheduler is a thin wrapper — `runMaintenanceSweep` is already
   self-throttled internally, so calling it on a clock needed no changes to
-  its own guard logic. Requires `experimental.instrumentationHook: true` in
-  `next.config.mjs` on Next 14.2 (default-on from Next 15 — remove the flag
-  on that upgrade, don't remove the file).
+  its own guard logic. Instrumentation is built in on Next 16; keep the file
+  even though no feature flag is required.
 - API routes (`app/api/*`): `auth`, `notebooks`, `chat`, `insights`, `usage`,
   `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
   `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities`,
   `mind/build-wiki`), `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect,export}`,
   `location`, `owntracks`, `mcp` (remote MCP endpoint — see `lib/mcp.ts`) +
+  authenticated `mcp/audit` + `mcp/oauth/grants`, and public
   `mcp/oauth/{register,authorize,token,protected-resource,authorization-server}`
   (OAuth 2.1 server for the claude.ai connector — see `lib/mcpOauth.ts`; the
   `/.well-known/oauth-*` discovery paths are `next.config.mjs` rewrites),
@@ -957,10 +958,12 @@ features need the deployed instance to fully verify.
   falls back to `CHAT_FALLBACK_MODEL` (default `claude-sonnet-4-6`) for that
   message. Insights deliberately still uses the full corpus (it's an
   occasional, on-demand reflection).
-- **Transcription runs in the background.** `createNotebook` returns
-  immediately; `processNotebook` is fired un-awaited and sets the notebook
-  `status` (`processing`/`done`/`error`). Never make upload or share wait for
-  OCR — doing so froze the UI for ~a minute.
+- **Transcription runs in the durable background queue.** `createNotebook`
+  stores an admitted PDF as `queued`; `queueNotebookProcessing` atomically
+  claims work under the shared OCR concurrency limit. The unauthenticated
+  `/share` target stores only inert `pending_shares`; owner approval behind
+  the app lock is the admission boundary. Never make upload/share wait for
+  OCR or let `/share` call `createNotebook` directly.
 - **OCR streams the response** (`messages.stream()`). A non-streaming call
   with a large `max_tokens` is rejected by the SDK.
 - **OCR output is a `--- PAGE n ---` delimiter format, not JSON.** It survives

@@ -25,3 +25,16 @@ export function isPdfFile(file: { name?: string; type?: string }): boolean {
 }
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+export const MAX_UPLOAD_FILES = 3;
+export const MAX_UPLOAD_TOTAL_BYTES = 40 * 1024 * 1024;
+
+/** Cheap content check shared by every PDF ingestion path. */
+export function looksLikePdf(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 4 &&
+    bytes[0] === 0x25 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x44 &&
+    bytes[3] === 0x46
+  );
+}

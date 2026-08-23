@@ -63,7 +63,7 @@ export async function compareImportedNotebook(
   if (!nb) {
     return { ok: false, error: "Import this notebook first, then compare." };
   }
-  if (nb.status === "processing") {
+  if (nb.status === "queued" || nb.status === "processing") {
     return {
       ok: false,
       error: "Still transcribing — try comparing in a minute.",

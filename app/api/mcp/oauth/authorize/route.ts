@@ -3,6 +3,8 @@ import {
   getClient,
   matchConsentSecret,
   issueAuthCode,
+  parseSafeRedirectUri,
+  type RegisteredClient,
 } from "@/lib/mcpOauth";
 import {
   clientIp,
@@ -47,6 +49,8 @@ function validate(p: OAuthParams): string | null {
   if (!p.client_id) return "Missing client_id.";
   if (!p.redirect_uri) return "Missing redirect_uri.";
   if (!p.code_challenge) return "Missing PKCE code_challenge.";
+  if (!/^[A-Za-z0-9_-]{43}$/.test(p.code_challenge))
+    return "Invalid PKCE code_challenge.";
   if (p.code_challenge_method !== "S256")
     return "Unsupported code_challenge_method (expected 'S256').";
   const client = getClient(p.client_id);
@@ -54,6 +58,8 @@ function validate(p: OAuthParams): string | null {
   // Exact redirect_uri match — prevents code interception via open redirect.
   if (!client.redirect_uris.includes(p.redirect_uri))
     return "redirect_uri is not registered for this client.";
+  if (!parseSafeRedirectUri(p.redirect_uri)) return "redirect_uri is malformed or unsafe.";
+  if (p.scope && p.scope !== "mcp") return "Unsupported scope (expected 'mcp').";
   return null;
 }
 
@@ -92,15 +98,22 @@ button{width:100%;padding:13px;font-size:15px;font-weight:500;border:0;border-ra
 button:active{background:#a95f31}
 .err{background:#f8e6e0;color:#a5432a;padding:10px 12px;border-radius:9px;font-size:13px;margin-bottom:16px}
 @media(prefers-color-scheme:dark){.err{background:#3a241e;color:#e8a58f}}
+.client{border:1px solid #e0d8cf;border-radius:10px;padding:12px;margin:0 0 18px;font-size:13px}
+.client strong,.client code{display:block;overflow-wrap:anywhere;margin-top:4px}
+.warn{color:#a5432a;font-weight:600;margin-bottom:8px}
+@media(prefers-color-scheme:dark){.client{border-color:#3a352e}.warn{color:#e8a58f}}
 .lock{font-size:32px;margin-bottom:10px}
 </style></head><body><div class="card">${body}</div></body></html>`;
   return new NextResponse(html, {
     status,
-    headers: { "content-type": "text/html; charset=utf-8" },
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+    },
   });
 }
 
-function consentForm(p: OAuthParams, error?: string): NextResponse {
+function consentForm(p: OAuthParams, client: RegisteredClient, error?: string): NextResponse {
   const hidden = (
     ["response_type", "client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "scope"] as const
   )
@@ -108,8 +121,16 @@ function consentForm(p: OAuthParams, error?: string): NextResponse {
     .join("");
   return page(
     `<div class="lock">🔒</div>
-    <h1>Remarkabler를 Claude에 연결</h1>
-    <p>Claude가 당신의 일기를 읽을 수 있도록 연결합니다. 확인을 위해 <b>MCP 토큰</b>을 입력하세요 (Railway에 설정한 값).</p>
+    <h1>Remarkabler 연결 요청</h1>
+    <p>아래 클라이언트가 당신의 Remarkabler 데이터에 접근하려고 합니다.</p>
+    <div class="client">
+      <div class="warn">동적으로 등록된 미확인 클라이언트 (Unverified client)</div>
+      클라이언트가 주장하는 이름
+      <strong>${esc(client.client_name || "이름 없음")}</strong>
+      승인 후 이동할 정확한 주소
+      <code>${esc(p.redirect_uri)}</code>
+    </div>
+    <p>이 이름은 Remarkabler가 검증한 신원이 아닙니다. 주소를 신뢰할 때만 Railway에 설정한 <b>MCP 토큰</b>을 입력하세요.</p>
     ${error ? `<div class="err">${esc(error)}</div>` : ""}
     <form method="POST">
       ${hidden}
@@ -125,7 +146,7 @@ export function GET(req: Request) {
   const p = readParams(new URL(req.url).searchParams);
   const err = validate(p);
   if (err) return page(`<h1>연결할 수 없음</h1><p>${esc(err)}</p>`, 400);
-  return consentForm(p);
+  return consentForm(p, getClient(p.client_id)!);
 }
 
 export async function POST(req: Request) {
@@ -137,18 +158,23 @@ export async function POST(req: Request) {
 
   const err = validate(p);
   if (err) return page(`<h1>연결할 수 없음</h1><p>${esc(err)}</p>`, 400);
+  const client = getClient(p.client_id)!;
 
   const ip = clientIp(req.headers);
   if (isThrottled(ip)) {
     recordMcpAudit("throttled", { ip, ok: false });
-    return consentForm(p, "시도가 너무 많습니다. 잠시 후 다시 시도하세요.");
+    return consentForm(p, client, "시도가 너무 많습니다. 잠시 후 다시 시도하세요.");
   }
 
   const secretHash = matchConsentSecret(token);
   if (!secretHash) {
     recordAuthFailure(ip);
     recordMcpAudit("auth_fail", { ip, tool: "oauth_authorize", ok: false });
-    return consentForm(p, "토큰이 올바르지 않습니다. Railway의 MCP_AUTH_TOKEN 값과 정확히 같아야 합니다.");
+    return consentForm(
+      p,
+      client,
+      "토큰이 올바르지 않습니다. Railway의 MCP_AUTH_TOKEN 값과 정확히 같아야 합니다."
+    );
   }
 
   // Correct token → issue a single-use auth code bound to this client +
@@ -156,7 +182,7 @@ export async function POST(req: Request) {
   // later rotation of that secret revokes the resulting tokens).
   const code = issueAuthCode(p.client_id, p.redirect_uri, p.code_challenge, secretHash);
   recordMcpAudit("initialize", { ip, tool: "oauth_authorize" });
-  const to = new URL(p.redirect_uri);
+  const to = parseSafeRedirectUri(p.redirect_uri)!;
   to.searchParams.set("code", code);
   if (p.state) to.searchParams.set("state", p.state);
   return NextResponse.redirect(to.toString(), 302);

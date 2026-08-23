@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { db } from "@/lib/db";
 import { REFLECTIONS_NOTEBOOK_ID } from "@/lib/notes";
-import { entityStubFileName } from "@/lib/diaryExport";
+import { entityStubWikiTarget } from "@/lib/diaryExport";
 
 // Standalone AI-written reflections, saved by the MCP `save_reflection`
 // write tool (lib/mcp.ts) and filed as one Markdown note each into the
@@ -106,11 +106,16 @@ export function renderReflectionNote(
     row.content.trimEnd(),
     "",
   ];
-  const links = entities
-    .filter((e) => e.kind === "person" || e.kind === "place" || e.kind === "project")
-    .map((e) => entityStubFileName(e.kind as "person" | "place" | "project", e.name))
-    .map((f) => f.replace(/^[^/]+\//, "").replace(/\.md$/, ""));
-  if (links.length > 0) {
+  const links = new Set(
+    entities
+      .filter(
+        (e) => e.kind === "person" || e.kind === "place" || e.kind === "project"
+      )
+      .map((e) =>
+        entityStubWikiTarget(e.kind as "person" | "place" | "project", e.name)
+      )
+  );
+  if (links.size > 0) {
     lines.push("## Connects to", "");
     for (const link of links) lines.push(`- [[${link}]]`);
     lines.push("");

@@ -33,7 +33,7 @@ function fmtTime(iso: string | null): string {
 }
 
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
 
   const profileRow = getCurrentProfileRow();
 

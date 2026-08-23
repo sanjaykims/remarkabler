@@ -11,7 +11,7 @@ import path from "path";
 // which is ESM-only and fails to load inside the CJS-bundled config step.
 export default defineConfig({
   resolve: {
-    alias: { "@": path.resolve(__dirname, ".") },
+    alias: { "@": path.resolve(import.meta.dirname, ".") },
   },
   test: {
     environment: "node",

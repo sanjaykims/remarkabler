@@ -421,6 +421,12 @@ describe("entityStubFileName", () => {
     );
   });
 
+  it("uses the established stub sanitizer for wikilink syntax characters", () => {
+    expect(entityStubFileName("person", "Dr [Kim]|MD")).toBe(
+      "People/Dr KimMD.md"
+    );
+  });
+
   it("falls back to 'unnamed' when a name reduces to empty", () => {
     expect(entityStubFileName("person", "///")).toBe("People/unnamed.md");
   });

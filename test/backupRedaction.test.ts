@@ -56,7 +56,6 @@ describe("redactSensitiveSettings", () => {
     const Database = (await import("better-sqlite3")).default;
     // Make a staged copy of the live DB and redact it.
     const stagedPath = path.join(process.env.DATA_DIR!, "staged.db");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (dbMod.db() as any).backup(stagedPath);
     backupMod.redactSensitiveSettings(stagedPath);
 

@@ -34,7 +34,7 @@ export default function Home() {
          (SELECT COUNT(*) FROM notebooks) AS notebooks,
          (SELECT COUNT(*) FROM pages WHERE ocr_text IS NOT NULL AND ocr_text != '') AS ocr_pages,
          (SELECT COUNT(*) FROM insights) AS insights,
-         (SELECT COUNT(*) FROM notebooks WHERE status = 'processing') AS processing`
+         (SELECT COUNT(*) FROM notebooks WHERE status IN ('queued','processing')) AS processing`
     )
     .get() as {
     notebooks: number;
@@ -189,6 +189,7 @@ export default function Home() {
 }
 
 function statusLabel(n: RecentNotebook): string {
+  if (n.status === "queued") return "Waiting…";
   if (n.status === "processing") return "Transcribing…";
   if (n.status === "error") return "Failed";
   return `${n.page_count} page${n.page_count === 1 ? "" : "s"}`;

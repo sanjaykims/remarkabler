@@ -2,12 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import {
   createNotebook,
-  processNotebook,
+  queueNotebookProcessing,
   deleteNotebook,
   runMaintenanceSweep,
 } from "@/lib/notes";
 import { isAuthenticated } from "@/lib/auth";
-import { FileLike, isFileLike, isPdfFile, MAX_UPLOAD_BYTES } from "@/lib/upload";
+import {
+  FileLike,
+  isFileLike,
+  isPdfFile,
+  looksLikePdf,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_FILES,
+  MAX_UPLOAD_TOTAL_BYTES,
+} from "@/lib/upload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +24,7 @@ const LOCKED = () =>
   NextResponse.json({ error: "Locked" }, { status: 401 });
 
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   // Fire-and-forget the background sweep — gated internally to ≤ once per
   // 5 min, so visiting /notebooks repeatedly is safe. Picks up any new
   // Dropbox exports, runs the daily/weekly background work, etc.
@@ -37,7 +45,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const form = await req.formData().catch(() => null);
   const raw: unknown[] = form ? form.getAll("file") : [];
   const files: FileLike[] = raw.filter(
@@ -45,6 +53,18 @@ export async function POST(req: NextRequest) {
   );
   if (files.length === 0) {
     return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+  }
+  if (files.length > MAX_UPLOAD_FILES) {
+    return NextResponse.json(
+      { error: `Upload at most ${MAX_UPLOAD_FILES} PDFs at a time.` },
+      { status: 400 }
+    );
+  }
+  if (files.reduce((sum, file) => sum + file.size, 0) > MAX_UPLOAD_TOTAL_BYTES) {
+    return NextResponse.json(
+      { error: "The combined PDF limit is 40 MB." },
+      { status: 400 }
+    );
   }
 
   const added: Array<{ id: string; name: string }> = [];
@@ -61,8 +81,12 @@ export async function POST(req: NextRequest) {
     }
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
+      if (!looksLikePdf(bytes)) {
+        skipped.push(`${name} (not a valid PDF)`);
+        continue;
+      }
       const nb = createNotebook(name, bytes);
-      void processNotebook(nb.id).catch(() => {});
+      queueNotebookProcessing(nb.id);
       added.push({ id: nb.id, name: nb.name });
     } catch (err) {
       skipped.push(`${name} (${(err as Error).message})`);
@@ -80,7 +104,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const id = req.nextUrl.searchParams.get("id");
   if (!id) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });

@@ -13,11 +13,9 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 // for the reMarkable cloud quality gate: seeing the actual rendered pages
 // tells apart "the renderer dropped this content" from "the render is fine
 // but OCR misread it". Works for any notebook (uploaded/Dropbox/cloud).
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  if (!isAuthenticated()) return LOCKED();
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  if (!(await isAuthenticated())) return LOCKED();
   const id = params.id;
   // Only serve ids that exist as notebooks — never arbitrary paths.
   const row = db()

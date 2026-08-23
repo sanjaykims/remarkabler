@@ -13,7 +13,7 @@ export const maxDuration = 300;
 // diary into ongoing auto-refresh in the maintenance sweep. Refreshes the
 // Dropbox export afterward so the new profiles land in Obsidian.
 export async function POST() {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   try {

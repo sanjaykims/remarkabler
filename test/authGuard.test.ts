@@ -71,4 +71,10 @@ describe("API route auth coverage", () => {
     const pendingOk = stale.filter((rel) => rel !== "csp-report/route.ts");
     expect(pendingOk, `stale PUBLIC entries: ${pendingOk.join(", ")}`).toEqual([]);
   });
+
+  it("keeps the public share target in quarantine instead of the OCR corpus", () => {
+    const src = readFileSync(path.join(process.cwd(), "app", "share", "route.ts"), "utf8");
+    expect(src).toMatch(/createPendingShare/);
+    expect(src).not.toMatch(/createNotebook|processNotebook|queueNotebookProcessing/);
+  });
 });

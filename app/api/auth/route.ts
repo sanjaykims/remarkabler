@@ -4,12 +4,15 @@ import {
   CHALLENGE_COOKIE,
   createSessionToken,
   checkPasscode,
+  isAuthenticated,
   isLockEnabled,
   sessionCookieOptions,
   challengeCookieOptions,
   passcodeLockRemainingMs,
   recordFailedPasscodeAttempt,
   recordSuccessfulAuth,
+  revokeAllSessions,
+  revokeSessionToken,
 } from "@/lib/auth";
 import {
   hasCredentials,
@@ -18,6 +21,7 @@ import {
   buildAuthenticationOptions,
   verifyAuthentication,
 } from "@/lib/webauthn";
+import { clientIp } from "@/lib/clientIp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,12 +50,13 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || "");
   const { rpID, origin } = relyingParty(req);
+  const source = clientIp(req.headers);
 
   // The passcode is the one credential here that's actually guessable (a
   // WebAuthn assertion isn't practically forgeable, so login-verify isn't
   // gated). Block repeated guesses before touching checkPasscode at all.
   if (action === "register-options" || action === "passcode") {
-    const lockedMs = passcodeLockRemainingMs();
+    const lockedMs = passcodeLockRemainingMs(source);
     if (lockedMs !== null) {
       return NextResponse.json(
         { error: "Too many wrong passcodes. Try again in a few minutes." },
@@ -62,10 +67,10 @@ export async function POST(req: NextRequest) {
 
   if (action === "register-options") {
     if (!checkPasscode(String(body.passcode || ""))) {
-      recordFailedPasscodeAttempt();
+      recordFailedPasscodeAttempt(source);
       return NextResponse.json({ error: "Wrong passcode." }, { status: 401 });
     }
-    recordSuccessfulAuth();
+    recordSuccessfulAuth(source);
     const options = await buildRegistrationOptions(rpID);
     const res = NextResponse.json(options);
     res.cookies.set(CHALLENGE_COOKIE, options.challenge, challengeCookieOptions);
@@ -97,6 +102,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    recordSuccessfulAuth(source);
     const res = NextResponse.json({ ok: true });
     res.cookies.set(SESSION_COOKIE, createSessionToken(), sessionCookieOptions);
     res.cookies.set(CHALLENGE_COOKIE, "", { ...challengeCookieOptions, maxAge: 0 });
@@ -135,6 +141,7 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
+    recordSuccessfulAuth(source);
     const res = NextResponse.json({ ok: true });
     res.cookies.set(SESSION_COOKIE, createSessionToken(), sessionCookieOptions);
     res.cookies.set(CHALLENGE_COOKIE, "", { ...challengeCookieOptions, maxAge: 0 });
@@ -143,18 +150,30 @@ export async function POST(req: NextRequest) {
 
   if (action === "passcode") {
     if (!checkPasscode(String(body.passcode || ""))) {
-      recordFailedPasscodeAttempt();
+      recordFailedPasscodeAttempt(source);
       return NextResponse.json({ error: "Wrong passcode." }, { status: 401 });
     }
-    recordSuccessfulAuth();
+    recordSuccessfulAuth(source);
     const res = NextResponse.json({ ok: true });
     res.cookies.set(SESSION_COOKIE, createSessionToken(), sessionCookieOptions);
     return res;
   }
 
   if (action === "logout") {
+    revokeSessionToken(req.cookies.get(SESSION_COOKIE)?.value);
     const res = NextResponse.json({ ok: true });
     res.cookies.set(SESSION_COOKIE, "", { ...sessionCookieOptions, maxAge: 0 });
+    return res;
+  }
+
+  if (action === "logout-all") {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json({ error: "Locked" }, { status: 401 });
+    }
+    revokeAllSessions();
+    const res = NextResponse.json({ ok: true });
+    res.cookies.set(SESSION_COOKIE, "", { ...sessionCookieOptions, maxAge: 0 });
+    res.cookies.set(CHALLENGE_COOKIE, "", { ...challengeCookieOptions, maxAge: 0 });
     return res;
   }
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-08-24 (Full review remediation)
+
+Closed the repository-wide review findings as one coordinated hardening pass.
+The unauthenticated Android share target now writes only to a size-, count-,
+rate-, and retention-capped `pending_shares` quarantine; an authenticated owner
+must approve each PDF before a notebook is created. All admitted whole-PDF
+sources now enter a durable `queued` OCR state and share one atomic concurrency
+gate, with restart-safe retries and transactional page replacement.
+
+Hardened OAuth DCR/consent/PKCE/refresh binding, added authenticated grant
+inventory/revocation plus paginated MCP audit visibility, removed browser-side
+location leakage, and rounded coordinates sent to Nominatim while retaining
+exact local points. Added WebAuthn lockout recovery, per-device
+inactivity/revocation, lock-all session rotation, and Railway-source-scoped
+passcode throttling so one source cannot lock out another. Made Obsidian entity link sanitization consistent with
+non-destructive collision warnings.
+
+Upgraded to Next.js 16.3.2, React 19, React Three Fiber 9, Drei 10, ESLint 9,
+and Vitest 4; migrated request APIs to async access and reduced `npm audit` to
+zero known vulnerabilities. Added pinned, read-only GitHub Actions CI, aligned
+local/CI/container installs on Node 20, and hardened the Railway image with
+registry-pinned bases, a non-root runtime, and
+fail-closed `/data` ownership/write checks. Local verification: 672 tests,
+lint, typecheck, production build, and zero-vulnerability audit.
+
 ## 2026-08-23 (Vendored + registered the agent-skills plugin)
 
 Added [`sanjaykims/agent-skills`](https://github.com/sanjaykims/agent-skills)

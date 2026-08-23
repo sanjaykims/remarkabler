@@ -15,7 +15,7 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 // raw pages, render to PDF, and feed it into the OCR pipeline. Returns
 // immediately after kicking off OCR (status becomes 'processing').
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const body = (await req.json().catch(() => ({}))) as {
     id?: string;
     hash?: string;

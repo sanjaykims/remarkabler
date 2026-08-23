@@ -51,7 +51,7 @@ async function postMergeDropbox(changed: boolean) {
 //                                          risk). Records aliases so future
 //                                          ingests auto-fold too.
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   const body = (await req.json().catch(() => null)) as

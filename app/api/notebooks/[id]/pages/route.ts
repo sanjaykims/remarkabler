@@ -10,11 +10,9 @@ export const dynamic = "force-dynamic";
 // Returns every page of one notebook with its OCR'd text. Fetched lazily
 // when the user expands a notebook on the Notebooks page so the main list
 // stays light.
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  if (!isAuthenticated()) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   const id = params.id;
@@ -45,11 +43,9 @@ export async function GET(
 // correction on the next sweep, and re-exports the affected day file so the
 // fix reaches Obsidian/Dropbox. Guarded so the page id must belong to this
 // notebook.
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  if (!isAuthenticated()) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   const id = params.id;

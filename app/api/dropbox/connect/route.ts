@@ -29,7 +29,7 @@ const COOKIE_MAX_AGE_SECONDS = 10 * 60;
 // makes the OAuth origin a canonical configured value in prod rather than
 // "whatever the proxy said," which is the posture the review pushed for.
 export async function GET(req: NextRequest) {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   if (!dropboxConfigured()) {

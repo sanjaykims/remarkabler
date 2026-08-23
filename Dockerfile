@@ -11,12 +11,15 @@
 # builder is DOCKERFILE). $PORT is injected by Railway; `next start` honors it.
 # The persistent volume stays mounted at /data (ENV DATA_DIR=/data).
 
-# Shared base so builder and runner can never drift (they MUST match for the
-# compiled better-sqlite3 binding copied between stages to load).
-ARG BASE=nikolaik/python-nodejs:python3.11-nodejs20
+# Keep these as separate, registry-verified digest references. They must
+# remain ABI-compatible: same Node major,
+# architecture, libc, and Debian generation, because the runner loads the
+# better-sqlite3 native binding compiled in the builder.
+ARG BUILDER_BASE=nikolaik/python-nodejs:python3.11-nodejs20@sha256:8f958bdc1b4a422bfafd97cab4f69836401f616ae985d4b57a53d254f5bcb038
+ARG RUNNER_BASE=nikolaik/python-nodejs:python3.11-nodejs20-slim@sha256:df03d7d77b520788713dec8c99464d33e431e78256b6950f52ad99561dd09412
 
 # ---- Builder: install deps + build the Next app ----
-FROM ${BASE} AS builder
+FROM ${BUILDER_BASE} AS builder
 WORKDIR /app
 
 # Optional CA hook: drop a .crt into docker/certs/ to trust a corporate/proxy
@@ -43,16 +46,19 @@ RUN npm run build \
     && npm prune --omit=dev
 
 # ---- Runner: app + reMarkable .rm renderer ----
-FROM ${BASE}-slim AS runner
+FROM ${RUNNER_BASE} AS runner
 WORKDIR /app
 # No ENV PORT here on purpose: Railway injects PORT at runtime and `next
 # start` honors it (falling back to 3000 when unset). Baking PORT could
 # shadow Railway's value.
 ENV NODE_ENV=production \
     DATA_DIR=/data \
+    HOME=/home/remarkabler \
     NEXT_TELEMETRY_DISABLED=1
 
-# libcairo2 is the system lib cairosvg needs (SVG -> PDF). fontconfig +
+# gosu lets the entrypoint repair ownership on a freshly mounted Railway
+# volume and then replace itself with the unprivileged app process. libcairo2
+# is the system lib cairosvg needs (SVG -> PDF). fontconfig +
 # Noto CJK matter for TYPED text on reMarkable pages (Type Folio / convert-
 # to-text): handwritten strokes are font-independent vector polylines, but a
 # typed Korean passage in the SVG renders as empty tofu boxes without a CJK
@@ -61,8 +67,15 @@ ENV NODE_ENV=production \
 # isolated venv.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       libcairo2 fontconfig fonts-noto-cjk fonts-noto-core \
+       gosu libcairo2 fontconfig fonts-noto-cjk fonts-noto-core \
     && rm -rf /var/lib/apt/lists/*
+
+# Use a stable numeric identity so files on the persistent volume retain a
+# meaningful owner across image releases. The entrypoint starts as root only
+# long enough to reconcile mount ownership, then drops privileges permanently.
+RUN groupadd --gid 10001 remarkabler \
+    && useradd --uid 10001 --gid remarkabler --create-home \
+       --home-dir /home/remarkabler --shell /usr/sbin/nologin remarkabler
 
 # reMarkable .rm -> SVG/PDF renderer, isolated in its own venv so it can't
 # perturb anything else. Pinned to the versions proven on real v6 samples.
@@ -85,11 +98,19 @@ RUN chmod +x /usr/local/bin/rm2pdf
 
 # App artifacts from the builder (node_modules already pruned to prod deps;
 # includes the compiled better-sqlite3 binding).
+# Keep executable application code root-owned. Only Next's runtime cache and
+# the separately mounted DATA_DIR need to be writable by the app process.
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.mjs ./next.config.mjs
+RUN mkdir -p /app/.next/cache \
+    && chown -R remarkabler:remarkabler /app/.next/cache
+
+COPY docker/entrypoint.sh /usr/local/bin/remarkabler-entrypoint
+RUN chmod 0755 /usr/local/bin/remarkabler-entrypoint
 
 EXPOSE 3000
+ENTRYPOINT ["remarkabler-entrypoint"]
 CMD ["npm", "run", "start"]

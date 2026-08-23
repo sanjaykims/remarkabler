@@ -12,7 +12,7 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 // https://my.remarkable.com/device/browser/connect, then list notebooks to
 // confirm it works. Phase 0: read-only, no ingestion.
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const body = (await req.json().catch(() => null)) as { code?: unknown } | null;
   const code = typeof body?.code === "string" ? body.code : "";
   const result = await pairRemarkable(code);

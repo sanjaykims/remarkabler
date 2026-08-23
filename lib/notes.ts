@@ -25,30 +25,96 @@ export type NotebookSummary = {
 };
 
 /**
- * Persist an uploaded PDF and create a notebook row in the "processing"
- * state. This is fast — it does NOT call Claude. The actual transcription
- * happens in processNotebook, which is meant to run in the background so
- * the upload/share request can return immediately.
+ * Persist an admitted PDF and create a durable OCR queue row. This is fast —
+ * it does NOT call Claude. Call queueNotebookProcessing after any source
+ * metadata has been stamped onto the row.
  */
 export function createNotebook(
   fileName: string,
-  pdfBytes: Uint8Array
+  pdfBytes: Uint8Array,
+  requestedId?: string
 ): NotebookSummary {
-  const id = randomUUID();
+  const id = requestedId || randomUUID();
   const name = fileName.replace(/\.pdf$/i, "").trim() || "Untitled notebook";
 
   const notebookDir = path.join(FILES_DIR, id);
   fs.mkdirSync(notebookDir, { recursive: true });
-  fs.writeFileSync(path.join(notebookDir, "notebook.pdf"), pdfBytes);
-
-  db()
-    .prepare(
-      `INSERT INTO notebooks(id,name,synced_at,status)
-       VALUES(?,?,datetime('now'),'processing')`
-    )
-    .run(id, name);
+  try {
+    fs.writeFileSync(path.join(notebookDir, "notebook.pdf"), pdfBytes, {
+      mode: 0o600,
+    });
+    db()
+      .prepare(
+        `INSERT INTO notebooks(id,name,synced_at,status)
+         VALUES(?,?,datetime('now'),'queued')`
+      )
+      .run(id, name);
+  } catch (error) {
+    fs.rmSync(notebookDir, { recursive: true, force: true });
+    throw error;
+  }
 
   return { id, name };
+}
+
+export function ocrConcurrencyLimit(): number {
+  const raw = Number(process.env.OCR_CONCURRENCY_LIMIT);
+  if (!Number.isFinite(raw) || raw <= 0) return 2;
+  return Math.max(1, Math.min(5, Math.floor(raw)));
+}
+
+export function processingNotebookCount(): number {
+  const row = db()
+    .prepare(`SELECT COUNT(*) AS c FROM notebooks WHERE status = 'processing'`)
+    .get() as { c: number };
+  return row.c;
+}
+
+function claimNextQueuedNotebook(): string | null {
+  return db().transaction(() => {
+    const next = db()
+      .prepare(
+        `SELECT id FROM notebooks
+         WHERE status = 'queued'
+         ORDER BY synced_at ASC, rowid ASC
+         LIMIT 1`
+      )
+      .get() as { id: string } | undefined;
+    if (!next) return null;
+    const claimed = db()
+      .prepare(
+        `UPDATE notebooks SET status = 'processing', error = NULL
+         WHERE id = ? AND status = 'queued'`
+      )
+      .run(next.id);
+    return claimed.changes === 1 ? next.id : null;
+  })();
+}
+
+let queueDrainActive = false;
+
+/** Start as many queued OCR jobs as the shared concurrency budget permits. */
+export function drainNotebookProcessingQueue(): void {
+  if (queueDrainActive) return;
+  queueDrainActive = true;
+  try {
+    while (processingNotebookCount() < ocrConcurrencyLimit()) {
+      const id = claimNextQueuedNotebook();
+      if (!id) break;
+      void processNotebook(id).finally(drainNotebookProcessingQueue);
+    }
+  } finally {
+    queueDrainActive = false;
+  }
+}
+
+export function queueNotebookProcessing(id: string): void {
+  const row = db()
+    .prepare(`SELECT status FROM notebooks WHERE id = ?`)
+    .get(id) as { status: string | null } | undefined;
+  if (!row) throw new Error("Notebook was not found.");
+  if (row.status !== "queued") return;
+  drainNotebookProcessingQueue();
 }
 
 /**
@@ -56,7 +122,7 @@ export function createNotebook(
  * mark the notebook "done" (or "error"). Designed to be called WITHOUT being
  * awaited — it never throws; failures are written to the notebook's status.
  */
-export async function processNotebook(id: string): Promise<void> {
+async function processNotebook(id: string): Promise<void> {
   try {
     const row = db()
       .prepare(`SELECT name FROM notebooks WHERE id = ?`)
@@ -76,18 +142,23 @@ export async function processNotebook(id: string): Promise<void> {
     );
 
     const setEntryDate = db().prepare(`UPDATE pages SET entry_date = ? WHERE id = ?`);
-    for (const p of pages) {
-      const pageId = `${id}:${p.pageIndex}`;
-      insertPage.run(pageId, id, p.pageIndex, p.text);
-      if (p.text) {
-        insertFts.run(p.text, row.name, pageId, id);
-        setEntryDate.run(extractEntryDate(p.text) || "none", pageId);
+    db().transaction(() => {
+      // A process can stop after OCR but before the final status update. Clear
+      // any partial prior write so the durable queue can retry idempotently.
+      db().prepare(`DELETE FROM pages_fts WHERE notebook_id = ?`).run(id);
+      db().prepare(`DELETE FROM pages WHERE notebook_id = ?`).run(id);
+      for (const p of pages) {
+        const pageId = `${id}:${p.pageIndex}`;
+        insertPage.run(pageId, id, p.pageIndex, p.text);
+        if (p.text) {
+          insertFts.run(p.text, row.name, pageId, id);
+          setEntryDate.run(extractEntryDate(p.text) || "none", pageId);
+        }
       }
-    }
-
-    db()
-      .prepare(`UPDATE notebooks SET status='done', error=NULL WHERE id = ?`)
-      .run(id);
+      db()
+        .prepare(`UPDATE notebooks SET status='done', error=NULL WHERE id = ?`)
+        .run(id);
+    })();
 
     // Embed each page semantically (Voyage). Failures are silent — search
     // falls back to FTS-only for pages without an embedding.
@@ -1199,6 +1270,11 @@ function getMaybeRunWeeklyBackup(): () => void {
  * each time.
  */
 export function runMaintenanceSweep(): void {
+  // Queue draining is deliberately outside the five-minute chore throttle.
+  // It is cheap when empty and lets persisted work resume immediately after
+  // a restart or as soon as another OCR slot becomes available.
+  drainNotebookProcessingQueue();
+
   // The relationship-export race fix shipped after some relationship rows had
   // already been written. Run this before the coarse maintenance throttle so a
   // fresh deploy reconciles the vault immediately on boot.

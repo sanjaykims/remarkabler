@@ -1,5 +1,4 @@
-// Runs once when the Next.js server starts (needs experimental.instrumentationHook
-// in next.config.mjs on Next 14.2; default-on from Next 15).
+// Runs once when the Next.js server starts (built in on Next 16).
 //
 // Two jobs:
 //

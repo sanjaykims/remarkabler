@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { cn } from "@/components/cn";
 import TransitionLink from "@/components/TransitionLink";
+import LockAllButton from "./LockAllButton";
 
 // Routes are listed in nav order. The first entry is the wordmark
 // (slightly larger + bold); the rest are nav links with a sky-blue
@@ -20,7 +21,7 @@ const LINKS = [
   { href: "/usage", label: "Cost" },
 ];
 
-export default function Nav() {
+export default function Nav({ showLockAll = false }: { showLockAll?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -55,6 +56,7 @@ export default function Nav() {
           </TransitionLink>
         );
       })}
+      {showLockAll && <LockAllButton />}
     </nav>
   );
 }

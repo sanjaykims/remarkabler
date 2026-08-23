@@ -157,7 +157,7 @@ export default function MemoryPage() {
   const [embedBusy, setEmbedBusy] = useState(false);
   const [embedMsg, setEmbedMsg] = useState<string | null>(null);
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const [origin, setOrigin] = useState("");
 
   async function load() {
     setLoading(true);
@@ -675,6 +675,7 @@ export default function MemoryPage() {
   }
 
   useEffect(() => {
+    setOrigin(window.location.origin);
     load();
     loadDisc();
     loadLocs();
@@ -709,25 +710,14 @@ export default function MemoryPage() {
       const pos = await getPosition();
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
-      let place = "";
-      try {
-        const g = await fetch(
-          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
-        ).then((r) => r.json());
-        place = [g.locality || g.city, g.principalSubdivision, g.countryName]
-          .filter(Boolean)
-          .join(", ");
-      } catch {
-        // no place name — coords still saved
-      }
       const r = await fetch("/api/location", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat, lng, place, localTime: new Date().toLocaleString() }),
+        body: JSON.stringify({ lat, lng, localTime: new Date().toLocaleString() }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Couldn't save location");
-      setLocMsg(place ? `Logged: ${place}` : "Location logged.");
+      setLocMsg(d.place ? `Logged: ${d.place}` : "Location logged.");
       await loadLocs();
     } catch (e) {
       setLocMsg(
@@ -968,8 +958,10 @@ export default function MemoryPage() {
         <p className="text-xs opacity-70">
           Tap to log where you are now (with the time). Each tap saves one
           place — tap once a day, or at each spot you want remembered. Your
-          recent places are fed to chat. The app can&rsquo;t track you in the
-          background, so nothing is recorded unless you tap.
+          recent places are fed to chat. To name the place, Remarkabler sends
+          an approximate location (about 100 m precision) to OpenStreetMap;
+          the exact coordinates stay in Remarkabler. The app can&rsquo;t track you
+          in the background, so nothing is recorded unless you tap.
         </p>
         <Button
           onClick={logLocation}

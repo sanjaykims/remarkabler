@@ -11,11 +11,19 @@ import { track } from "../analytics";
 type Notebook = {
   id: string;
   name: string;
-  status: "processing" | "done" | "error";
+  status: "queued" | "processing" | "done" | "error";
   error: string | null;
   synced_at: string | null;
   page_count: number;
   ocr_count: number;
+};
+
+type PendingShare = {
+  id: string;
+  notebookId: string;
+  name: string;
+  sizeBytes: number;
+  createdAt: string;
 };
 
 type Page = {
@@ -48,6 +56,8 @@ export default function NotebooksPage() {
   // is expanded so the list view stays cheap.
   const [pagesById, setPagesById] = useState<Record<string, Page[] | "loading" | "error">>({});
   const [duplicates, setDuplicates] = useState<DuplicateCandidate[]>([]);
+  const [pendingShares, setPendingShares] = useState<PendingShare[]>([]);
+  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
@@ -142,18 +152,71 @@ export default function NotebooksPage() {
     }
   }
 
+  async function loadPendingShares() {
+    try {
+      const r = await fetch("/api/shares");
+      if (!r.ok) return;
+      const d = await r.json();
+      setPendingShares(d.shares || []);
+    } catch {
+      // Best-effort alongside the main notebook list.
+    }
+  }
+
   useEffect(() => {
     load();
     loadDuplicates();
+    loadPendingShares();
   }, []);
 
   // While any notebook is still transcribing, refresh the list periodically
   // so it updates on its own when the background OCR finishes.
   useEffect(() => {
-    if (!notebooks.some((n) => n.status === "processing")) return;
+    if (!notebooks.some((n) => n.status === "queued" || n.status === "processing")) return;
     const t = setInterval(load, 4000);
     return () => clearInterval(t);
   }, [notebooks]);
+
+  async function approvePending(share: PendingShare) {
+    if (pendingActionId) return;
+    setPendingActionId(share.id);
+    setError(null);
+    try {
+      const r = await fetch("/api/shares", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve", id: share.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `Approval failed (${r.status})`);
+      setPendingShares((items) => items.filter((item) => item.id !== share.id));
+      setStatus(`Approved "${share.name}". It is waiting to transcribe.`);
+      await load();
+    } catch (e) {
+      setError((e as Error).message || "Couldn't approve the shared PDF.");
+      await loadPendingShares();
+    } finally {
+      setPendingActionId(null);
+    }
+  }
+
+  async function discardPending(share: PendingShare) {
+    if (pendingActionId) return;
+    setPendingActionId(share.id);
+    setError(null);
+    try {
+      const r = await fetch(`/api/shares?id=${encodeURIComponent(share.id)}`, {
+        method: "DELETE",
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `Discard failed (${r.status})`);
+      setPendingShares((items) => items.filter((item) => item.id !== share.id));
+    } catch (e) {
+      setError((e as Error).message || "Couldn't discard the shared PDF.");
+    } finally {
+      setPendingActionId(null);
+    }
+  }
 
   async function upload(e: React.FormEvent) {
     e.preventDefault();
@@ -307,6 +370,53 @@ export default function NotebooksPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
 
+      {pendingShares.length > 0 && (
+        <section className="border-y border-amber-300 dark:border-amber-800 py-4 space-y-3">
+          <div className="space-y-1">
+            <h2 className="text-sm font-semibold">Shared PDFs awaiting approval</h2>
+            <p className="text-xs opacity-70">
+              These came from the Android share sheet. They have not been
+              transcribed or added to your journal.
+            </p>
+          </div>
+          <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            {pendingShares.map((share) => (
+              <div
+                key={share.id}
+                className="py-3 flex flex-wrap items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm break-words">{share.name}</p>
+                  <p className="text-xs opacity-60">
+                    {(share.sizeBytes / 1024 / 1024).toFixed(1)} MB · received{" "}
+                    {formatLocalTime(share.createdAt)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    onClick={() => approvePending(share)}
+                    disabled={pendingActionId !== null}
+                    variant="solid"
+                    size="xs"
+                  >
+                    {pendingActionId === share.id ? "Working…" : "Approve"}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => discardPending(share)}
+                    disabled={pendingActionId !== null}
+                    className="text-xs opacity-60 hover:opacity-100 hover:text-red-600 disabled:opacity-30"
+                  >
+                    Discard
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {duplicates.length > 0 && (
         <div className="rounded border border-sky-300 dark:border-sky-800 p-4 space-y-3">
           <h2 className="text-sm font-semibold">Possible duplicates</h2>
@@ -401,6 +511,7 @@ export default function NotebooksPage() {
               >
                 <summary className="cursor-pointer px-3 py-2 list-none flex flex-col gap-0.5">
                   <span className="text-[11px] opacity-60">
+                    {n.status === "queued" && "Waiting to transcribe…"}
                     {n.status === "processing" && "Transcribing…"}
                     {n.status === "done" &&
                       `✓ ${n.page_count} page${n.page_count === 1 ? "" : "s"}`}

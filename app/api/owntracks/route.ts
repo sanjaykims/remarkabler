@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 // `?debug=1` adds a diagnostic snapshot of what the chat tool would see
 // (point counts, stay counts, sample raw points, server clock). Cheap.
 export async function GET(req: NextRequest) {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   const wantDebug = req.nextUrl.searchParams.get("debug") === "1";

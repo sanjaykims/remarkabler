@@ -11,7 +11,7 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 // POST — re-list notebooks from the paired cloud account (a live connectivity
 // re-check). Read-only.
 export async function POST() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const list = await listRemarkableNotebooks();
   return NextResponse.json({
     ok: list.ok,
