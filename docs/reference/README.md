@@ -75,3 +75,72 @@ carries its license.
 The one-time `setup-matt-pocock-skills` configuration step has already been
 run for this repo: see the `## Agent skills` section in `CLAUDE.md` and
 `docs/agents/{issue-tracker,triage-labels,domain}.md`.
+
+## `sanjaykims/agent-skills`
+
+[`sanjaykims/agent-skills`](https://github.com/sanjaykims/agent-skills) (a
+fork of [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills),
+"Production-grade engineering skills for AI coding agents", MIT) is a
+full development-lifecycle pack — unlike the two entries above, it's
+**both** registered as a real Claude Code plugin (`.claude/settings.json`
+→ `extraKnownMarketplaces.sanjaykims-agent-skills` /
+`enabledPlugins: [{marketplace: "sanjaykims-agent-skills", plugin: "agent-skills"}]`)
+**and** vendored, so its content is reviewable in-repo the same way the
+other two packs are.
+
+All 24 upstream skills are vendored live under `.claude/skills/`, organized
+by lifecycle phase upstream:
+
+- **Define**: `interview-me`, `idea-refine`, `spec-driven-development`
+- **Plan**: `planning-and-task-breakdown`
+- **Build**: `incremental-implementation`, `test-driven-development`,
+  `context-engineering`, `source-driven-development`,
+  `doubt-driven-development`, `frontend-ui-engineering`,
+  `api-and-interface-design`
+- **Verify**: `browser-testing-with-devtools`, `debugging-and-error-recovery`
+- **Review**: `code-review-and-quality`, `code-simplification`,
+  `security-and-hardening`, `performance-optimization`
+- **Ship**: `git-workflow-and-versioning`, `ci-cd-and-automation`,
+  `deprecation-and-migration`, `documentation-and-adrs`,
+  `observability-and-instrumentation`, `shipping-and-launch`
+- **Meta**: `using-agent-skills` (skill discovery flowchart; also injected
+  into every session via the plugin's `SessionStart` hook)
+
+`.claude/skills/agent-skills-LICENSE.md` carries its license.
+
+Three things this pack adds beyond a flat skill list, and where each landed:
+
+- **4 specialist subagent personas** (`code-reviewer`, `test-engineer`,
+  `security-auditor`, `web-performance-auditor`) under `.claude/agents/`.
+- **8 slash commands** (`/spec`, `/plan`, `/build`, `/test`, `/review`,
+  `/webperf`, `/code-simplify`, `/ship`) under `.claude/commands/`, kept at
+  their upstream names on purpose (see `CLAUDE.md`'s `## Agent skills`
+  section for the one deliberate exception: `/review` intentionally
+  shadows this session's built-in PR-review `/review` command in this
+  repo).
+- **7 reference checklists** (testing, security, performance,
+  accessibility, observability, definition-of-done, orchestration
+  patterns) that the skills above cross-link via a `../../references/*.md`
+  relative path from `.claude/skills/<name>/SKILL.md`. They live at
+  `.claude/references/` — a sibling of `.claude/skills/`, not nested
+  inside it — specifically so that relative path still resolves; moving
+  them under `.claude/skills/references/` would break every skill that
+  links out to one.
+
+Unlike the two packs above, this one also ships a `hooks/` directory
+upstream. It was **not** copied into `.claude/hooks/`: this repo's own
+`.claude/hooks/session-start.sh` (the graphify + dependency installer)
+already owns that filename, and copying the pack's same-named
+`hooks/session-start.sh` over it would have silently replaced it. Instead,
+the plugin registration loads the pack's hook directly from its own
+installed location — it's a lightweight `SessionStart` hook that injects
+the `using-agent-skills` meta-skill's discovery flowchart as session
+context (gated on `jq` being on `PATH`; degrades to a plain text notice
+if it's missing), not anything that touches the filesystem or could
+conflict with the existing hook.
+
+No skill, agent, or command name in this pack collides with the
+mattpocock pack's — the two use disjoint naming conventions
+(`tdd` vs. `test-driven-development`, `deep-code-review` vs.
+`code-review-and-quality`, `triage` vs. no equivalent here, etc.) and are
+meant to be used side by side, not as a replacement for one another.

@@ -5,12 +5,22 @@
         "source": "github",
         "repo": "sanjaykims/skills"
       }
+    },
+    "sanjaykims-agent-skills": {
+      "source": {
+        "source": "github",
+        "repo": "sanjaykims/agent-skills"
+      }
     }
   },
   "enabledPlugins": [
     {
       "marketplace": "sanjaykims-skills",
       "plugin": "mattpocock-skills"
+    },
+    {
+      "marketplace": "sanjaykims-agent-skills",
+      "plugin": "agent-skills"
     }
   ]
 }

@@ -55,7 +55,7 @@ and generate an accumulating record of "insights" about themselves.
 
 ## Repo & deployment
 
-- **This repo (`remarkable-feed`) is the source of truth — develop directly
+- **This repo (`remarkabler`) is the source of truth — develop directly
   here.** It was previously a generated mirror of
   `korean-news-study-en/remarkable-app` via a "split" workflow; that bridge is
   retired. Do not recreate it, and ignore the old repo.
@@ -1039,6 +1039,35 @@ research, and more), installed live under `.claude/skills/`. See
 `docs/reference/README.md` for the full list and the one rename
 (`code-review` → `/deep-code-review`, to avoid colliding with this
 session's built-in `code-review` skill).
+
+Also registered: [`sanjaykims/agent-skills`](https://github.com/sanjaykims/agent-skills)
+(a fork of [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills),
+MIT) — a full development-lifecycle pack (DEFINE → PLAN → BUILD → VERIFY →
+REVIEW → SHIP), enabled as a real plugin via `.claude/settings.json`
+(`extraKnownMarketplaces.sanjaykims-agent-skills`) **and** vendored
+alongside it, unlike the mattpocock pack: 24 skills under `.claude/skills/`
+(`spec-driven-development`, `test-driven-development`, `security-and-hardening`,
+`code-review-and-quality`, `incremental-implementation`, and more — see
+`docs/reference/README.md` for the full list), 4 specialist subagent
+personas under `.claude/agents/` (`code-reviewer`, `test-engineer`,
+`security-auditor`, `web-performance-auditor`), 8 slash commands under
+`.claude/commands/` (`/spec`, `/plan`, `/build`, `/test`, `/review`,
+`/webperf`, `/code-simplify`, `/ship` — kept at their upstream names; note
+`/review` shadows this session's built-in PR-review `/review` command
+**on purpose** in this repo, in favor of the pack's five-axis
+correctness/readability/architecture/security/performance review), and the
+7 supporting checklists under `.claude/references/` its skills cross-link
+via `../../references/*.md` (kept at `.claude/references/` — not nested
+under `.claude/skills/` — specifically so those relative paths still
+resolve). Its own `hooks/` directory was deliberately **not** vendored:
+the plugin registration already loads it (a harmless `SessionStart` hook
+that injects the `using-agent-skills` meta-skill's discovery flowchart,
+gated on `jq` being present), and copying it into `.claude/hooks/` would
+have collided with this repo's own `session-start.sh` (the
+graphify/dependency installer) by filename. No skill/command/agent name
+collides with the mattpocock pack's — the two use disjoint naming
+conventions (`tdd` vs. `test-driven-development`, `deep-code-review` vs.
+`code-review-and-quality`, etc.) and can be used side by side.
 
 ### Issue tracker
 

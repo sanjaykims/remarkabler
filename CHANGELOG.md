@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-08-23 (Vendored + registered the agent-skills plugin)
+
+Added [`sanjaykims/agent-skills`](https://github.com/sanjaykims/agent-skills)
+(a fork of `addyosmani/agent-skills`, MIT) alongside the existing
+`sanjaykims/skills` (mattpocock) pack. Registered as a real Claude Code
+plugin in `.claude/settings.json` (new `sanjaykims-agent-skills`
+marketplace + `enabledPlugins` entry) and vendored: 24 lifecycle skills
+under `.claude/skills/`, 4 specialist subagent personas under
+`.claude/agents/` (new directory), 8 slash commands under
+`.claude/commands/` (new directory, kept at upstream names — `/review`
+deliberately shadows the built-in PR-review `/review` in this repo), and
+7 cross-linked checklists under `.claude/references/` (new directory,
+kept as a sibling of `.claude/skills/` so the skills' `../../references/`
+relative links resolve). The pack's own `hooks/` directory was
+deliberately *not* copied into `.claude/hooks/` — it would have collided
+by filename with this repo's existing `session-start.sh`
+(graphify/dependency installer); the plugin registration loads the
+pack's own lightweight `SessionStart` hook (meta-skill context injection
+only, gated on `jq`) from its own location instead. No name collisions
+with the mattpocock pack — disjoint naming conventions throughout. See
+`CLAUDE.md`'s `## Agent skills` section and `docs/reference/README.md`
+for the full rationale.
+
+## 2026-08-17 (SessionStart hook: make the repo's own Graphify rule satisfiable)
+
+`.agents/rules/graphify.md` is `trigger: always_on` and instructs every coding
+agent to query `graphify-out/graph.json` before broad repository exploration —
+but nothing installed the `graphify` CLI, so in a fresh Claude Code on the web
+container that rule was impossible to follow. Same gap for `node_modules`:
+CLAUDE.md requires `npm run build` before calling a task done, and a fresh
+container has no dependencies. New `.claude/hooks/session-start.sh` (registered
+as a `SessionStart` hook) installs both. Remote-only (`CLAUDE_CODE_REMOTE`
+guard, so local checkouts are untouched), idempotent (each step guarded by an
+existence check), and deliberately non-fatal — a PyPI hiccup degrades the
+session to "explore by reading files" rather than blocking startup. Runs
+synchronously so deps are guaranteed present before the agent acts; the
+container is snapshotted afterwards, so the cost is per-container, not
+per-session. Measured cold end-to-end at ~28s (graphify ~2s, `npm install`
+~25s) with a cleared uv cache and no `node_modules`.
+
 ## 2026-07-25 (Graphify-first rule expanded to Antigravity)
 
 Expanded the standing Graphify workflow from Claude Code-only wording to a
@@ -436,7 +476,6 @@ more), following the same live-vendoring pattern already used for
   in a new `## Agent skills` section in `CLAUDE.md`.
 - Documented the source and the rename in `docs/reference/README.md`,
   alongside the existing `kepano/obsidian-skills` entry.
-
 ## 2026-07-19 (MCP Phase C follow-up: nudge inline tagging instead of polling)
 
 Found that the "recurring Claude Code session" scheduling mechanism assumed
