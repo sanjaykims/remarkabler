@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-08-24 (Review remediation follow-ups)
+
+Closed the findings raised against the remediation branch. Highlights beyond
+the two entries below: the share quarantine gained per-source slot fairness (a
+single source could otherwise hold every slot and disable the Android share
+sheet), rejections now count toward the rate limit (they were free, so a full
+quarantine meant no limit at all), an oversized body is refused before
+`req.formData()` buffers it, and the owner can download a quarantined PDF
+before approving it rather than deciding on an attacker-chosen filename.
+
+A runtime reaper returns OCR slots held by jobs that died without writing a
+terminal status — recovery was boot-only, so two such rows wedged all OCR until
+restart. Docker no longer crash-loops when a single file resists chown, and a
+runner-stage `require('better-sqlite3')` makes builder/runner ABI drift fail the
+build instead of the boot. CI derives Node from `.nvmrc` and stops linting
+vendored reference code. OAuth: the audit endpoint returned one row instead of
+100, revocation left outstanding authorization codes redeemable, throttle events
+were missing from the owner-facing view, and the consent screen now leads with
+the destination host rather than the attacker-chosen client name. Session ids
+are stored as digests, not raw bearer values.
+
 ## 2026-08-24 (Restore a global floor under the passcode lockout)
 
 The remediation replaced the global brute-force lockout with per-source buckets

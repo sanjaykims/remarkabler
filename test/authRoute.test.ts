@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
+import { createHash } from "crypto";
 import { NextRequest } from "next/server";
 
 const requestCookies = vi.hoisted(() => ({ session: undefined as string | undefined }));
@@ -138,11 +139,35 @@ describe("app authentication route", () => {
   it("expires inactivity per session instead of globally", async () => {
     const stale = auth.createSessionToken();
     const active = auth.createSessionToken();
+    // Rows are keyed by sha256(session id), never the raw bearer value the
+    // cookie carries — so reach in with the digest.
     db.db()
       .prepare(`UPDATE app_sessions SET last_activity_at = 0 WHERE id = ?`)
-      .run(stale.split(".")[1]);
+      .run(sessionRowId(stale.split(".")[1]));
 
     expect(await sessionIsAuthenticated(stale)).toBe(false);
     expect(await sessionIsAuthenticated(active)).toBe(true);
+  });
+});
+
+function sessionRowId(sessionId: string): string {
+  return createHash("sha256").update(sessionId).digest("hex");
+}
+
+describe("session storage at rest", () => {
+  it("stores only a hash of the session id, never the id the cookie carries", () => {
+    const token = auth.createSessionToken();
+    const sessionId = token.split(".")[1];
+
+    const rows = db
+      .db()
+      .prepare(`SELECT id FROM app_sessions`)
+      .all() as Array<{ id: string }>;
+
+    // The raw bearer value must not be sitting in the table.
+    expect(rows.some((r) => r.id === sessionId)).toBe(false);
+    // ...but the session must still authenticate, so lookup uses the digest.
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toMatch(/^[a-f0-9]{64}$/);
   });
 });

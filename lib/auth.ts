@@ -66,6 +66,19 @@ export function revokeAllSessions(): void {
   })();
 }
 
+/**
+ * Sessions are stored by HASH, never by the raw id the cookie carries.
+ *
+ * On its own this is modest — forging a cookie also needs session_secret, and
+ * that is redacted from off-site backups. But an arbitrary-read of app.db
+ * would otherwise hand over live session ids directly, and there is no reason
+ * to keep a usable copy of a bearer value at rest when a digest works
+ * identically for lookup.
+ */
+function sessionRowId(sessionId: string): string {
+  return crypto.createHash("sha256").update(sessionId).digest("hex");
+}
+
 export function createSessionToken(): string {
   const now = Date.now();
   const sessionId = crypto.randomBytes(16).toString("hex");
@@ -81,7 +94,7 @@ export function createSessionToken(): string {
         `INSERT INTO app_sessions(id, last_activity_at, expires_at)
          VALUES(?,?,?)`
       )
-      .run(sessionId, now, expiresAt);
+      .run(sessionRowId(sessionId), now, expiresAt);
     db().prepare(`DELETE FROM app_sessions WHERE expires_at <= ?`).run(now);
   })();
   return `${payload}.${sig}`;
@@ -116,7 +129,11 @@ function verifySessionToken(token: string): VerifiedSession | null {
 export function revokeSessionToken(token: string | undefined): void {
   if (!token) return;
   const verified = verifySessionToken(token);
-  if (verified) db().prepare(`DELETE FROM app_sessions WHERE id = ?`).run(verified.id);
+  if (verified) {
+    db()
+      .prepare(`DELETE FROM app_sessions WHERE id = ?`)
+      .run(sessionRowId(verified.id));
+  }
 }
 
 /**
@@ -138,18 +155,20 @@ export async function isAuthenticated(): Promise<boolean> {
     .prepare(
       `SELECT last_activity_at, expires_at FROM app_sessions WHERE id = ?`
     )
-    .get(verified.id) as
+    .get(sessionRowId(verified.id)) as
     | { last_activity_at: number; expires_at: number }
     | undefined;
   if (!row || row.expires_at !== verified.expiresAt) return false;
   if (now - row.last_activity_at > INACTIVITY_TIMEOUT_MS) {
-    db().prepare(`DELETE FROM app_sessions WHERE id = ?`).run(verified.id);
+    db()
+      .prepare(`DELETE FROM app_sessions WHERE id = ?`)
+      .run(sessionRowId(verified.id));
     return false;
   }
   if (now - row.last_activity_at > ACTIVITY_REFRESH_THROTTLE_MS) {
     db()
       .prepare(`UPDATE app_sessions SET last_activity_at = ? WHERE id = ?`)
-      .run(now, verified.id);
+      .run(now, sessionRowId(verified.id));
   }
   return true;
 }
