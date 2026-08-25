@@ -421,27 +421,71 @@ export function db(): Database.Database {
   } catch {
     // best-effort; the sweep would retry on the next process startup
   }
-  // Resume interrupted whole-PDF jobs when their durable source file exists.
-  // Incremental reMarkable sync also uses "processing" but has no notebook
-  // PDF, so those rows retain the older explicit-error recovery behavior.
-  const interrupted = _db
+  recoverInterruptedNotebooks(_db, DATA_DIR);
+
+  return _db;
+}
+
+/**
+ * Boot-time recovery for notebooks left at `status='processing'` by a crash or
+ * a Railway restart.
+ *
+ * Two different jobs use that status, and telling them apart is load-bearing:
+ *
+ *   - Whole-PDF OCR (`processNotebook`) rebuilds every page from the notebook's
+ *     durable PDF. Re-running it is idempotent, so an interrupted one is safe
+ *     to re-queue.
+ *   - Incremental reMarkable sync (`incrementalSyncNotebook`) maintains
+ *     PER-TABLET-PAGE rows carrying `remarkable_page_id`, `remarkable_page_hash`
+ *     and `blank_ocr_hash`. Whole-PDF OCR would `DELETE FROM pages` and replace
+ *     them with pages derived from the last-rendered PDF — destroying sync
+ *     state and, for pages since deleted on the tablet, diary content that
+ *     exists NOWHERE else (the append-only invariant in CLAUDE.md).
+ *
+ * "Does a notebook.pdf exist" does NOT discriminate: `lib/remarkableSync.ts`
+ * writes `notebook.pdf` after every content change so the notebook stays
+ * viewable, so a synced notebook has one permanently. Classifying on that
+ * resumed interrupted syncs as whole-PDF jobs and wiped their pages.
+ *
+ * The safe test is whether re-running whole-PDF OCR could destroy anything:
+ * a notebook holding per-tablet-page rows is never re-queued here. It goes to
+ * `error` and the next sweep re-syncs it.
+ */
+export function recoverInterruptedNotebooks(
+  database: Database.Database,
+  dataDir: string
+): { resumed: number; failed: number } {
+  const interrupted = database
     .prepare(`SELECT id FROM notebooks WHERE status = 'processing'`)
     .all() as Array<{ id: string }>;
-  const resume = _db.prepare(
+  const hasSyncedPages = database.prepare(
+    `SELECT 1 FROM pages
+     WHERE notebook_id = ? AND remarkable_page_id IS NOT NULL
+     LIMIT 1`
+  );
+  const resume = database.prepare(
     `UPDATE notebooks SET status='queued', error=NULL WHERE id = ?`
   );
-  const fail = _db.prepare(
+  const fail = database.prepare(
     `UPDATE notebooks SET status='error',
        error='Transcription was interrupted. Retry this reMarkable sync.'
      WHERE id = ?`
   );
-  for (const row of interrupted) {
-    const pdfPath = path.join(DATA_DIR, "files", row.id, "notebook.pdf");
-    if (fs.existsSync(/* turbopackIgnore: true */ pdfPath)) resume.run(row.id);
-    else fail.run(row.id);
-  }
 
-  return _db;
+  let resumed = 0;
+  let failed = 0;
+  for (const row of interrupted) {
+    const pdfPath = path.join(dataDir, "files", row.id, "notebook.pdf");
+    const safeToRebuild = !hasSyncedPages.get(row.id);
+    if (safeToRebuild && fs.existsSync(/* turbopackIgnore: true */ pdfPath)) {
+      resume.run(row.id);
+      resumed++;
+    } else {
+      fail.run(row.id);
+      failed++;
+    }
+  }
+  return { resumed, failed };
 }
 
 const SCHEMA = `

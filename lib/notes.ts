@@ -101,7 +101,17 @@ export function drainNotebookProcessingQueue(): void {
     while (processingNotebookCount() < ocrConcurrencyLimit()) {
       const id = claimNextQueuedNotebook();
       if (!id) break;
-      void processNotebook(id).finally(drainNotebookProcessingQueue);
+      // The .finally callback runs SQLite synchronously and can throw
+      // (SQLITE_BUSY, volume unmounted). A throw inside .finally rejects the
+      // promise it returns, and `void` leaves that rejection unhandled —
+      // fatal under modern Node. instrumentation.ts would log it as a last
+      // resort, but per CLAUDE.md every fire-and-forget chain ends with its
+      // own .catch().
+      void processNotebook(id)
+        .finally(drainNotebookProcessingQueue)
+        .catch((e) =>
+          console.warn("[notes] queue drain failed:", (e as Error).message)
+        );
     }
   } finally {
     queueDrainActive = false;
@@ -1273,7 +1283,16 @@ export function runMaintenanceSweep(): void {
   // Queue draining is deliberately outside the five-minute chore throttle.
   // It is cheap when empty and lets persisted work resume immediately after
   // a restart or as soon as another OCR slot becomes available.
-  drainNotebookProcessingQueue();
+  //
+  // Wrapped like every other job in this sweep: runMaintenanceSweep() is
+  // called bare from request paths (app/page.tsx, the chat/notebooks/mind/
+  // memory routes), so an unguarded throw here would abort the whole sweep
+  // AND surface as a 500 on the page the user just opened.
+  try {
+    drainNotebookProcessingQueue();
+  } catch (e) {
+    console.warn("[notes] queue drain failed:", (e as Error).message);
+  }
 
   // The relationship-export race fix shipped after some relationship rows had
   // already been written. Run this before the coarse maintenance throttle so a

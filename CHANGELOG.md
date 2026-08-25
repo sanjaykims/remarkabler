@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-08-24 (Fix: interrupted reMarkable syncs no longer lose their pages)
+
+The boot-time recovery added in the review remediation classified an
+interrupted job by asking whether `DATA_DIR/files/<id>/notebook.pdf` existed,
+on the stated premise that "incremental reMarkable sync also uses 'processing'
+but has no notebook PDF". That premise is false: `lib/remarkableSync.ts` writes
+`notebook.pdf` after every content change so the notebook stays viewable, so a
+synced notebook has one permanently.
+
+Every reMarkable sync interrupted by a restart was therefore re-queued as a
+whole-PDF OCR job, whose first act is `DELETE FROM pages`. That destroyed the
+per-tablet-page rows (`remarkable_page_id`, `remarkable_page_hash`,
+`blank_ocr_hash`, `entry_date`, `embedding`) and, via `ON DELETE CASCADE`, the
+matching `entry_analysis` / `entry_entities` rows — replacing them with pages
+re-OCR'd from the last-rendered PDF. For pages since deleted on the tablet
+those rows were the only surviving copy (the append-only invariant in
+CLAUDE.md), so the loss was unrecoverable, and the notebook was then billed for
+a second full re-OCR on the following sweep. The trigger was ordinary use:
+Railway restarts on every push to `main`, and syncs are long.
+
+Recovery now asks the question that actually matters — could re-running
+whole-PDF OCR destroy anything? A notebook holding per-tablet-page rows is
+never re-queued; it goes to `error` and the next sweep re-syncs it. The logic
+moved out of `db()` into an exported `recoverInterruptedNotebooks()` so it can
+be tested directly; `test/interruptedNotebookRecovery.test.ts` pins all five
+cases and was confirmed to FAIL against the pre-fix discriminator.
+
+Two adjacent queue-safety fixes in the same subsystem:
+
+- `drainNotebookProcessingQueue` is passed to `.finally()`, and it runs SQLite
+  synchronously. A throw there rejected a `void`-ed promise — an unhandled
+  rejection, fatal under modern Node. The chain now ends in its own `.catch()`,
+  per the fire-and-forget rule.
+- The same drain was the one unguarded statement in `runMaintenanceSweep()`.
+  Since the sweep is called bare from request paths, a throw aborted every
+  other job and surfaced as a 500 on the page the user had just opened.
+
 ## 2026-08-24 (Full review remediation)
 
 Closed the repository-wide review findings as one coordinated hardening pass.
