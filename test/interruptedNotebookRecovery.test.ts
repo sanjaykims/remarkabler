@@ -180,3 +180,53 @@ describe("interrupted notebook recovery", () => {
     expect(result).toEqual({ resumed: 1, failed: 1 });
   });
 });
+
+describe("stuck OCR job reaper", () => {
+  async function notes() {
+    return await import("@/lib/notes");
+  }
+
+  function setProcessingSince(id: string, isoSqlite: string) {
+    dbMod
+      .db()
+      .prepare(
+        `UPDATE notebooks SET status='processing', processing_started_at=? WHERE id = ?`
+      )
+      .run(isoSqlite, id);
+  }
+
+  const longAgo = "2020-01-01 00:00:00";
+  const now = () =>
+    new Date().toISOString().replace("T", " ").slice(0, 19);
+
+  it("re-queues a whole-PDF job whose process died holding a slot", async () => {
+    const { reapStuckNotebookProcessing } = await notes();
+    addNotebook("nb-wedged", null);
+    setProcessingSince("nb-wedged", longAgo);
+
+    expect(reapStuckNotebookProcessing()).toBe(1);
+    expect(statusOf("nb-wedged")).toBe("queued");
+  });
+
+  it("does NOT touch a job that is still legitimately running", async () => {
+    const { reapStuckNotebookProcessing } = await notes();
+    addNotebook("nb-running", null);
+    setProcessingSince("nb-running", now());
+
+    expect(reapStuckNotebookProcessing()).toBe(0);
+    expect(statusOf("nb-running")).toBe("processing");
+  });
+
+  it("does NOT reap a notebook under incremental sync, however long it has run", async () => {
+    // Same guard as boot recovery: re-queueing this would hand it to whole-PDF
+    // OCR, which deletes the per-tablet-page rows.
+    const { reapStuckNotebookProcessing } = await notes();
+    addNotebook("nb-syncing", "doc-x");
+    addSyncedPage("nb-syncing", 0, "page-uuid-z");
+    setProcessingSince("nb-syncing", longAgo);
+
+    expect(reapStuckNotebookProcessing()).toBe(0);
+    expect(statusOf("nb-syncing")).toBe("processing");
+    expect(pageCount("nb-syncing")).toBe(1);
+  });
+});

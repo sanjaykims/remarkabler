@@ -83,12 +83,61 @@ function claimNextQueuedNotebook(): string | null {
     if (!next) return null;
     const claimed = db()
       .prepare(
-        `UPDATE notebooks SET status = 'processing', error = NULL
+        `UPDATE notebooks
+           SET status = 'processing', error = NULL,
+               processing_started_at = datetime('now')
          WHERE id = ? AND status = 'queued'`
       )
       .run(next.id);
     return claimed.changes === 1 ? next.id : null;
   })();
+}
+
+/**
+ * How long a whole-PDF OCR job may hold a concurrency slot before the reaper
+ * assumes its process died without writing a terminal status. Generous on
+ * purpose: a large notebook legitimately takes many minutes, and reaping a
+ * LIVE job would double-OCR it.
+ */
+const PROCESSING_STUCK_MS = 60 * 60 * 1000;
+
+/**
+ * Return slots held by jobs that will never finish.
+ *
+ * `recoverInterruptedNotebooks` only runs at process start, so a row whose job
+ * died without writing `done`/`error` — e.g. processNotebook's own error
+ * handler failing to write the status — holds an OCR slot until the next
+ * restart. With the default limit of 2, two such rows wedge ALL OCR
+ * indefinitely.
+ *
+ * Deliberately narrow: only rows that are safe to rebuild (no per-tablet-page
+ * rows) are touched, for the same reason boot recovery is narrow — re-running
+ * whole-PDF OCR over a notebook under incremental sync would DELETE its pages.
+ * A wedged sync row is left for boot recovery rather than raced here.
+ */
+export function reapStuckNotebookProcessing(now = Date.now()): number {
+  const cutoff = new Date(now - PROCESSING_STUCK_MS).toISOString().replace("T", " ").slice(0, 19);
+  const stuck = db()
+    .prepare(
+      `SELECT id FROM notebooks
+        WHERE status = 'processing'
+          AND processing_started_at IS NOT NULL
+          AND processing_started_at < ?
+          AND NOT EXISTS (
+            SELECT 1 FROM pages
+             WHERE pages.notebook_id = notebooks.id
+               AND pages.remarkable_page_id IS NOT NULL
+          )`
+    )
+    .all(cutoff) as Array<{ id: string }>;
+  const requeue = db().prepare(
+    `UPDATE notebooks SET status = 'queued', error = NULL WHERE id = ?`
+  );
+  for (const row of stuck) requeue.run(row.id);
+  if (stuck.length) {
+    console.warn(`[notes] re-queued ${stuck.length} stuck OCR job(s)`);
+  }
+  return stuck.length;
 }
 
 let queueDrainActive = false;
@@ -1289,6 +1338,7 @@ export function runMaintenanceSweep(): void {
   // memory routes), so an unguarded throw here would abort the whole sweep
   // AND surface as a 500 on the page the user just opened.
   try {
+    reapStuckNotebookProcessing();
     drainNotebookProcessingQueue();
   } catch (e) {
     console.warn("[notes] queue drain failed:", (e as Error).message);

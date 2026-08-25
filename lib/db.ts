@@ -40,6 +40,11 @@ export function db(): Database.Database {
     // Dropbox/manual notebooks.
     "remarkable_doc_id TEXT",
     "remarkable_doc_hash TEXT",
+    // When this row entered status='processing'. Used by the runtime reaper in
+    // lib/notes.ts: boot recovery only runs at startup, so without this a row
+    // whose job died without writing a terminal status holds an OCR
+    // concurrency slot until the next restart — two such rows wedge all OCR.
+    "processing_started_at TEXT",
   ]) {
     try {
       _db.exec(`ALTER TABLE notebooks ADD COLUMN ${col}`);
