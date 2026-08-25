@@ -108,6 +108,13 @@ COPY --from=builder /app/next.config.mjs ./next.config.mjs
 RUN mkdir -p /app/.next/cache \
     && chown -R remarkabler:remarkabler /app/.next/cache
 
+# Fail the BUILD, not the boot, if the two base digests ever drift apart.
+# better-sqlite3 is a native module compiled against the builder's Node/glibc;
+# nothing but a comment enforces that the runner stays ABI-compatible, so a
+# future one-sided digest bump would produce an image that builds cleanly and
+# then dies on first request — with the diary offline until someone notices.
+RUN node -e "require('better-sqlite3'); console.log('better-sqlite3 ABI OK')"
+
 COPY docker/entrypoint.sh /usr/local/bin/remarkabler-entrypoint
 RUN chmod 0755 /usr/local/bin/remarkabler-entrypoint
 

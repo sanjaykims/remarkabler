@@ -13,5 +13,17 @@ export default defineConfig([
       "react-hooks/static-components": "off",
     },
   },
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
+  // Mirrors tsconfig.json's excludes. `eslint .` walks the whole repo (unlike
+  // the old `next lint`, which only saw Next's default dirs), so without this
+  // it lints vendored reference projects and generated Graphify output — third
+  // party code this repo does not own, which could fail CI on rules we cannot
+  // fix.
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "docs/reference/**",
+    "graphify-out/**",
+  ]),
 ]);

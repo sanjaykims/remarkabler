@@ -27,9 +27,17 @@ if [ "$(id -u)" -eq 0 ]; then
   # -xdev prevents an unexpectedly nested mount from being traversed. Only
   # mismatched entries are passed to chown, avoiding metadata churn on normal
   # restarts while still migrating files created by older root-run images.
-  find "$data_dir" -xdev \
+  # A single unfixable entry (some storage backends return EPERM even for
+  # root) must not abort boot under `set -e` — the writability probe below is
+  # the authoritative check, and it runs AS the target user. Failing here
+  # while that probe would have passed would be a crash-loop on a container
+  # that was actually fine.
+  if ! find "$data_dir" -xdev \
     \( ! -user "$app_user" -o ! -group "$app_group" \) \
     -exec chown -h "$app_user:$app_group" {} +
+  then
+    echo "remarkabler-entrypoint: some ownership repairs failed; continuing to the write check" >&2
+  fi
 
   if ! gosu "$app_user:$app_group" test -w "$data_dir"; then
     echo "remarkabler-entrypoint: $data_dir is not writable by $app_user" >&2
