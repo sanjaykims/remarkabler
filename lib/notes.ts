@@ -38,11 +38,18 @@ export function createNotebook(
   const name = fileName.replace(/\.pdf$/i, "").trim() || "Untitled notebook";
 
   const notebookDir = path.join(FILES_DIR, id);
+  // Rollback must remove only what THIS call created. mkdirSync({recursive})
+  // is a no-op on an existing directory, so with an explicit requestedId whose
+  // notebook already exists, the INSERT hits a UNIQUE constraint and the old
+  // blanket rmSync deleted that notebook's whole directory — destroying the
+  // durable PDF both the resume path and "View PDF" depend on. Callers guard
+  // against that today (app/api/shares/route.ts checks first), but the trap
+  // should not be left armed for the next one.
+  const dirExisted = fs.existsSync(notebookDir);
   fs.mkdirSync(notebookDir, { recursive: true });
+  const pdfPath = path.join(notebookDir, "notebook.pdf");
   try {
-    fs.writeFileSync(path.join(notebookDir, "notebook.pdf"), pdfBytes, {
-      mode: 0o600,
-    });
+    fs.writeFileSync(pdfPath, pdfBytes, { mode: 0o600 });
     db()
       .prepare(
         `INSERT INTO notebooks(id,name,synced_at,status)
@@ -50,7 +57,12 @@ export function createNotebook(
       )
       .run(id, name);
   } catch (error) {
-    fs.rmSync(notebookDir, { recursive: true, force: true });
+    try {
+      if (dirExisted) fs.rmSync(pdfPath, { force: true });
+      else fs.rmSync(notebookDir, { recursive: true, force: true });
+    } catch {
+      // Best-effort rollback of the filesystem half.
+    }
     throw error;
   }
 

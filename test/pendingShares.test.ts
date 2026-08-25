@@ -63,7 +63,7 @@ describe("public share quarantine", () => {
         bytes: new Uint8Array([1, 2, 3, 4]),
         source: "test",
       })
-    ).toThrow(/valid PDF/);
+    ).toThrow(/PDF header/);
     expect(pendingMod.listPendingShares()).toEqual([]);
   });
 
@@ -173,7 +173,7 @@ describe("quarantine abuse resistance", () => {
     // while the count is still only 3, isolating the aggregate check.
     const chunk = () => {
       const b = new Uint8Array(19 * 1024 * 1024);
-      b.set([0x25, 0x50, 0x44, 0x46]); // %PDF
+      b.set([0x25, 0x50, 0x44, 0x46, 0x2d]); // %PDF-
       return b;
     };
     const put = (source: string, name: string) =>
@@ -226,5 +226,30 @@ describe("pre-approval preview", () => {
     });
     expect(created.name).not.toMatch(/[​-‏‪-‮⁦-⁩﻿]/);
     expect(created.name).toContain("Journal");
+  });
+});
+
+describe("PDF header tolerance", () => {
+  it("accepts a PDF whose header is preceded by a BOM", async () => {
+    const { looksLikePdf } = await import("@/lib/upload");
+    // Requiring offset 0 rejected legitimate exports with a leading BOM, with
+    // no diagnostic — and on the share path a false rejection loses the file.
+    const withBom = new Uint8Array([
+      0xef, 0xbb, 0xbf, 0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37,
+    ]);
+    expect(looksLikePdf(withBom)).toBe(true);
+  });
+
+  it("still rejects a file with no PDF header at all", async () => {
+    const { looksLikePdf } = await import("@/lib/upload");
+    expect(looksLikePdf(new Uint8Array(2048))).toBe(false);
+    expect(looksLikePdf(new TextEncoder().encode("<html></html>"))).toBe(false);
+  });
+
+  it("does not scan beyond the first 1024 bytes", async () => {
+    const { looksLikePdf } = await import("@/lib/upload");
+    const late = new Uint8Array(4096);
+    late.set([0x25, 0x50, 0x44, 0x46, 0x2d], 2000);
+    expect(looksLikePdf(late)).toBe(false);
   });
 });

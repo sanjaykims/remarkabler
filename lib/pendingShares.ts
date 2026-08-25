@@ -88,7 +88,43 @@ export function purgeExpiredPendingShares(): number {
       // Missing files are harmless; the database row was the source of truth.
     }
   }
+  sweepOrphanedShareFiles();
   return expired.length;
+}
+
+/**
+ * Delete quarantine files that no pending_shares row references.
+ *
+ * The file is written before the row is inserted, so a process killed between
+ * the two leaves a file with no row — and the byte accounting is DB-derived,
+ * so those orphans are invisible to MAX_PENDING_BYTES and on-disk usage can
+ * drift past the cap over enough crashes. Purge only walked DB rows, so
+ * nothing ever reclaimed them.
+ */
+function sweepOrphanedShareFiles(): void {
+  let names: string[];
+  try {
+    names = fs.readdirSync(PENDING_DIR);
+  } catch {
+    return; // directory not created yet
+  }
+  const known = new Set(
+    (db().prepare(`SELECT id FROM pending_shares`).all() as Array<{ id: string }>).map(
+      (r) => r.id
+    )
+  );
+  const cutoff = Date.now() - PENDING_RETENTION_HOURS * 60 * 60 * 1000;
+  for (const name of names) {
+    const id = name.replace(/\.pdf$/, "").replace(/\.[0-9a-f-]+\.tmp$/, "");
+    if (known.has(id)) continue;
+    const full = path.join(PENDING_DIR, name);
+    try {
+      // Only reclaim files old enough that no in-flight write can own them.
+      if (fs.statSync(full).mtimeMs < cutoff) fs.unlinkSync(full);
+    } catch {
+      // Best-effort.
+    }
+  }
 }
 
 /** Count one share attempt against its source, accepted or not. */
@@ -132,7 +168,7 @@ export function createPendingShare(opts: {
   if (opts.bytes.length === 0 || opts.bytes.length > MAX_UPLOAD_BYTES) {
     throw new Error("PDF size is outside the allowed range.");
   }
-  if (!looksLikePdf(opts.bytes)) throw new Error("File is not a valid PDF.");
+  if (!looksLikePdf(opts.bytes)) throw new Error("That file does not start with a PDF header.");
 
   const mine = db()
     .prepare(`SELECT COUNT(*) AS c FROM pending_shares WHERE source_hash = ?`)
