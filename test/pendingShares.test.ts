@@ -104,3 +104,85 @@ describe("public share quarantine", () => {
     ).toThrow(/storage is full/);
   });
 });
+
+describe("quarantine abuse resistance", () => {
+  const share = (source: string, name = "note.pdf") =>
+    pendingMod.createPendingShare({ fileName: name, bytes: pdf, source });
+
+  it("stops one source from holding every pending slot", () => {
+    // Five 8-byte requests used to be enough to occupy all MAX_PENDING_SHARES
+    // slots and disable the owner's Android share sheet for the full retention
+    // window — without ever tripping the rate limit, since 5 < SHARE_RATE_MAX.
+    for (let i = 0; i < pendingMod.PER_SOURCE_PENDING_MAX; i++) {
+      share("198.51.100.1", `a${i}.pdf`);
+    }
+    expect(() => share("198.51.100.1", "overflow.pdf")).toThrow(
+      /Too many shares from this source/
+    );
+
+    // Capacity is reserved, so a genuine share still lands.
+    expect(() => share("203.0.113.9", "real-diary.pdf")).not.toThrow();
+  });
+
+  it("counts REJECTED attempts toward the rate limit", () => {
+    // Fill the source's slots so every later attempt is rejected...
+    for (let i = 0; i < pendingMod.PER_SOURCE_PENDING_MAX; i++) {
+      share("198.51.100.2", `b${i}.pdf`);
+    }
+    // ...then keep hammering. Rejections used to be free, because the rate
+    // event was only written inside the success transaction.
+    let rejected = 0;
+    for (let i = 0; i < 20; i++) {
+      try {
+        share("198.51.100.2", `c${i}.pdf`);
+      } catch (e) {
+        rejected++;
+        if (/Too many shares were received recently/.test((e as Error).message)) {
+          break;
+        }
+      }
+    }
+    expect(rejected).toBeGreaterThan(0);
+    // The throttle must eventually engage rather than accepting requests forever.
+    expect(() => share("198.51.100.2", "final.pdf")).toThrow(
+      /Too many shares were received recently/
+    );
+  });
+
+  it("does not evict existing shares when the quarantine is full", () => {
+    // Reject-don't-evict is the property that stops an attacker displacing the
+    // owner's genuine share. Fill every slot from distinct sources.
+    for (let i = 0; i < pendingMod.MAX_PENDING_SHARES; i++) {
+      share(`10.0.0.${i}`, `d${i}.pdf`);
+    }
+    const before = pendingMod.listPendingShares();
+    expect(before).toHaveLength(pendingMod.MAX_PENDING_SHARES);
+
+    expect(() => share("10.0.9.9", "pushy.pdf")).toThrow();
+
+    const after = pendingMod.listPendingShares();
+    expect(after).toHaveLength(pendingMod.MAX_PENDING_SHARES);
+    expect(after.map((s) => s.id).sort()).toEqual(
+      before.map((s) => s.id).sort()
+    );
+  });
+
+  it("enforces the aggregate byte cap, not just the count cap", () => {
+    // Each file must stay under MAX_UPLOAD_BYTES (20 MB) so the PER-FILE cap
+    // doesn't fire first; four 19 MB files exceed MAX_PENDING_BYTES (60 MB)
+    // while the count is still only 3, isolating the aggregate check.
+    const chunk = () => {
+      const b = new Uint8Array(19 * 1024 * 1024);
+      b.set([0x25, 0x50, 0x44, 0x46]); // %PDF
+      return b;
+    };
+    const put = (source: string, name: string) =>
+      pendingMod.createPendingShare({ fileName: name, bytes: chunk(), source });
+
+    put("192.0.2.1", "big1.pdf");
+    put("192.0.2.1", "big2.pdf");
+    put("192.0.2.2", "big3.pdf");
+    // 57 MB pending, 3 of 5 slots used — only the byte cap can stop this one.
+    expect(() => put("192.0.2.3", "big4.pdf")).toThrow(/storage is full/);
+  });
+});

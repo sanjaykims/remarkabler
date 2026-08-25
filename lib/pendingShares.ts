@@ -10,6 +10,13 @@ export const MAX_PENDING_BYTES = 60 * 1024 * 1024;
 export const PENDING_RETENTION_HOURS = 24;
 export const SHARE_RATE_WINDOW_MINUTES = 60;
 export const SHARE_RATE_MAX = 10;
+// Of MAX_PENDING_SHARES, how many one source may hold at once. Without this
+// the count cap is first-come-first-served, so a single anonymous source can
+// occupy every slot — five requests is well under SHARE_RATE_MAX, so the
+// throttle never even engages — and the owner's Android share sheet stops
+// working until they notice and clear it. Reserving capacity keeps a genuine
+// share landing even while junk is pending.
+export const PER_SOURCE_PENDING_MAX = 2;
 
 export type PendingShare = {
   id: string;
@@ -74,26 +81,54 @@ export function purgeExpiredPendingShares(): number {
   return expired.length;
 }
 
+/** Count one share attempt against its source, accepted or not. */
+function recordShareAttempt(sourceHash: string): void {
+  db().transaction(() => {
+    db()
+      .prepare(`INSERT INTO share_rate_events(source_hash) VALUES(?)`)
+      .run(sourceHash);
+    db()
+      .prepare(
+        `DELETE FROM share_rate_events
+         WHERE created_at < datetime('now', '-24 hours')`
+      )
+      .run();
+  })();
+}
+
 export function createPendingShare(opts: {
   fileName: string;
   bytes: Uint8Array;
   source: string;
 }): PendingShare {
-  if (opts.bytes.length === 0 || opts.bytes.length > MAX_UPLOAD_BYTES) {
-    throw new Error("PDF size is outside the allowed range.");
-  }
-  if (!looksLikePdf(opts.bytes)) throw new Error("File is not a valid PDF.");
-
   purgeExpiredPendingShares();
   const sourceHash = shareSourceHash(opts.source);
+
+  // Record the ATTEMPT before validating anything. Counting only accepted
+  // shares meant every rejection was free: once the quarantine filled, the
+  // public endpoint had no rate limit at all, because each request threw
+  // before ever reaching the insert.
+  recordShareAttempt(sourceHash);
   const rateCount = db()
     .prepare(
       `SELECT COUNT(*) AS c FROM share_rate_events
        WHERE source_hash = ? AND created_at >= datetime('now', ?)`
     )
     .get(sourceHash, `-${SHARE_RATE_WINDOW_MINUTES} minutes`) as { c: number };
-  if (rateCount.c >= SHARE_RATE_MAX) {
+  if (rateCount.c > SHARE_RATE_MAX) {
     throw new Error("Too many shares were received recently. Try again later.");
+  }
+
+  if (opts.bytes.length === 0 || opts.bytes.length > MAX_UPLOAD_BYTES) {
+    throw new Error("PDF size is outside the allowed range.");
+  }
+  if (!looksLikePdf(opts.bytes)) throw new Error("File is not a valid PDF.");
+
+  const mine = db()
+    .prepare(`SELECT COUNT(*) AS c FROM pending_shares WHERE source_hash = ?`)
+    .get(sourceHash) as { c: number };
+  if (mine.c >= PER_SOURCE_PENDING_MAX) {
+    throw new Error("Too many shares from this source are already waiting.");
   }
 
   const totals = db()
@@ -122,15 +157,6 @@ export function createPendingShare(opts: {
            VALUES(?,?,?,?,?)`
         )
         .run(id, notebookId, cleanName(opts.fileName), opts.bytes.length, sourceHash);
-      db()
-        .prepare(`INSERT INTO share_rate_events(source_hash) VALUES(?)`)
-        .run(sourceHash);
-      db()
-        .prepare(
-          `DELETE FROM share_rate_events
-           WHERE created_at < datetime('now', '-24 hours')`
-        )
-        .run();
     })();
   } catch (error) {
     try {

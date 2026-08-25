@@ -24,6 +24,22 @@ export const runtime = "nodejs";
  * owner unlocks the app and approves the share.
  */
 export async function POST(req: NextRequest) {
+  // Reject an oversized body BEFORE req.formData() buffers it. App Router
+  // handlers have no default body-size limit, so without this an
+  // unauthenticated caller can make a single-process Node server hold an
+  // arbitrarily large multipart body in memory purely to have it rejected a
+  // moment later by the per-file and total caps below.
+  const declared = Number(req.headers.get("content-length") || "0");
+  if (declared > MAX_UPLOAD_TOTAL_BYTES + 64 * 1024) {
+    return page(
+      "Share is too large",
+      `The combined PDF limit is ${Math.round(
+        MAX_UPLOAD_TOTAL_BYTES / (1024 * 1024)
+      )} MB.`,
+      false
+    );
+  }
+
   const form = await req.formData().catch(() => null);
 
   // Walk every entry, not just "file". The reMarkable mobile app's plain
