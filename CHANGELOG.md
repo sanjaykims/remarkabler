@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-08-25 (Fix: a skipped export is not a completed repair)
+
+`maybeReconcileRelationshipExportRace` is a one-shot repair for entity stubs
+exported before their typed relationships existed. It marked itself permanently
+done when its export returned `skipped: "in-flight"` — but that result means the
+export never ran, because another writer held the shared Dropbox lock.
+
+`lib/dropbox.ts`'s coalesced follow-up does fire an export in that case, but its
+failures (auth expiry, network blip, partial upload) are only logged and never
+propagate back. So a single unlucky boot — the sweep racing another export, and
+that follow-up then failing — would burn the one-shot having written nothing,
+leaving the stale stubs stale forever with no retry.
+
+Only `ok` or `skipped: "nothing"` now count. `"in-flight"` leaves the marker
+unset so the existing backoff retries; the attempt timestamp is still recorded,
+so it backs off rather than spinning. Worst case is one redundant, idempotent
+full export — the safe direction to be wrong in.
+
+This is the same "treated didn't-happen as done" mistake that caused the
+original export race, so it is now a do-not-regress rule in CLAUDE.md for any
+future caller reading an export result.
+
 ## 2026-08-25 (Security: bind WebAuthn challenges server-side)
 
 Completes the previous entry, which did NOT fully close the bypass it claimed
