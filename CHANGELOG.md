@@ -24,6 +24,36 @@ local/CI/container installs on Node 20, and hardened the Railway image with
 registry-pinned bases, a non-root runtime, and
 fail-closed `/data` ownership/write checks. Local verification: 672 tests,
 lint, typecheck, production build, and zero-vulnerability audit.
+## 2026-08-23 (Security: separate the two WebAuthn challenge cookies)
+
+Closes an authentication bypass that let an unauthenticated visitor register
+their own passkey and obtain a session, without ever knowing `APP_PASSCODE`.
+
+Both WebAuthn ceremonies shared one `fc_challenge` cookie. `login-options` is
+deliberately ungated — a visitor must be able to start a passkey login — and
+`register-verify` accepted whatever sat in that same cookie, with no passcode
+check and no marker of which ceremony minted it. So the passcode gate on
+`register-options` protected nothing: call the ungated `login-options`, build a
+credential against the challenge it returns, POST it to `register-verify`, and
+you get a session **and** a credential row that survives passcode rotation and
+"Lock all". Registration uses `attestationType: "none"`, so nothing in the
+response is signed by a trusted party and no cryptography had to be broken —
+only the ceremony boundary.
+
+The ceremonies now use `REG_CHALLENGE_COOKIE` (`fc_reg_challenge`) and
+`AUTH_CHALLENGE_COOKIE` (`fc_auth_challenge`); each verify step reads only its
+own. `test/webauthnChallengeSeparation.test.ts` pins both directions and both
+legitimate flows, and was confirmed to FAIL against the pre-fix code (2 failed
+/ 2 passed) rather than passing either way. Recorded as a do-not-regress rule
+in `CLAUDE.md`.
+
+Any passkey enrollment or login in flight when this deploys will need one
+retry; the old cookie is simply ignored. Existing registered passkeys and
+sessions are unaffected.
+
+**If this deployment has ever been reachable from the internet with
+`APP_PASSCODE` set, audit the `credentials` table for rows you don't
+recognise and delete any that aren't yours.**
 
 ## 2026-08-23 (Vendored + registered the agent-skills plugin)
 

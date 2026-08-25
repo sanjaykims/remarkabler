@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   SESSION_COOKIE,
-  CHALLENGE_COOKIE,
+  REG_CHALLENGE_COOKIE,
+  AUTH_CHALLENGE_COOKIE,
   createSessionToken,
   checkPasscode,
   isAuthenticated,
@@ -73,12 +74,19 @@ export async function POST(req: NextRequest) {
     recordSuccessfulAuth(source);
     const options = await buildRegistrationOptions(rpID);
     const res = NextResponse.json(options);
-    res.cookies.set(CHALLENGE_COOKIE, options.challenge, challengeCookieOptions);
+    res.cookies.set(
+      REG_CHALLENGE_COOKIE,
+      options.challenge,
+      challengeCookieOptions
+    );
     return res;
   }
 
   if (action === "register-verify") {
-    const challenge = req.cookies.get(CHALLENGE_COOKIE)?.value;
+    // Only a challenge minted by register-options is acceptable here. A
+    // login-issued one must never enroll a credential — login-options is
+    // ungated, so accepting it would bypass the passcode entirely.
+    const challenge = req.cookies.get(REG_CHALLENGE_COOKIE)?.value;
     if (!challenge) {
       return NextResponse.json(
         { error: "Setup timed out. Please try again." },
@@ -105,19 +113,26 @@ export async function POST(req: NextRequest) {
     recordSuccessfulAuth(source);
     const res = NextResponse.json({ ok: true });
     res.cookies.set(SESSION_COOKIE, createSessionToken(), sessionCookieOptions);
-    res.cookies.set(CHALLENGE_COOKIE, "", { ...challengeCookieOptions, maxAge: 0 });
+    res.cookies.set(REG_CHALLENGE_COOKIE, "", {
+      ...challengeCookieOptions,
+      maxAge: 0,
+    });
     return res;
   }
 
   if (action === "login-options") {
     const options = await buildAuthenticationOptions(rpID);
     const res = NextResponse.json(options);
-    res.cookies.set(CHALLENGE_COOKIE, options.challenge, challengeCookieOptions);
+    res.cookies.set(
+      AUTH_CHALLENGE_COOKIE,
+      options.challenge,
+      challengeCookieOptions
+    );
     return res;
   }
 
   if (action === "login-verify") {
-    const challenge = req.cookies.get(CHALLENGE_COOKIE)?.value;
+    const challenge = req.cookies.get(AUTH_CHALLENGE_COOKIE)?.value;
     if (!challenge) {
       return NextResponse.json(
         { error: "Unlock timed out. Please try again." },
@@ -144,7 +159,10 @@ export async function POST(req: NextRequest) {
     recordSuccessfulAuth(source);
     const res = NextResponse.json({ ok: true });
     res.cookies.set(SESSION_COOKIE, createSessionToken(), sessionCookieOptions);
-    res.cookies.set(CHALLENGE_COOKIE, "", { ...challengeCookieOptions, maxAge: 0 });
+    res.cookies.set(AUTH_CHALLENGE_COOKIE, "", {
+      ...challengeCookieOptions,
+      maxAge: 0,
+    });
     return res;
   }
 
@@ -173,7 +191,16 @@ export async function POST(req: NextRequest) {
     revokeAllSessions();
     const res = NextResponse.json({ ok: true });
     res.cookies.set(SESSION_COOKIE, "", { ...sessionCookieOptions, maxAge: 0 });
-    res.cookies.set(CHALLENGE_COOKIE, "", { ...challengeCookieOptions, maxAge: 0 });
+    // Clear BOTH ceremony challenges — the cookies are deliberately separate
+    // (see lib/auth.ts), so "Lock all" has to drop each one explicitly.
+    res.cookies.set(REG_CHALLENGE_COOKIE, "", {
+      ...challengeCookieOptions,
+      maxAge: 0,
+    });
+    res.cookies.set(AUTH_CHALLENGE_COOKIE, "", {
+      ...challengeCookieOptions,
+      maxAge: 0,
+    });
     return res;
   }
 

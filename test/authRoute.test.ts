@@ -76,7 +76,7 @@ describe("app authentication route", () => {
     for (let i = 0; i < 8; i++) auth.recordFailedPasscodeAttempt(AUTH_SOURCE);
     expect(auth.passcodeLockRemainingMs(AUTH_SOURCE)).not.toBeNull();
 
-    const res = await post("login-verify", { response: {} }, "fc_challenge=challenge");
+    const res = await post("login-verify", { response: {} }, "fc_auth_challenge=challenge");
 
     expect(res.status).toBe(200);
     expect(auth.passcodeLockRemainingMs(AUTH_SOURCE)).toBeNull();
@@ -87,7 +87,7 @@ describe("app authentication route", () => {
     for (let i = 0; i < 8; i++) auth.recordFailedPasscodeAttempt(AUTH_SOURCE);
     webauthn.verifyAuthentication.mockResolvedValue(false);
 
-    const res = await post("login-verify", { response: {} }, "fc_challenge=challenge");
+    const res = await post("login-verify", { response: {} }, "fc_auth_challenge=challenge");
 
     expect(res.status).toBe(401);
     expect(auth.passcodeLockRemainingMs(AUTH_SOURCE)).not.toBeNull();
