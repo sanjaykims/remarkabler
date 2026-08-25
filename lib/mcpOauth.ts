@@ -336,6 +336,26 @@ type AuthCode = {
 };
 const authCodes = new Map<string, AuthCode>();
 
+/**
+ * Drop any unredeemed authorization codes belonging to one client.
+ *
+ * Revocation deleted token rows only, but codes live in a separate in-memory
+ * map with their own 5-minute TTL. So revoking a grant while a code was still
+ * outstanding reported success and did not hold: the holder could still
+ * exchange that code at /token for a FRESH access + refresh pair for the
+ * client just revoked.
+ */
+export function dropAuthCodesForClient(clientId: string): number {
+  let dropped = 0;
+  for (const [code, entry] of authCodes) {
+    if (entry.clientId === clientId) {
+      authCodes.delete(code);
+      dropped++;
+    }
+  }
+  return dropped;
+}
+
 export function issueAuthCode(
   clientId: string,
   redirectUri: string,
@@ -578,6 +598,9 @@ export function listOAuthGrants(now = Date.now()): OAuthGrant[] {
 
 /** Revokes every access and refresh token issued to one registered client. */
 export function revokeOAuthGrant(clientId: string, ip = "unknown"): number {
+  // Pending codes first: a code redeemed between the token delete and this
+  // call would mint a fresh pair for the client being revoked.
+  dropAuthCodesForClient(clientId);
   const result = db()
     .prepare(`DELETE FROM mcp_oauth_tokens WHERE client_id = ?`)
     .run(clientId);

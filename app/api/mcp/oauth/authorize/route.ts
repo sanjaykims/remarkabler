@@ -113,6 +113,21 @@ button:active{background:#a95f31}
   });
 }
 
+/**
+ * The destination host, promoted to the most prominent line on the screen.
+ *
+ * client_name is supplied by whoever registered the client, so an attacker can
+ * simply call themselves "Claude" — showing it first, in bold, put the one
+ * forgeable field above the one that matters. The host cannot be faked without
+ * actually controlling it. The full URI stays visible underneath, because a
+ * URI like https://evil.tld/?next=https://claude.ai/... wraps in a way that
+ * makes the trusted-looking half the visually salient part.
+ */
+function destHost(redirectUri: string): string {
+  const parsed = parseSafeRedirectUri(redirectUri);
+  return parsed ? parsed.host : redirectUri;
+}
+
 function consentForm(p: OAuthParams, client: RegisteredClient, error?: string): NextResponse {
   const hidden = (
     ["response_type", "client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "scope"] as const
@@ -125,10 +140,12 @@ function consentForm(p: OAuthParams, client: RegisteredClient, error?: string): 
     <p>아래 클라이언트가 당신의 Remarkabler 데이터에 접근하려고 합니다.</p>
     <div class="client">
       <div class="warn">동적으로 등록된 미확인 클라이언트 (Unverified client)</div>
-      클라이언트가 주장하는 이름
-      <strong>${esc(client.client_name || "이름 없음")}</strong>
-      승인 후 이동할 정확한 주소
+      승인 후 이동할 사이트
+      <strong>${esc(destHost(p.redirect_uri))}</strong>
+      전체 주소
       <code>${esc(p.redirect_uri)}</code>
+      클라이언트가 주장하는 이름 (검증되지 않음)
+      <span>${esc(client.client_name || "이름 없음")}</span>
     </div>
     <p>이 이름은 Remarkabler가 검증한 신원이 아닙니다. 주소를 신뢰할 때만 Railway에 설정한 <b>MCP 토큰</b>을 입력하세요.</p>
     ${error ? `<div class="err">${esc(error)}</div>` : ""}
@@ -162,7 +179,7 @@ export async function POST(req: Request) {
 
   const ip = clientIp(req.headers);
   if (isThrottled(ip)) {
-    recordMcpAudit("throttled", { ip, ok: false });
+    recordMcpAudit("throttled", { ip, tool: "oauth_authorize", ok: false });
     return consentForm(p, client, "시도가 너무 많습니다. 잠시 후 다시 시도하세요.");
   }
 

@@ -608,3 +608,51 @@ describe("registration rate limit + client-table cap", () => {
     30_000
   );
 });
+
+describe("OAuth low-severity fixes", () => {
+  it("drops pending authorization codes when a grant is revoked", () => {
+    const verifier = "a".repeat(43);
+    const challenge = createHash("sha256").update(verifier).digest("base64url");
+    const client = oauth.registerClient([REDIRECT], "Test connector");
+    const secretHash = createHash("sha256").update(TOKEN).digest("hex");
+    const code = oauth.issueAuthCode(
+      client.client_id,
+      REDIRECT,
+      challenge,
+      secretHash
+    );
+
+    // Owner revokes the grant while that code is still unredeemed. Revocation
+    // used to delete token rows only, so the holder could still exchange the
+    // code for a FRESH pair for the client just revoked — revocation reported
+    // success and did not hold.
+    oauth.revokeOAuthGrant(client.client_id);
+
+    const redeemed = oauth.redeemAuthCode(
+      code,
+      client.client_id,
+      REDIRECT,
+      verifier
+    );
+    expect(redeemed).toMatchObject({ ok: false });
+  });
+
+  it("leads the consent screen with the destination host, not the claimed name", async () => {
+    // The registrant chooses client_name, so an attacker simply calls itself
+    // "Claude". The host is the one field they cannot forge without owning it.
+    const client = oauth.registerClient(["https://evil.tld/callback"], "Claude");
+    const url =
+      `${ORIGIN}/api/mcp/oauth/authorize?response_type=code` +
+      `&client_id=${client.client_id}` +
+      `&redirect_uri=${encodeURIComponent("https://evil.tld/callback")}` +
+      `&code_challenge=${"b".repeat(43)}&code_challenge_method=S256`;
+
+    const res = await authorizeRoute.GET(new Request(url));
+    const html = await res.text();
+
+    expect(html).toContain("<strong>evil.tld</strong>");
+    expect(html).not.toContain("<strong>Claude</strong>");
+    // The full URI stays visible for anyone who wants to read it.
+    expect(html).toContain("https://evil.tld/callback");
+  });
+});
