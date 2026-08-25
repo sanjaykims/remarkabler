@@ -710,6 +710,19 @@ features need the deployed instance to fully verify.
   `next.config.mjs headers()`; a real enforced Content-Security-Policy is still
   a deliberate deferred pass (report-only first — no `dangerouslySetInnerHTML`
   anywhere means there's no active XSS surface, so CSP is defense-in-depth).
+- **An export result of `skipped: "in-flight"` means it DIDN'T happen — never
+  record it as done.** `maybeReconcileRelationshipExportRace` (`lib/notes.ts`)
+  is a one-shot repair guarded by a settings key. Only `ok` or
+  `skipped: "nothing"` (a genuine no-op) may set that key. `"in-flight"` means
+  another writer held the shared Dropbox lock and OUR export never ran;
+  `lib/dropbox.ts`'s coalesced follow-up will fire one, but that run's failures
+  are only logged and never propagate back, so treating it as done burns the
+  one-shot on a run that may have written nothing — stranding stale stubs
+  permanently with no retry. Leaving the key unset costs at most one redundant,
+  idempotent export after the backoff. This is the same "treated didn't-happen
+  as done" mistake that caused the original export race, so it applies to any
+  future caller reading an export result.
+  `test/relationshipExportReconcile.test.ts` pins it.
 - **Deleting an auto-ingested notebook must tombstone its source id — BOTH
   channels.** The Dropbox watcher dedupes on `notebooks.dropbox_file_id` and
   the reMarkable sweep's subscription set is `notebooks.remarkable_doc_id`;

@@ -578,11 +578,19 @@ function maybeReconcileRelationshipExportRace(): void {
   void import("./dropbox")
     .then((m) => m.maybeExportDiaryToDropbox())
     .then((result) => {
-      if (
-        result.ok ||
-        result.skipped === "in-flight" ||
-        result.skipped === "nothing"
-      ) {
+      // Only "this export actually happened" counts as reconciled. NOTE the
+      // deliberate absence of `skipped === "in-flight"`: that means our export
+      // never ran (another writer held the lock). The coalesced follow-up in
+      // lib/dropbox.ts will fire one, but if THAT run fails (auth expiry,
+      // network blip, partial upload) its error is only logged — nothing
+      // propagates back here. Marking reconciled on "in-flight" would
+      // therefore burn this one-shot repair on a run that may never have
+      // written anything, leaving the stale relationship stubs stale forever
+      // with no retry. Leaving the key unset costs at most one redundant
+      // (idempotent) full export after the backoff, which is the safe
+      // direction to be wrong in. This is the same "treated didn't-happen as
+      // done" mistake that caused the original export race.
+      if (result.ok || result.skipped === "nothing") {
         setSetting(RELATIONSHIP_EXPORT_RECONCILED_KEY, attemptAt);
       }
     })
