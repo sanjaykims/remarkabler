@@ -655,14 +655,35 @@ features need the deployed instance to fully verify.
   `test/webauthnChallengeSeparation.test.ts` pins both directions; never
   collapse the two cookies back into one, and never let `register-verify` fall
   back to a login-issued challenge.
-- **The passcode has a brute-force lockout — don't bypass it.** `lib/auth.ts`
-  tracks failures in the `auth_fail_state` setting; 8 wrong passcodes within
-  a rolling 15-minute window lock further passcode attempts (`action:
-  "register-options"` and `"passcode"`) for the rest of that window, checked
-  before `checkPasscode` even runs. WebAuthn `login-verify` is deliberately
-  NOT gated — a forged assertion isn't practically guessable, so limiting it
-  would only add self-lockout risk with no security benefit. A correct
-  passcode clears the counter immediately.
+- **The passcode brute-force lockout has TWO buckets — keep both.**
+  `lib/auth.ts` gates `action: "register-options"` and `"passcode"` before
+  `checkPasscode` even runs, on whichever of these is tripped:
+  - a PER-SOURCE bucket (`auth_fail_state:<sha256(client ip)>`), 8 failures per
+    rolling 15 minutes, so one noisy source can't lock the owner out; and
+  - a GLOBAL floor (`auth_fail_global`), 60 failures per rolling hour.
+
+  The floor is load-bearing, not belt-and-braces. The source comes from a proxy
+  header via `lib/clientIp.ts`, and the `X-Forwarded-For` convention is
+  **append** — its leftmost value is only trustworthy while a sanitizing edge
+  sits in front of the app. That holds on Railway today but would not behind an
+  added CDN, on another host, or if the app were reached directly. Without the
+  floor, an attacker rotating the header gets unlimited fresh 8-attempt buckets
+  and the passcode is effectively unthrottled; with it, a wrong assumption
+  degrades to "slow" instead. A global-only design shipped once and was the
+  original complaint (one attacker could lock out the owner); per-source-only
+  shipped once too and removed the ceiling. Keep the pair.
+
+  The floor sits far above one person fumbling a passcode, so it can't be
+  tripped as a cheap owner-DoS. Proof of ownership clears BOTH buckets — that's
+  the owner's escape hatch if an attacker filled the floor. Expired per-source
+  buckets are pruned on write (`pruneExpiredAuthFailBuckets`), or an attacker
+  rotating the source grows `settings` without bound; both bucket kinds are
+  redacted from off-site backups (`lib/backup.ts`), since `sha256(ipv4)` is
+  trivially enumerable and would disclose who hit the login page.
+
+  WebAuthn `login-verify` is deliberately NOT gated — a forged assertion isn't
+  practically guessable, so limiting it would only add self-lockout risk with
+  no security benefit.
 - **Every data API route must gate behind the app lock — a test enforces it.**
   Enforcement is per-route (each handler calls `isAuthenticated()` or the
   shared `requireAuth()` helper in `lib/auth.ts`), and `test/authGuard.test.ts`

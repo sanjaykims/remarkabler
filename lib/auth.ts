@@ -192,16 +192,33 @@ export function checkPasscode(input: string): boolean {
 // brute-forced by automated attempts. Persisted in `settings` (not just
 // in-memory) so it survives a Railway cold restart mid-attack, mirroring the
 // failure-backoff pattern already used for the Dropbox/reMarkable watchers.
-// Railway's edge guarantees the first X-Forwarded-For value is the client;
-// route callers pass that source so one attacker cannot lock out the owner.
-// A valid passkey bypasses this limiter and clears the caller's bucket.
-// A single 15-minute window serves both roles: up to AUTH_FAIL_MAX attempts
-// are allowed inside it, and once tripped the lock lasts until that same
-// window (measured from the FIRST failure in it) elapses — at which point
-// the very next attempt starts a fresh window. One constant, one meaning.
+// TWO limiters, deliberately. Route callers pass a per-request source
+// (lib/clientIp.ts) so one noisy source cannot lock the owner out — but that
+// source is derived from a proxy header, and the X-Forwarded-For convention is
+// APPEND, so its leftmost value is only trustworthy while a sanitizing edge
+// sits in front of us. If that assumption is ever wrong, an attacker rotating
+// the header would get an unlimited number of fresh 8-attempt buckets.
+//
+// So the per-source bucket is the FAST limiter (fairness), and a much higher
+// GLOBAL bucket is the FLOOR (a hard ceiling on total guesses). The floor is
+// set far above what one legitimate person fumbling their passcode produces,
+// so it cannot be tripped as a cheap owner-DoS, while still bounding a
+// distributed attacker: 60/hour against a 6-digit passcode is ~2 years.
+// Getting the source derivation wrong therefore degrades the limiter to
+// "slow", never to "unlimited".
+//
+// A valid passkey bypasses BOTH and clears them — that is proof of ownership,
+// and it is the owner's escape hatch if an attacker has filled the floor.
+// A single window serves both roles per bucket: up to MAX attempts are allowed
+// inside it, and once tripped the lock lasts until that same window (measured
+// from the FIRST failure in it) elapses.
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_FAIL_MAX = 8;
 const AUTH_FAIL_KEY = "auth_fail_state";
+
+const GLOBAL_WINDOW_MS = 60 * 60 * 1000;
+const GLOBAL_FAIL_MAX = 60;
+const GLOBAL_FAIL_KEY = "auth_fail_global";
 
 type AuthFailState = { count: number; windowStart: number };
 
@@ -212,7 +229,11 @@ function authFailKey(source?: string): string {
 }
 
 function getAuthFailState(source?: string): AuthFailState {
-  const raw = getSetting(authFailKey(source));
+  return getRawAuthFailState(authFailKey(source));
+}
+
+function getRawAuthFailState(key: string): AuthFailState {
+  const raw = getSetting(key);
   if (!raw) return { count: 0, windowStart: 0 };
   try {
     const v = JSON.parse(raw);
@@ -225,28 +246,82 @@ function getAuthFailState(source?: string): AuthFailState {
   }
 }
 
-/** Milliseconds remaining before another passcode attempt is allowed, or null if not locked. */
+function remainingFor(
+  state: AuthFailState,
+  max: number,
+  windowMs: number
+): number | null {
+  if (state.count < max) return null;
+  const elapsed = Date.now() - state.windowStart;
+  if (elapsed >= windowMs) return null; // window has expired
+  return windowMs - elapsed;
+}
+
+/**
+ * Milliseconds remaining before another passcode attempt is allowed, or null
+ * if not locked. Locked when EITHER the caller's own bucket or the global
+ * floor is tripped; the longer remaining time wins.
+ */
 export function passcodeLockRemainingMs(source?: string): number | null {
-  const { count, windowStart } = getAuthFailState(source);
-  if (count < AUTH_FAIL_MAX) return null;
-  const elapsed = Date.now() - windowStart;
-  if (elapsed >= AUTH_WINDOW_MS) return null; // window has expired
-  return AUTH_WINDOW_MS - elapsed;
+  const perSource = remainingFor(
+    getAuthFailState(source),
+    AUTH_FAIL_MAX,
+    AUTH_WINDOW_MS
+  );
+  const global = remainingFor(
+    getRawAuthFailState(GLOBAL_FAIL_KEY),
+    GLOBAL_FAIL_MAX,
+    GLOBAL_WINDOW_MS
+  );
+  if (perSource === null && global === null) return null;
+  return Math.max(perSource ?? 0, global ?? 0);
+}
+
+function bumpBucket(key: string, windowMs: number, now: number): void {
+  const { count, windowStart } = getRawAuthFailState(key);
+  const expired = windowStart === 0 || now - windowStart > windowMs;
+  const next: AuthFailState = expired
+    ? { count: 1, windowStart: now }
+    : { count: count + 1, windowStart };
+  setSetting(key, JSON.stringify(next));
 }
 
 export function recordFailedPasscodeAttempt(source?: string): void {
   const now = Date.now();
-  const { count, windowStart } = getAuthFailState(source);
-  const expired = windowStart === 0 || now - windowStart > AUTH_WINDOW_MS;
-  const next: AuthFailState = expired
-    ? { count: 1, windowStart: now }
-    : { count: count + 1, windowStart };
-  setSetting(authFailKey(source), JSON.stringify(next));
+  bumpBucket(authFailKey(source), AUTH_WINDOW_MS, now);
+  bumpBucket(GLOBAL_FAIL_KEY, GLOBAL_WINDOW_MS, now);
+  pruneExpiredAuthFailBuckets(now);
+}
+
+/**
+ * Drop per-source buckets whose window has long elapsed.
+ *
+ * Without this every distinct source that ever failed leaves a permanent
+ * `settings` row on the /data volume, which an attacker rotating the source
+ * value can grow without bound — and those rows also ship in the weekly
+ * off-site backup. Pruned opportunistically on write, mirroring how
+ * lib/pendingShares.ts prunes share_rate_events.
+ */
+function pruneExpiredAuthFailBuckets(now: number): void {
+  try {
+    db()
+      .prepare(
+        `DELETE FROM settings
+          WHERE key LIKE 'auth_fail_state:%'
+            AND CAST(json_extract(value, '$.windowStart') AS INTEGER) < ?`
+      )
+      .run(now - AUTH_WINDOW_MS);
+  } catch {
+    // best-effort; a malformed row simply isn't pruned this pass
+  }
 }
 
 export function recordSuccessfulAuth(source?: string): void {
   clearSetting(authFailKey(source));
-  if (source) clearSetting(AUTH_FAIL_KEY); // remove the legacy global bucket
+  // Proof of ownership clears the global floor too — otherwise an attacker who
+  // filled it could keep the owner locked out even after a valid passkey.
+  clearSetting(GLOBAL_FAIL_KEY);
+  if (source) clearSetting(AUTH_FAIL_KEY); // legacy no-source bucket
 }
 
 const secureCookie = process.env.NODE_ENV === "production";

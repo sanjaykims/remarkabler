@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-08-24 (Restore a global floor under the passcode lockout)
+
+The remediation replaced the global brute-force lockout with per-source buckets
+and removed the global cap entirely — `recordSuccessfulAuth` even deleted the
+legacy global row. Source-awareness was the right half of the fix; retention
+was the missing half, and the review that prompted the change had asked for
+both ("retain a modest global anti-brute-force control").
+
+That mattered because the source is derived from a proxy header, and the
+`X-Forwarded-For` convention is APPEND: its leftmost value is only trustworthy
+while a sanitizing edge sits in front of the app. That holds on Railway today,
+but not behind an added CDN, on another host, or if the app were reached
+directly — and with no floor, an attacker rotating the header would get an
+unlimited supply of fresh 8-attempt buckets.
+
+Both buckets are now checked: per-source (8 per 15 minutes) for fairness, and a
+global floor (60 per hour) as a hard ceiling. The floor sits far above one
+person fumbling a passcode, so it can't be tripped as a cheap owner-DoS, and
+proof of ownership clears BOTH — the owner's escape hatch if an attacker filled
+it. Getting the source derivation wrong now degrades the limiter to "slow"
+rather than "unlimited".
+
+`lib/clientIp.ts` prefers `X-Real-IP`, which Railway's edge overwrites (a single
+value, no list to parse), falling back to the `X-Forwarded-For` leftmost value.
+Its comment no longer claims a guarantee the code cannot verify.
+
+Two related leaks closed in the same pass:
+
+- Per-source buckets were never garbage-collected, so every distinct source
+  that ever failed left a permanent `settings` row on the /data volume that an
+  attacker rotating the source could grow without bound. Expired buckets are
+  now pruned on write, mirroring how `lib/pendingShares.ts` prunes
+  `share_rate_events`.
+- Those rows also shipped in the weekly off-site backup. `sha256` of an IPv4 is
+  a 4.3-billion-entry keyspace — trivially enumerable — so the backup repo
+  effectively disclosed the set of addresses that hit the login page. Redaction
+  now covers them (a PREFIX delete, since the ip hash is part of the key) plus
+  `auth_fail_global`, and truncates `app_sessions` in the staged copy. The
+  stale comment claiming there is "NO server-side session store" is corrected.
+
 ## 2026-08-24 (Fix: interrupted reMarkable syncs no longer lose their pages)
 
 The boot-time recovery added in the review remediation classified an

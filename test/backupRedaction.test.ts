@@ -44,6 +44,17 @@ beforeAll(async () => {
     `INSERT INTO settings (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run("session_secret", "SUPER_SECRET_HMAC_KEY_abc");
+  // Per-source brute-force buckets are keyed by sha256(client ip). SHA-256 of
+  // an IPv4 is trivially enumerable, so shipping these off-site would disclose
+  // the set of addresses that hit the login page (review finding).
+  conn.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run("auth_fail_state:deadbeef", '{"count":3,"windowStart":1}');
+  conn.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run("auth_fail_global", '{"count":9,"windowStart":1}');
   // Non-sensitive setting — should survive redaction.
   conn.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?)
@@ -74,6 +85,10 @@ describe("redactSensitiveSettings", () => {
       expect(get("dropbox_last_error")).toBeUndefined();
       // The session-forging HMAC key must not ship off-site.
       expect(get("session_secret")).toBeUndefined();
+      // Nor may the brute-force buckets — the per-source ones need a PREFIX
+      // delete, not an exact-key one, since the ip hash is part of the key.
+      expect(get("auth_fail_state:deadbeef")).toBeUndefined();
+      expect(get("auth_fail_global")).toBeUndefined();
       // Non-sensitive key still present.
       expect(get("mind_dates_reparsed_v2")).toBe("yes");
     } finally {
