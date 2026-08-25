@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-08-25 (Security: bind WebAuthn challenges server-side)
+
+Completes the previous entry, which did NOT fully close the bypass it claimed
+to. Separating the two challenge cookies stopped a login-issued challenge being
+replayed into `register-verify`, but the cookie is client-supplied: `httpOnly`
+protects a victim's browser from XSS, not the server from a direct caller. An
+attacker with any HTTP client could send `Cookie: fc_reg_challenge=<anything>`
+— a value they invented, never issued by this server — build a self-attested
+credential against it, and still enroll a passkey without passing the passcode
+gate. Confirmed against the deployed code before fixing: an entirely made-up
+string returned a real `fc_session`.
+
+Found by an automated review on the PR that shipped the incomplete fix.
+
+New `webauthn_challenges` table plus `rememberChallenge`/`consumeChallenge`
+(`lib/auth.ts`). `register-options` and `login-options` record what they issue;
+each verify step accepts only a challenge this server issued, for that exact
+ceremony, unexpired (5 minutes, matching the cookie), and exactly once — the
+row is deleted on use, so replay fails too. The cookie is now only a carrier;
+the server is the authority.
+
+Three tests added: an invented challenge is refused before the credential is
+examined, a consumed challenge cannot be replayed, and a genuine LOGIN
+challenge cannot enroll. All were confirmed to fail against the pre-fix code.
+
+Existing passkeys and sessions are unaffected. An enrollment or login in flight
+at deploy needs one retry. The audit advice from the previous entry still
+stands: if this deployment has ever been internet-reachable, check the
+`credentials` table for rows you do not recognise.
+
 ## 2026-08-23 (Security: separate the two WebAuthn challenge cookies)
 
 Closes an authentication bypass that let an unauthenticated visitor register

@@ -61,6 +61,33 @@ beforeEach(() => {
 });
 
 describe("WebAuthn ceremony separation", () => {
+  it("does NOT accept a challenge the server never issued", () => {
+    // The cookie is client-supplied. httpOnly stops XSS reading it in a
+    // VICTIM's browser; it does nothing against a direct attacker, who just
+    // sends `Cookie: fc_reg_challenge=<anything>` from curl. So separating the
+    // two cookie NAMES is not sufficient on its own — the challenge has to be
+    // bound server-side, or the attacker simply invents one.
+    const invented = "attacker-chose-this-value-entirely";
+
+    const verifySpy = vi
+      .spyOn(webauthn, "verifyRegistration")
+      .mockResolvedValue(true as never);
+
+    return route
+      .POST(
+        post(
+          { action: "register-verify", response: {} },
+          { fc_reg_challenge: invented }
+        )
+      )
+      .then((res: any) => {
+        expect(cookieFrom(res, "fc_session")).toBeFalsy();
+        expect(res.status).not.toBe(200);
+        // Must be rejected BEFORE the credential is even examined.
+        expect(verifySpy).not.toHaveBeenCalled();
+      });
+  });
+
   it("does NOT accept a login-issued challenge at register-verify", async () => {
     // 1. Unauthenticated attacker starts a LOGIN ceremony. No passcode needed —
     //    this endpoint is ungated on purpose.
@@ -156,5 +183,89 @@ describe("WebAuthn ceremony separation", () => {
 
     expect(cookieFrom(res, "fc_session")).toBeFalsy();
     expect(verifySpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("challenge is bound server-side", () => {
+  it("rejects a replayed registration challenge (single use)", async () => {
+    const opts = await route.POST(
+      post({ action: "register-options", passcode: PASSCODE })
+    );
+    const jar: Record<string, string> = {};
+    for (const c of (opts.cookies as any).getAll?.() ?? []) {
+      if (c.value) jar[c.name] = c.value;
+    }
+
+    vi.spyOn(webauthn, "verifyRegistration").mockResolvedValue(true as never);
+
+    const first = await route.POST(
+      post({ action: "register-verify", response: {} }, jar)
+    );
+    expect(first.status).toBe(200);
+
+    // Replaying the very same challenge must fail: the row is consumed.
+    const second = await route.POST(
+      post({ action: "register-verify", response: {} }, jar)
+    );
+    expect(second.status).not.toBe(200);
+    expect(cookieFrom(second, "fc_session")).toBeFalsy();
+  });
+
+  it("rejects a genuine LOGIN challenge replayed into register-verify", async () => {
+    // Both cookie names are attacker-controllable, so the real defence is the
+    // ceremony column: a challenge issued for "login" can never enroll.
+    const opts = await route.POST(post({ action: "login-options" }));
+    const issued = cookieFrom(opts, "fc_auth_challenge");
+    expect(issued).toBeTruthy();
+
+    const verifySpy = vi
+      .spyOn(webauthn, "verifyRegistration")
+      .mockResolvedValue(true as never);
+
+    const res = await route.POST(
+      post(
+        { action: "register-verify", response: {} },
+        { fc_reg_challenge: issued as string }
+      )
+    );
+
+    expect(cookieFrom(res, "fc_session")).toBeFalsy();
+    expect(verifySpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("public challenge issuance is bounded", () => {
+  it("caps stored challenges so an unauthenticated flood cannot grow the DB", async () => {
+    const auth = await import("@/lib/auth");
+    const db = (await import("@/lib/db")).db;
+    const count = () =>
+      (
+        db()
+          .prepare(`SELECT COUNT(*) AS c FROM webauthn_challenges`)
+          .get() as { c: number }
+      ).c;
+
+    db().prepare(`DELETE FROM webauthn_challenges`).run();
+
+    // login-options is ungated by necessity, so this is what an attacker can
+    // do for free. TTL cleanup alone would keep every one of these, since they
+    // are all fresh.
+    for (let i = 0; i < 600; i++) {
+      auth.rememberChallenge(`flood-${i}`, "login");
+    }
+
+    expect(count()).toBeLessThanOrEqual(200);
+  });
+
+  it("keeps the most recent challenge usable under a flood", async () => {
+    const auth = await import("@/lib/auth");
+
+    // The owner starts a real login...
+    auth.rememberChallenge("owners-real-challenge", "login");
+    // ...and is immediately followed by junk. Eviction is newest-first, so a
+    // challenge issued moments ago must survive long enough to be consumed.
+    for (let i = 0; i < 50; i++) auth.rememberChallenge(`noise-${i}`, "login");
+
+    expect(auth.consumeChallenge("owners-real-challenge", "login")).toBe(true);
   });
 });
