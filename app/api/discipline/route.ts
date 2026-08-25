@@ -22,7 +22,7 @@ export const maxDuration = 120;
 const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   return NextResponse.json({
     configured: !!disciplineConfig(),
     repo: disciplineRepoName(),
@@ -32,7 +32,7 @@ export async function GET() {
 }
 
 export async function POST() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
 
   if (!isDisciplineEnabled()) {
     return NextResponse.json(

@@ -5,7 +5,7 @@ every module / table / route / page lives, and what talks to the outside
 world. Companion to `SKILL.md` (terse index) and `CLAUDE.md` (deep rules).
 Keep this in sync when you add a lib, table, route, or page.
 
-> **Stack:** Next.js 14 (App Router, TypeScript) · better-sqlite3 · Tailwind
+> **Stack:** Next.js 16 (App Router, TypeScript) · better-sqlite3 · Tailwind
 > · `@anthropic-ai/sdk` · Voyage embeddings. All data (SQLite `app.db` +
 > uploaded PDFs) lives under `DATA_DIR` (`/data` on Railway). Deployed on
 > Railway from a **Dockerfile** (Node + a bundled Python `.rm` renderer).
@@ -20,8 +20,10 @@ flowchart TD
   RM -->|Share to Dropbox export| DBX[(Dropbox)]
   DBX -->|watcher| ING
   UP[Manual PDF upload] --> ING
+  SHARE[Android share target] --> Q[Inert pending-share quarantine]
+  Q -->|owner unlocks + approves| ING
 
-  ING["Ingest: createNotebook + processNotebook"] --> OCR
+  ING["Ingest: durable bounded OCR queue"] --> OCR
   OCR["OCR every page — Claude Opus"] --> AN
   AN["Per-page analysis: themes, mood, summary, entities"] --> DB[(SQLite)]
   OCR --> EMB[Voyage embeddings] --> DB
@@ -102,7 +104,8 @@ remarkabler/
 | File | Responsibility |
 |---|---|
 | `db.ts` | SQLite connection, schema, migrations (FKs ON) |
-| `notes.ts` | `createNotebook`, `processNotebook` (bg OCR→embed→profile→analyse), `deleteNotebook`, `extractEntryDate` + carry-forward, discipline sync, `runMaintenanceSweep` |
+| `notes.ts` | `createNotebook`, durable `queueNotebookProcessing` + internal OCR worker (embed→profile→analyse), `deleteNotebook`, entry-date carry-forward, discipline sync, maintenance |
+| `pendingShares.ts` | Inert public share-target quarantine and persistent abuse/storage bounds; approval is authenticated via `/api/shares` |
 | `upload.ts`, `extractText.ts`, `cleanup.ts`, `format.ts` | upload guards, PDF text, orphan cleanup, formatting/TZ |
 
 **AI**

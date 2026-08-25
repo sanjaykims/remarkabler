@@ -19,7 +19,7 @@ const REDIRECT_COOKIE = "dropbox_oauth_redirect";
 // one-time `code` for a refresh_token using the same redirect URI we
 // pinned at connect time, and bounce the user back to /memory.
 export async function GET(req: NextRequest) {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
 

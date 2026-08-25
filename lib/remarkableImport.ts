@@ -5,7 +5,7 @@ import {
   renderersAvailable,
   RendererUnavailableError,
 } from "./rmRender";
-import { createNotebook, processNotebook, deleteNotebook } from "./notes";
+import { createNotebook, queueNotebookProcessing, deleteNotebook } from "./notes";
 
 // ── reMarkable cloud → notebook import (Phase 1b) ───────────────────────────
 //
@@ -135,7 +135,7 @@ async function importRemarkableNotebookInner(
   // Don't replace a prior import whose OCR is still running — deleting it out
   // from under the background processNotebook would orphan its pages/FTS rows
   // and waste the transcription. Ask the user to retry once it settles.
-  if (existing && existing.status === "processing") {
+  if (existing && (existing.status === "queued" || existing.status === "processing")) {
     return {
       ok: false,
       error:
@@ -191,8 +191,7 @@ async function importRemarkableNotebookInner(
   db()
     .prepare(`DELETE FROM remarkable_ingest_tombstones WHERE doc_id = ?`)
     .run(id);
-  // Fire-and-forget OCR — same contract as manual upload / Dropbox ingest.
-  void processNotebook(nb.id).catch(() => {});
+  queueNotebookProcessing(nb.id);
 
   return {
     ok: true,

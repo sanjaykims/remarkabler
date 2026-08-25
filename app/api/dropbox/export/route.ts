@@ -22,7 +22,7 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 //                          request. The awaited probe gives instant
 //                          feedback on whether the write scope is granted.
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
 
   const body = (await req.json().catch(() => null)) as
     | { enabled?: unknown; runNow?: unknown; folder?: unknown }

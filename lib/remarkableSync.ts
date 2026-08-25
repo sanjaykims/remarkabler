@@ -495,7 +495,7 @@ export async function maybeSyncRemarkable(
           }
           continue;
         }
-        if (row.status === "processing") {
+        if (row.status === "queued" || row.status === "processing") {
           allSettled = false;
           continue;
         }

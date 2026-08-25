@@ -31,7 +31,7 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
  *    every message that exists".
  */
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const reset = req.nextUrl.searchParams.get("reset") === "true";
 
   const created = db().transaction(() => {

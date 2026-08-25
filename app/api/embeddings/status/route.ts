@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 600;
 
 export async function GET() {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
 
@@ -61,7 +61,7 @@ export async function GET() {
  * resumed by itself).
  */
 export async function POST() {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   if (!embeddingsEnabled()) {

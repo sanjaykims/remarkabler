@@ -9,6 +9,6 @@ const LOCKED = () =>
   NextResponse.json({ error: "Locked" }, { status: 401 });
 
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   return NextResponse.json({ candidates: findDuplicateCandidates() });
 }

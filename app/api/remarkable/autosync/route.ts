@@ -14,7 +14,7 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 // POST { syncNow: true } — just kick a forced sync (the "Sync now" button):
 // bypasses the interval, backoff, and fast-path cursor.
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const body = (await req.json().catch(() => ({}))) as {
     parent?: string;
     enabled?: boolean;

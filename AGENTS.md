@@ -36,7 +36,7 @@ and an accumulating record of "insights" about them. It's a long-horizon
 - **Owner/user:** non-technical, works primarily from an Android phone,
   communicates with screenshots, based in Seoul (KST, UTC+9). Give
   mobile-friendly, step-by-step guidance.
-- **Stack:** Next.js 14 (App Router, TypeScript), better-sqlite3,
+- **Stack:** Next.js 16 (App Router, TypeScript), better-sqlite3,
   `@anthropic-ai/sdk`, Tailwind CSS. Optional Voyage AI for embeddings.
 - **Deploy:** Railway, auto-deploys on every push to `main`. A persistent
   volume is mounted at `/data` (SQLite DB + uploaded PDFs).
@@ -48,7 +48,7 @@ and an accumulating record of "insights" about them. It's a long-horizon
 ### `lib/` — the core logic
 | File | Responsibility |
 |---|---|
-| `db.ts` | SQLite connection, schema, migrations. Tables: settings, notebooks, pages, pages_fts, chat_messages, insights, credentials, chat_attachments, api_usage, profile, locations, location_points, route_stops, geocode_cache, daily_summaries, entry_analysis (`/mind`), entry_entities (per-page named entities — person/place/project — powering `top_entities`/`pages_for_entity`/`related_entities`), entity_aliases (merge records → canonical `name_norm`), entity_wiki (Claude-written life-wiki bio + `source_hash`), chat_archive_batches + chat_memories (durable chat-memory layer), mcp_conversations (Phase B exported transcripts; `linked_at` = Phase C librarian tagging, separate from `filed_at`'s Dropbox status), mcp_reflections + mcp_decisions (standalone AI-written reflections / Decision Records — own tables, own `Reflections/`/`Decisions/` vault folders), entity_conversation_notes (the Phase C librarian's own entity notes — kept separate from entity_wiki so the two authors never clobber each other), entity_relationships (provenance-scoped typed edges between entities; source columns are part of the PK), mcp_audit (size-capped MCP call/auth log), mcp_oauth_clients + mcp_oauth_tokens (OAuth 2.1 state; tokens stored HASHED + bound to their authorizing secret), dropbox_ingest_tombstones + remarkable_ingest_tombstones (deleted-source ids the ingest paths must not re-add). One-time chunked backfill (via `chatMemoryBackfill.chunkedBackfillForConversation`) creates batches for chats archived before the chat-memory feature shipped — chunked so a long history under compressBatch's 16K-char cap produces many batches, not one truncated giant batch. |
+| `db.ts` | SQLite connection, schema, migrations. Tables include settings, notebooks/pages/FTS, `pending_shares` + hashed-source rate events, chat/profile/insight/mind/entity data, credentials + per-device `app_sessions`, location data, MCP content/OAuth/audit state, and ingest tombstones. One-time chunked chat-memory backfill keeps legacy archives below the transcript cap. |
 | `claude.ts` | All Anthropic calls: `ocrNotebookPdf`, `chatOverNotes` (accepts `recalledMemories`), `generateInsights`, `generateInsightTitle`, `composeBook`, `summarizeDay`, `buildSelfModel`/`updateSelfModel`, `/mind` helpers (`analyzeEntryContent` extracts themes/sentiment/summary/entities in one call, `labelEmbeddingAxes` + pure `parseAxisLabels`, pure `parseAnalyzeEntryContent`), and chat-memory pair `compressChatSession` + pure `parseChatMemories`. Model resolution (`modelMain`/`modelChat`/`modelChatFallback`/`modelChatMemory`) is in-app-setting → env var → default. |
 | `chatTools.ts` | The tool-calling toolbox Claude uses during chat: `search_diary` (hybrid FTS+semantic), `get_entries_by_date`, summaries, location, `top_entities` (aggregate ranking of people/places/projects), `pages_for_entity` (drill-down to actual pages tagged with a named entity), etc. |
 | `mcp.ts` | MCP bridge: derives the remote MCP tool list from `CHAT_TOOLS` (+ three MCP-only reads: `get_profile`, `recall_memories` = the durable chat-memory layer, `get_guidance` = the companion tone/anti-confabulation contract — these exist only on MCP since the in-app chat gets the same via its system prompt), dispatches via `executeTool`, and enforces the fail-closed `MCP_AUTH_TOKEN` bearer auth (comma-separated tokens = zero-downtime rotation; also accepts OAuth access tokens from `mcpOauth.ts`). Hardened: per-IP brute-force throttle on FAILED auth only (a valid token is never blocked), size-capped `mcp_audit` trail, sensitive tools (`get_recent_locations`, `search_chat_history`) excluded BY DEFAULT (only `MCP_ALLOW_SENSITIVE_TOOLS=true` exposes them). Served by `app/api/mcp/route.ts`. Read-only by default; the sanctioned writes are, each OFF behind its OWN flag: `export_conversation` (`MCP_ALLOW_CONVERSATION_EXPORT`, Phase B), `save_reflection` (`MCP_ALLOW_REFLECTION_SAVE`), `save_decision` (`MCP_ALLOW_DECISION_SAVE`), `save_diary_entry` (`MCP_ALLOW_DIARY_WRITE` — the one that writes REAL diary + triggers the analytics pipeline), and seven "librarian" tools behind one flag `MCP_ALLOW_WIKI_LINKING=true` (Phase C + relationship enrichment: reads `list_unlinked_conversations`/`get_conversation`/`get_entity_wiki`, writes `tag_conversation_entities`/`relate_entities`/`update_entity_conversation_notes`/`record_librarian_heartbeat`). Layered on `MCP_ALLOW_WIKI_LINKING`: `MCP_AUTO_TAG_EXPORTS` makes the app itself guarantee tagging after each export/save. See the do-not-regress rule in CLAUDE.md. |
@@ -67,12 +67,13 @@ and an accumulating record of "insights" about them. It's a long-horizon
 | `chatMemory.ts` | Durable chat-memory layer. `compressBatch` (extract→embed→dedup→insert with bounded retry), `maybeCompressChatSessions` (in-flight-guarded sweep), `recallChatMemories` (fail-open Voyage top-K cosine), `formatRecalledMemoriesBlock` (advisory framing), `normaliseChatMemoryCategory` (6-value enum), `isDuplicateMemory` (exact text_norm + 0.88 cosine), `resetBatchForRetry`. |
 | `chatMemoryBackfill.ts` | Pure helpers shared by the startup orphan migration in `db.ts` and `/api/chat/memories/backfill-all`: `chunkMessageIds`, `createBatchForChunk`, `chunkedBackfillForConversation` (the high-level entry point with `onlyArchived` opt-in), `CHUNK_TARGET_CHARS = 12_000`. A long history is sliced into transcript-fit batches so compressBatch's 16K-char cap doesn't silently truncate. |
 | `embeddings.ts` | Voyage AI embeddings: token-budget batching, 429 retry, `embed`/`embedBatch`/`embedBatchOrThrow`, encode/decode BLOB helpers, cosine similarity. |
-| `notes.ts` | `createNotebook`, `processNotebook` (background OCR → embed → fold into profile → auto-analyse pages for `/mind`), `runMaintenanceSweep` (throttled background chores: profile seed, weekly insight, embedding backfill, daily summaries, location distill, Dropbox poll, weekly backup, **chat-memory sweep**, discipline auto-sync), discipline sync, embedding/summary backfills. |
+| `notes.ts` | `createNotebook`, `queueNotebookProcessing` + internal `processNotebook` (durable bounded OCR → embed → profile → `/mind` analysis), `runMaintenanceSweep` (throttled background chores plus unthrottled queue drain), discipline sync, embedding/summary backfills. |
+| `pendingShares.ts` | Inert Android share-target quarantine. Persistent count/byte/rate/retention caps; only authenticated `/api/shares` approval admits a PDF to notebooks/OCR. |
 | `profile.ts` | The evolving "memory of you" (versioned `profile` table). |
 | `mind.ts` | `/mind` analytics (heatmap, themes, sentiment series, embedding map). Shared PCA + persisted axis labels. `analyzePending` is the in-flight-guard pattern reused by `chatMemory`. |
 | `usage.ts` | `recordUsage` (per-call cost from list prices) + aggregation for the Cost tab. |
 | `extractText.ts` | Converts PDF/Word chat attachments to text (pdf-parse/mammoth) before sending to Claude — token savings. Handwritten PDFs fall back to raw. |
-| `auth.ts` / `webauthn.ts` | Passcode + passkey (WebAuthn) lock; HMAC session cookie; 24h server-side inactivity timeout. |
+| `auth.ts` / `webauthn.ts` | Passcode + passkey (WebAuthn) lock; HMAC cookie plus per-device `app_sessions`; 24h inactivity timeout; local and lock-all revocation. |
 | `backup.ts` | Weekly auto-backup of `/data` to a private GitHub repo, keep-last-12. |
 | `dropbox.ts` | reMarkable Connect → Dropbox auto-ingest. OAuth refresh-token flow, polling, dedupe by `dropbox_file_id`. Fired from `runMaintenanceSweep`. |
 | `remarkableCloud.ts` / `rmRender.ts` / `remarkableImport.ts` / `remarkableSync.ts` | reMarkable-cloud secondary source (rmapi-js, unofficial). Pair + list (Phase 0); `downloadNotebook` + `.rm`→PDF render (rm2pdf/pypdf, image-only) + on-demand import, dedupe by `remarkable_doc_id` (Phase 1b); sweep-driven zero-tap sync with per-page sha256 diffing over imported notebooks + auto-sync folders (Phase 2). |
@@ -98,6 +99,7 @@ and an accumulating record of "insights" about them. It's a long-horizon
     `mind/build-wiki` = batched life-wiki build), `embeddings/status`.
   - `backup` (GET status + POST run-now), `dropbox/{connect,callback,status,disconnect,export}`.
   - `mcp` (remote MCP endpoint — see the `mcp.ts` row) +
+    authenticated `mcp/audit` and `mcp/oauth/grants` owner views +
     `mcp/oauth/{register,authorize,token,protected-resource,authorization-server}`
     (OAuth 2.1 server — `mcpOauth.ts`; `.well-known/oauth-*` via `next.config.mjs` rewrites).
   - `remarkable/{connect,refresh,disconnect,status,import,compare,autosync}`
@@ -188,9 +190,11 @@ full picture; the essentials:
    transcript cap) so a long history is fully read, not silently
    truncated to the tail. The earlier single-batch shape produced ~6
    items from months of history; don't reintroduce it.
-6. **Transcription runs in the background.** `createNotebook` returns
-   immediately; `processNotebook` is fired un-awaited and sets notebook
-   `status`. Never make upload/share wait on OCR.
+6. **Transcription runs through the durable background queue.** Admitted PDFs
+   start `queued`; `queueNotebookProcessing` claims bounded `processing` jobs.
+   The public `/share` target may only create inert `pending_shares` until an
+   authenticated owner approves them. Never make upload/share wait on OCR or
+   let the public route create a notebook directly.
 7. **OCR streams the response** (`messages.stream()`) and uses a
    `--- PAGE n ---` delimiter format, not JSON.
 8. **OCR stays on Opus for this user.** Validated against Sonnet on real
@@ -253,3 +257,13 @@ full picture; the essentials:
   becomes a problem, the fix is sync-on-Clear or a "extracting…"
   indicator. Don't paper over it by re-feeding archived messages as raw
   history (see rule 2 above).
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

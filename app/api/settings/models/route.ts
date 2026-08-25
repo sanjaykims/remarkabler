@@ -28,7 +28,7 @@ function resolve(s: Slot): { value: string; source: "db" | "env" | "default" } {
 }
 
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   return NextResponse.json({
     main: resolve(SLOTS.main),
     chat: resolve(SLOTS.chat),
@@ -40,7 +40,7 @@ export async function GET() {
 // model ID to save; pass an empty string to clear the in-app override and fall
 // back to the env var / default.
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   for (const [slot, cfg] of Object.entries(SLOTS) as Array<
     [keyof typeof SLOTS, Slot]

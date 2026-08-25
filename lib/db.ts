@@ -4,7 +4,9 @@ import fs from "fs";
 import { chunkedBackfillForConversation } from "./chatMemoryBackfill";
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(/* turbopackIgnore: true */ DATA_DIR)) {
+  fs.mkdirSync(/* turbopackIgnore: true */ DATA_DIR, { recursive: true });
+}
 
 export { DATA_DIR };
 
@@ -38,6 +40,11 @@ export function db(): Database.Database {
     // Dropbox/manual notebooks.
     "remarkable_doc_id TEXT",
     "remarkable_doc_hash TEXT",
+    // When this row entered status='processing'. Used by the runtime reaper in
+    // lib/notes.ts: boot recovery only runs at startup, so without this a row
+    // whose job died without writing a terminal status holds an OCR
+    // concurrency slot until the next restart — two such rows wedge all OCR.
+    "processing_started_at TEXT",
   ]) {
     try {
       _db.exec(`ALTER TABLE notebooks ADD COLUMN ${col}`);
@@ -441,16 +448,71 @@ export function db(): Database.Database {
   } catch {
     // best-effort; the sweep would retry on the next process startup
   }
-  // Any notebook still "processing" at startup was interrupted by a restart.
-  _db
-    .prepare(
-      `UPDATE notebooks SET status='error',
-         error='Transcription was interrupted. Delete and re-add this notebook.'
-       WHERE status='processing'`
-    )
-    .run();
+  recoverInterruptedNotebooks(_db, DATA_DIR);
 
   return _db;
+}
+
+/**
+ * Boot-time recovery for notebooks left at `status='processing'` by a crash or
+ * a Railway restart.
+ *
+ * Two different jobs use that status, and telling them apart is load-bearing:
+ *
+ *   - Whole-PDF OCR (`processNotebook`) rebuilds every page from the notebook's
+ *     durable PDF. Re-running it is idempotent, so an interrupted one is safe
+ *     to re-queue.
+ *   - Incremental reMarkable sync (`incrementalSyncNotebook`) maintains
+ *     PER-TABLET-PAGE rows carrying `remarkable_page_id`, `remarkable_page_hash`
+ *     and `blank_ocr_hash`. Whole-PDF OCR would `DELETE FROM pages` and replace
+ *     them with pages derived from the last-rendered PDF — destroying sync
+ *     state and, for pages since deleted on the tablet, diary content that
+ *     exists NOWHERE else (the append-only invariant in CLAUDE.md).
+ *
+ * "Does a notebook.pdf exist" does NOT discriminate: `lib/remarkableSync.ts`
+ * writes `notebook.pdf` after every content change so the notebook stays
+ * viewable, so a synced notebook has one permanently. Classifying on that
+ * resumed interrupted syncs as whole-PDF jobs and wiped their pages.
+ *
+ * The safe test is whether re-running whole-PDF OCR could destroy anything:
+ * a notebook holding per-tablet-page rows is never re-queued here. It goes to
+ * `error` and the next sweep re-syncs it.
+ */
+export function recoverInterruptedNotebooks(
+  database: Database.Database,
+  dataDir: string
+): { resumed: number; failed: number } {
+  const interrupted = database
+    .prepare(`SELECT id FROM notebooks WHERE status = 'processing'`)
+    .all() as Array<{ id: string }>;
+  const hasSyncedPages = database.prepare(
+    `SELECT 1 FROM pages
+     WHERE notebook_id = ? AND remarkable_page_id IS NOT NULL
+     LIMIT 1`
+  );
+  const resume = database.prepare(
+    `UPDATE notebooks SET status='queued', error=NULL WHERE id = ?`
+  );
+  const fail = database.prepare(
+    `UPDATE notebooks SET status='error',
+       error='Transcription was interrupted. Retry this reMarkable sync.'
+     WHERE id = ?`
+  );
+
+  let resumed = 0;
+  let failed = 0;
+  for (const row of interrupted) {
+    const pdfPath = path.join(dataDir, "files", row.id, "notebook.pdf");
+    const safeToRebuild = !hasSyncedPages.get(row.id);
+    if (safeToRebuild && fs.existsSync(/* turbopackIgnore: true */ pdfPath)) {
+      resume.run(row.id);
+      resumed++;
+    } else {
+      fail.run(row.id);
+      failed++;
+    }
+  }
+  return { resumed, failed };
 }
 
 const SCHEMA = `
@@ -464,6 +526,33 @@ CREATE TABLE IF NOT EXISTS notebooks (
   name TEXT NOT NULL,
   synced_at TEXT
 );
+
+-- Public Android share-target submissions stay inert here until the owner
+-- approves them behind the app lock. notebook_id is allocated up front so an
+-- interrupted approval can be retried idempotently without creating a second
+-- notebook.
+CREATE TABLE IF NOT EXISTS pending_shares (
+  id TEXT PRIMARY KEY,
+  notebook_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  source_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_shares_created
+  ON pending_shares(created_at);
+
+-- Persist the small public-share throttle across cold starts. Source values
+-- are one-way hashes, not raw client addresses.
+CREATE TABLE IF NOT EXISTS share_rate_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_share_rate_source_created
+  ON share_rate_events(source_hash, created_at);
 
 -- Dropbox files the user has deleted from the app. Deleting a notebook
 -- removes its dropbox_file_id dedup marker, so without this tombstone the
@@ -526,6 +615,18 @@ CREATE TABLE IF NOT EXISTS credentials (
   transports TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Server-side session state makes inactivity and revocation per device. The
+-- cookie carries only this random id + expiry under an HMAC signature.
+CREATE TABLE IF NOT EXISTS app_sessions (
+  id TEXT PRIMARY KEY,
+  last_activity_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_sessions_expires
+  ON app_sessions(expires_at);
 
 CREATE TABLE IF NOT EXISTS chat_attachments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

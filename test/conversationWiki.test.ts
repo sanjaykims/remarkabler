@@ -172,6 +172,19 @@ describe('"Connects to" wikilink section (Part C)', () => {
     expect(md).not.toContain("People/Jin");
   });
 
+  it("normalizes raw entity names to the exact entity-stub target", () => {
+    const md = cw.renderConversationNote(
+      { title: "Tagged", content: "text", created_at: "2026-07-18 09:00:00" },
+      [
+        { kind: "person", name: "Dr [Kim]|MD" },
+        { kind: "person", name: "Dr Kim|MD" },
+      ]
+    );
+    expect(md).toContain("- [[Dr KimMD]]");
+    expect(md.match(/\[\[Dr KimMD\]\]/g)).toHaveLength(1);
+    expect(md).not.toContain("[[Dr [Kim]");
+  });
+
   it("renderConversationNoteFiles joins entry_entities per row via conversationPageId", () => {
     cw.saveExportedConversation({ content: "a", conversationId: "k1", title: "A" });
     dbMod

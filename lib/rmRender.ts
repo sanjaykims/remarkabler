@@ -70,7 +70,10 @@ export class RendererUnavailableError extends Error {
  */
 export function renderersAvailable(): boolean {
   try {
-    return fs.existsSync(RM2PDF_BIN) && fs.existsSync(RENDERER_PYTHON);
+    return (
+      fs.existsSync(/* turbopackIgnore: true */ RM2PDF_BIN) &&
+      fs.existsSync(/* turbopackIgnore: true */ RENDERER_PYTHON)
+    );
   } catch {
     return false;
   }

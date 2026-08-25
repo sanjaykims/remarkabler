@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { db } from "@/lib/db";
 import { DECISIONS_NOTEBOOK_ID } from "@/lib/notes";
-import { entityStubFileName } from "@/lib/diaryExport";
+import { entityStubWikiTarget } from "@/lib/diaryExport";
 
 // Decision Records, saved by the MCP `save_decision` write tool (lib/mcp.ts)
 // and filed as one Markdown note each into the Obsidian/Dropbox vault. This
@@ -101,11 +101,16 @@ export function renderDecisionNote(
     row.content.trimEnd(),
     "",
   ];
-  const links = entities
-    .filter((e) => e.kind === "person" || e.kind === "place" || e.kind === "project")
-    .map((e) => entityStubFileName(e.kind as "person" | "place" | "project", e.name))
-    .map((f) => f.replace(/^[^/]+\//, "").replace(/\.md$/, ""));
-  if (links.length > 0) {
+  const links = new Set(
+    entities
+      .filter(
+        (e) => e.kind === "person" || e.kind === "place" || e.kind === "project"
+      )
+      .map((e) =>
+        entityStubWikiTarget(e.kind as "person" | "place" | "project", e.name)
+      )
+  );
+  if (links.size > 0) {
     lines.push("## Connects to", "");
     for (const link of links) lines.push(`- [[${link}]]`);
     lines.push("");

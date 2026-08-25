@@ -22,7 +22,7 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 // sees the real outcome (processed / inserted / failed) instead of
 // fire-and-forget silence.
 export async function POST() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   clearCompressionInFlight();
   const result = await maybeCompressChatSessions(25);
   return NextResponse.json({ ok: true, result });

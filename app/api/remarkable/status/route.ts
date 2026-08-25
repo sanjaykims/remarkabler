@@ -11,6 +11,6 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 // GET — current pairing status (no network call; reads stored settings),
 // plus the zero-tap sync status (folders, last run, last error/note).
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   return NextResponse.json({ ...remarkableStatus(), sync: remarkableSyncStatus() });
 }

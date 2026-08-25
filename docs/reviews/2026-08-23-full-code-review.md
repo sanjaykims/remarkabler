@@ -1,8 +1,8 @@
 # Remarkabler Full Code Review
 
-Date: 2026-08-23  
-Reviewer: Codex  
-Repository: `sanjaykims/remarkabler`  
+Date: 2026-08-23
+Reviewer: Codex
+Repository: `sanjaykims/remarkabler`
 Review mode: Read-only application review; no fixes were applied
 
 ## Executive summary

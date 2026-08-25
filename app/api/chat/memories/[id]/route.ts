@@ -10,11 +10,9 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 // Soft delete a chat memory. The row stays so recall can re-skip it on
 // future scans (deleted_at IS NOT NULL); a hard delete would let an
 // identical text resurface from a future extraction.
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  if (!isAuthenticated()) return LOCKED();
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  if (!(await isAuthenticated())) return LOCKED();
   const id = Number(params.id);
   if (!Number.isFinite(id) || id <= 0) {
     return NextResponse.json({ error: "Bad id" }, { status: 400 });

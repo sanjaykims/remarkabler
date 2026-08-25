@@ -30,6 +30,128 @@ at deploy needs one retry. The audit advice from the previous entry still
 stands: if this deployment has ever been internet-reachable, check the
 `credentials` table for rows you do not recognise.
 
+## 2026-08-24 (Review remediation follow-ups)
+
+Closed the findings raised against the remediation branch. Highlights beyond
+the two entries below: the share quarantine gained per-source slot fairness (a
+single source could otherwise hold every slot and disable the Android share
+sheet), rejections now count toward the rate limit (they were free, so a full
+quarantine meant no limit at all), an oversized body is refused before
+`req.formData()` buffers it, and the owner can download a quarantined PDF
+before approving it rather than deciding on an attacker-chosen filename.
+
+A runtime reaper returns OCR slots held by jobs that died without writing a
+terminal status — recovery was boot-only, so two such rows wedged all OCR until
+restart. Docker no longer crash-loops when a single file resists chown, and a
+runner-stage `require('better-sqlite3')` makes builder/runner ABI drift fail the
+build instead of the boot. CI derives Node from `.nvmrc` and stops linting
+vendored reference code. OAuth: the audit endpoint returned one row instead of
+100, revocation left outstanding authorization codes redeemable, throttle events
+were missing from the owner-facing view, and the consent screen now leads with
+the destination host rather than the attacker-chosen client name. Session ids
+are stored as digests, not raw bearer values.
+
+## 2026-08-24 (Restore a global floor under the passcode lockout)
+
+The remediation replaced the global brute-force lockout with per-source buckets
+and removed the global cap entirely — `recordSuccessfulAuth` even deleted the
+legacy global row. Source-awareness was the right half of the fix; retention
+was the missing half, and the review that prompted the change had asked for
+both ("retain a modest global anti-brute-force control").
+
+That mattered because the source is derived from a proxy header, and the
+`X-Forwarded-For` convention is APPEND: its leftmost value is only trustworthy
+while a sanitizing edge sits in front of the app. That holds on Railway today,
+but not behind an added CDN, on another host, or if the app were reached
+directly — and with no floor, an attacker rotating the header would get an
+unlimited supply of fresh 8-attempt buckets.
+
+Both buckets are now checked: per-source (8 per 15 minutes) for fairness, and a
+global floor (60 per hour) as a hard ceiling. The floor sits far above one
+person fumbling a passcode, so it can't be tripped as a cheap owner-DoS, and
+proof of ownership clears BOTH — the owner's escape hatch if an attacker filled
+it. Getting the source derivation wrong now degrades the limiter to "slow"
+rather than "unlimited".
+
+`lib/clientIp.ts` prefers `X-Real-IP`, which Railway's edge overwrites (a single
+value, no list to parse), falling back to the `X-Forwarded-For` leftmost value.
+Its comment no longer claims a guarantee the code cannot verify.
+
+Two related leaks closed in the same pass:
+
+- Per-source buckets were never garbage-collected, so every distinct source
+  that ever failed left a permanent `settings` row on the /data volume that an
+  attacker rotating the source could grow without bound. Expired buckets are
+  now pruned on write, mirroring how `lib/pendingShares.ts` prunes
+  `share_rate_events`.
+- Those rows also shipped in the weekly off-site backup. `sha256` of an IPv4 is
+  a 4.3-billion-entry keyspace — trivially enumerable — so the backup repo
+  effectively disclosed the set of addresses that hit the login page. Redaction
+  now covers them (a PREFIX delete, since the ip hash is part of the key) plus
+  `auth_fail_global`, and truncates `app_sessions` in the staged copy. The
+  stale comment claiming there is "NO server-side session store" is corrected.
+
+## 2026-08-24 (Fix: interrupted reMarkable syncs no longer lose their pages)
+
+The boot-time recovery added in the review remediation classified an
+interrupted job by asking whether `DATA_DIR/files/<id>/notebook.pdf` existed,
+on the stated premise that "incremental reMarkable sync also uses 'processing'
+but has no notebook PDF". That premise is false: `lib/remarkableSync.ts` writes
+`notebook.pdf` after every content change so the notebook stays viewable, so a
+synced notebook has one permanently.
+
+Every reMarkable sync interrupted by a restart was therefore re-queued as a
+whole-PDF OCR job, whose first act is `DELETE FROM pages`. That destroyed the
+per-tablet-page rows (`remarkable_page_id`, `remarkable_page_hash`,
+`blank_ocr_hash`, `entry_date`, `embedding`) and, via `ON DELETE CASCADE`, the
+matching `entry_analysis` / `entry_entities` rows — replacing them with pages
+re-OCR'd from the last-rendered PDF. For pages since deleted on the tablet
+those rows were the only surviving copy (the append-only invariant in
+CLAUDE.md), so the loss was unrecoverable, and the notebook was then billed for
+a second full re-OCR on the following sweep. The trigger was ordinary use:
+Railway restarts on every push to `main`, and syncs are long.
+
+Recovery now asks the question that actually matters — could re-running
+whole-PDF OCR destroy anything? A notebook holding per-tablet-page rows is
+never re-queued; it goes to `error` and the next sweep re-syncs it. The logic
+moved out of `db()` into an exported `recoverInterruptedNotebooks()` so it can
+be tested directly; `test/interruptedNotebookRecovery.test.ts` pins all five
+cases and was confirmed to FAIL against the pre-fix discriminator.
+
+Two adjacent queue-safety fixes in the same subsystem:
+
+- `drainNotebookProcessingQueue` is passed to `.finally()`, and it runs SQLite
+  synchronously. A throw there rejected a `void`-ed promise — an unhandled
+  rejection, fatal under modern Node. The chain now ends in its own `.catch()`,
+  per the fire-and-forget rule.
+- The same drain was the one unguarded statement in `runMaintenanceSweep()`.
+  Since the sweep is called bare from request paths, a throw aborted every
+  other job and surfaced as a 500 on the page the user had just opened.
+
+## 2026-08-24 (Full review remediation)
+
+Closed the repository-wide review findings as one coordinated hardening pass.
+The unauthenticated Android share target now writes only to a size-, count-,
+rate-, and retention-capped `pending_shares` quarantine; an authenticated owner
+must approve each PDF before a notebook is created. All admitted whole-PDF
+sources now enter a durable `queued` OCR state and share one atomic concurrency
+gate, with restart-safe retries and transactional page replacement.
+
+Hardened OAuth DCR/consent/PKCE/refresh binding, added authenticated grant
+inventory/revocation plus paginated MCP audit visibility, removed browser-side
+location leakage, and rounded coordinates sent to Nominatim while retaining
+exact local points. Added WebAuthn lockout recovery, per-device
+inactivity/revocation, lock-all session rotation, and Railway-source-scoped
+passcode throttling so one source cannot lock out another. Made Obsidian entity link sanitization consistent with
+non-destructive collision warnings.
+
+Upgraded to Next.js 16.3.2, React 19, React Three Fiber 9, Drei 10, ESLint 9,
+and Vitest 4; migrated request APIs to async access and reduced `npm audit` to
+zero known vulnerabilities. Added pinned, read-only GitHub Actions CI, aligned
+local/CI/container installs on Node 20, and hardened the Railway image with
+registry-pinned bases, a non-root runtime, and
+fail-closed `/data` ownership/write checks. Local verification: 672 tests,
+lint, typecheck, production build, and zero-vulnerability audit.
 ## 2026-08-23 (Security: separate the two WebAuthn challenge cookies)
 
 Closes an authentication bypass that let an unauthenticated visitor register
