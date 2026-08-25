@@ -4,7 +4,20 @@ import { NextResponse } from "next/server";
 import { getSetting, setSetting, clearSetting } from "@/lib/db";
 
 export const SESSION_COOKIE = "fc_session";
-export const CHALLENGE_COOKIE = "fc_challenge";
+// The two WebAuthn ceremonies get SEPARATE challenge cookies on purpose.
+//
+// `login-options` has to stay ungated — an unauthenticated visitor must be
+// able to start a passkey login. If both ceremonies shared one cookie, that
+// ungated endpoint would hand out the only thing enrollment needs, and the
+// passcode gate on `register-options` would protect nothing: call
+// `login-options`, build a self-attested credential against the challenge it
+// returns, POST it to `register-verify`, and you get a session AND a
+// permanently registered passkey that survives passcode rotation.
+//
+// Registration uses `attestationType: "none"` (lib/webauthn.ts), so no
+// cryptography stands in the way — only this boundary does. Keep them apart.
+export const REG_CHALLENGE_COOKIE = "fc_reg_challenge";
+export const AUTH_CHALLENGE_COOKIE = "fc_auth_challenge";
 
 // How long a successful unlock keeps the app open on a device.
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // seconds

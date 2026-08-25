@@ -639,6 +639,21 @@ features need the deployed instance to fully verify.
   triggers) must end its own promise chain with `.catch(e => console.warn(...))`.
   When adding a new one, copy that pattern — don't rely on the outer
   try/catch alone.
+- **The two WebAuthn ceremonies must keep SEPARATE challenge cookies.**
+  `register-options`/`register-verify` use `REG_CHALLENGE_COOKIE`;
+  `login-options`/`login-verify` use `AUTH_CHALLENGE_COOKIE` (`lib/auth.ts`).
+  This is load-bearing, not tidiness. `login-options` is deliberately ungated —
+  an unauthenticated visitor has to be able to start a passkey login — so if
+  both ceremonies shared one cookie, that ungated endpoint would hand out the
+  only thing enrollment needs and the passcode gate on `register-options` would
+  protect nothing: call `login-options`, build a credential against the
+  challenge it returns, POST it to `register-verify`, and you get a session
+  **plus** a permanently registered passkey that survives passcode rotation and
+  "Lock all". Registration uses `attestationType: "none"`, so no cryptography
+  stands in the way — only this boundary does. That exact bypass shipped once.
+  `test/webauthnChallengeSeparation.test.ts` pins both directions; never
+  collapse the two cookies back into one, and never let `register-verify` fall
+  back to a login-issued challenge.
 - **The passcode has a brute-force lockout — don't bypass it.** `lib/auth.ts`
   tracks failures in the `auth_fail_state` setting; 8 wrong passcodes within
   a rolling 15-minute window lock further passcode attempts (`action:
