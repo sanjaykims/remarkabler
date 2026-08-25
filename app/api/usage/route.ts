@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   const sp = req.nextUrl.searchParams;

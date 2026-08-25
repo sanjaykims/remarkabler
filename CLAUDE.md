@@ -171,7 +171,7 @@ and generate an accumulating record of "insights" about themselves.
 
 ## Stack
 
-Next.js 14 (App Router, TypeScript), better-sqlite3, @anthropic-ai/sdk,
+Next.js 16 (App Router, TypeScript), better-sqlite3, @anthropic-ai/sdk,
 Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 `DATA_DIR` (defaults to `./data`).
 
@@ -461,7 +461,8 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   discipline notebook is excluded everywhere here, same as themes/sentiment.
 - `lib/profile.ts` — the evolving "profile of you" (`profile` table, versioned):
   `getCurrentProfile`, `getCurrentProfileRow`, `hasProfile`, `saveProfile`.
-- `lib/notes.ts` — `createNotebook` (fast: save PDF + DB row), `processNotebook`
+- `lib/notes.ts` — `createNotebook` (fast: save PDF + queued DB row),
+  `queueNotebookProcessing` + the internal OCR worker
   (background OCR → embed → fold into profile → auto-analyse fresh pages for
   `/mind`), `deleteNotebook`, `buildNotesContext`, `buildChatContext`,
   `ensureProfileSeed`, `extractEntryDate` / `reparseAllEntryDates` (diary-date
@@ -544,7 +545,7 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   image's `rm2pdf` (per page) + `pypdf` (merge), with per-page failure
   isolation. `renderersAvailable()` is false off-image, so local/CI/build
   never render. `lib/remarkableImport.ts` — `importRemarkableNotebook` ties
-  download → render → the normal createNotebook/processNotebook pipeline, with
+  download → render → the normal createNotebook/OCR-queue pipeline, with
   `remarkable_doc_id`/`remarkable_doc_hash` dedupe (skip unchanged; replace on
   change, but only after a good render). `lib/remarkableSync.ts` — Phase 2
   zero-tap sweep sync (see Known limits for the full invariant list): pure
@@ -577,15 +578,15 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   opened the app, defeating the "write, close the cover, done" promise. The
   scheduler is a thin wrapper — `runMaintenanceSweep` is already
   self-throttled internally, so calling it on a clock needed no changes to
-  its own guard logic. Requires `experimental.instrumentationHook: true` in
-  `next.config.mjs` on Next 14.2 (default-on from Next 15 — remove the flag
-  on that upgrade, don't remove the file).
+  its own guard logic. Instrumentation is built in on Next 16; keep the file
+  even though no feature flag is required.
 - API routes (`app/api/*`): `auth`, `notebooks`, `chat`, `insights`, `usage`,
   `memory`, `diary`, `mind` (+ `mind/analyze`, `mind/reanalyze`,
   `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities`,
   `mind/build-wiki`), `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect,export}`,
   `location`, `owntracks`, `mcp` (remote MCP endpoint — see `lib/mcp.ts`) +
+  authenticated `mcp/audit` + `mcp/oauth/grants`, and public
   `mcp/oauth/{register,authorize,token,protected-resource,authorization-server}`
   (OAuth 2.1 server for the claude.ai connector — see `lib/mcpOauth.ts`; the
   `/.well-known/oauth-*` discovery paths are `next.config.mjs` rewrites),
@@ -663,14 +664,35 @@ features need the deployed instance to fully verify.
   `rememberChallenge`/`consumeChallenge` (`lib/auth.ts`): a verify step accepts
   ONLY a challenge this server issued, for that exact ceremony, unexpired, and
   exactly once. Keep the cookie as a carrier; never let it be the authority.
-- **The passcode has a brute-force lockout — don't bypass it.** `lib/auth.ts`
-  tracks failures in the `auth_fail_state` setting; 8 wrong passcodes within
-  a rolling 15-minute window lock further passcode attempts (`action:
-  "register-options"` and `"passcode"`) for the rest of that window, checked
-  before `checkPasscode` even runs. WebAuthn `login-verify` is deliberately
-  NOT gated — a forged assertion isn't practically guessable, so limiting it
-  would only add self-lockout risk with no security benefit. A correct
-  passcode clears the counter immediately.
+- **The passcode brute-force lockout has TWO buckets — keep both.**
+  `lib/auth.ts` gates `action: "register-options"` and `"passcode"` before
+  `checkPasscode` even runs, on whichever of these is tripped:
+  - a PER-SOURCE bucket (`auth_fail_state:<sha256(client ip)>`), 8 failures per
+    rolling 15 minutes, so one noisy source can't lock the owner out; and
+  - a GLOBAL floor (`auth_fail_global`), 60 failures per rolling hour.
+
+  The floor is load-bearing, not belt-and-braces. The source comes from a proxy
+  header via `lib/clientIp.ts`, and the `X-Forwarded-For` convention is
+  **append** — its leftmost value is only trustworthy while a sanitizing edge
+  sits in front of the app. That holds on Railway today but would not behind an
+  added CDN, on another host, or if the app were reached directly. Without the
+  floor, an attacker rotating the header gets unlimited fresh 8-attempt buckets
+  and the passcode is effectively unthrottled; with it, a wrong assumption
+  degrades to "slow" instead. A global-only design shipped once and was the
+  original complaint (one attacker could lock out the owner); per-source-only
+  shipped once too and removed the ceiling. Keep the pair.
+
+  The floor sits far above one person fumbling a passcode, so it can't be
+  tripped as a cheap owner-DoS. Proof of ownership clears BOTH buckets — that's
+  the owner's escape hatch if an attacker filled the floor. Expired per-source
+  buckets are pruned on write (`pruneExpiredAuthFailBuckets`), or an attacker
+  rotating the source grows `settings` without bound; both bucket kinds are
+  redacted from off-site backups (`lib/backup.ts`), since `sha256(ipv4)` is
+  trivially enumerable and would disclose who hit the login page.
+
+  WebAuthn `login-verify` is deliberately NOT gated — a forged assertion isn't
+  practically guessable, so limiting it would only add self-lockout risk with
+  no security benefit.
 - **Every data API route must gate behind the app lock — a test enforces it.**
   Enforcement is per-route (each handler calls `isAuthenticated()` or the
   shared `requireAuth()` helper in `lib/auth.ts`), and `test/authGuard.test.ts`
@@ -981,10 +1003,12 @@ features need the deployed instance to fully verify.
   falls back to `CHAT_FALLBACK_MODEL` (default `claude-sonnet-4-6`) for that
   message. Insights deliberately still uses the full corpus (it's an
   occasional, on-demand reflection).
-- **Transcription runs in the background.** `createNotebook` returns
-  immediately; `processNotebook` is fired un-awaited and sets the notebook
-  `status` (`processing`/`done`/`error`). Never make upload or share wait for
-  OCR — doing so froze the UI for ~a minute.
+- **Transcription runs in the durable background queue.** `createNotebook`
+  stores an admitted PDF as `queued`; `queueNotebookProcessing` atomically
+  claims work under the shared OCR concurrency limit. The unauthenticated
+  `/share` target stores only inert `pending_shares`; owner approval behind
+  the app lock is the admission boundary. Never make upload/share wait for
+  OCR or let `/share` call `createNotebook` directly.
 - **OCR streams the response** (`messages.stream()`). A non-streaming call
   with a large `max_tokens` is rejected by the SDK.
 - **OCR output is a `--- PAGE n ---` delimiter format, not JSON.** It survives

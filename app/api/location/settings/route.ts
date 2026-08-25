@@ -8,12 +8,12 @@ export const dynamic = "force-dynamic";
 const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   return NextResponse.json({ enabled: isLocationEnabled() });
 }
 
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const body = await req.json().catch(() => ({}));
   const enabled = Boolean((body as { enabled?: unknown }).enabled);
   setLocationEnabled(enabled);

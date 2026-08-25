@@ -1,6 +1,14 @@
 import { NextRequest } from "next/server";
-import { createNotebook, processNotebook } from "@/lib/notes";
-import { FileLike, isFileLike, isPdfFile, MAX_UPLOAD_BYTES } from "@/lib/upload";
+import { createPendingShare } from "@/lib/pendingShares";
+import { clientIp } from "@/lib/clientIp";
+import {
+  FileLike,
+  isFileLike,
+  isPdfFile,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_FILES,
+  MAX_UPLOAD_TOTAL_BYTES,
+} from "@/lib/upload";
 
 export const runtime = "nodejs";
 
@@ -10,16 +18,28 @@ export const runtime = "nodejs";
  * form data (field name "file", per the share_target config in
  * public/manifest.json).
  *
- * The PDF is saved and the response returns immediately; transcription runs
- * in the background so the phone is never left on a frozen screen.
- *
- * This endpoint is intentionally NOT gated by the app lock: it is write-only
- * (it accepts a PDF and starts transcription, returning none of the user's
- * notes), and the lock clears the session whenever the app is backgrounded —
- * so requiring auth here would reject every share from the reMarkable app and
- * lose the file. Reading (notebooks list, chat, insights) stays locked.
+ * This endpoint must remain reachable from Android's share sheet while the
+ * app is locked. It therefore stores PDFs in a small, inert quarantine only:
+ * no notebook, OCR, profile, analytics, or export state is created until the
+ * owner unlocks the app and approves the share.
  */
 export async function POST(req: NextRequest) {
+  // Reject an oversized body BEFORE req.formData() buffers it. App Router
+  // handlers have no default body-size limit, so without this an
+  // unauthenticated caller can make a single-process Node server hold an
+  // arbitrarily large multipart body in memory purely to have it rejected a
+  // moment later by the per-file and total caps below.
+  const declared = Number(req.headers.get("content-length") || "0");
+  if (declared > MAX_UPLOAD_TOTAL_BYTES + 64 * 1024) {
+    return page(
+      "Share is too large",
+      `The combined PDF limit is ${Math.round(
+        MAX_UPLOAD_TOTAL_BYTES / (1024 * 1024)
+      )} MB.`,
+      false
+    );
+  }
+
   const form = await req.formData().catch(() => null);
 
   // Walk every entry, not just "file". The reMarkable mobile app's plain
@@ -76,6 +96,22 @@ export async function POST(req: NextRequest) {
     return page("Couldn't add that notebook", parts.join("\n"), false);
   }
 
+  if (usableFiles.length > MAX_UPLOAD_FILES) {
+    return page(
+      "Too many files",
+      `Share at most ${MAX_UPLOAD_FILES} PDFs at a time. Nothing was stored.`,
+      false
+    );
+  }
+  const totalBytes = usableFiles.reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > MAX_UPLOAD_TOTAL_BYTES) {
+    return page(
+      "Share is too large",
+      "The combined PDF limit is 40 MB. Nothing was stored.",
+      false
+    );
+  }
+
   const added: string[] = [];
   const skipped: string[] = [];
   for (const file of usableFiles) {
@@ -90,10 +126,12 @@ export async function POST(req: NextRequest) {
     }
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const nb = createNotebook(name, bytes);
-      // Transcribe in the background; each notebook runs on its own.
-      void processNotebook(nb.id).catch(() => {});
-      added.push(nb.name);
+      const pending = createPendingShare({
+        fileName: name,
+        bytes,
+        source: clientIp(req.headers),
+      });
+      added.push(pending.name);
     } catch (err) {
       skipped.push(`${name} (${(err as Error).message})`);
     }
@@ -107,13 +145,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const title = added.length === 1 ? "Added ✓" : `Added ${added.length} ✓`;
+  const title = added.length === 1 ? "Received ✓" : `Received ${added.length} ✓`;
   const partsOk =
     added.length === 1
-      ? [`"${added[0]}" is transcribing in the background.`]
-      : [`${added.length} notebooks are transcribing in the background.`];
+      ? [`"${added[0]}" is waiting safely for your approval.`]
+      : [`${added.length} notebooks are waiting safely for your approval.`];
   if (skipped.length) partsOk.push(`Skipped: ${skipped.join("; ")}.`);
-  partsOk.push("Open Remarkabler (unlock as usual) to see them.");
+  partsOk.push("Unlock Remarkabler, then approve them on the Notebooks page. No transcription has started yet.");
   return page(title, partsOk.join(" "), true);
 }
 

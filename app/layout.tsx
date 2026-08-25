@@ -49,8 +49,9 @@ export const viewport: Viewport = {
 // cookies and on APP_PASSCODE, so no page may be statically prerendered.
 export const dynamic = "force-dynamic";
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const authed = isAuthenticated();
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const authed = await isAuthenticated();
+  const lockEnabled = isLockEnabled();
 
   return (
     <html lang="en" className={clearSans.variable}>
@@ -58,14 +59,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <PostHogProvider>
           {authed ? (
             <>
-              {!isLockEnabled() && <LockOffBanner />}
+              {!lockEnabled && <LockOffBanner />}
               <header className="border-b border-slate-200 dark:border-slate-800 pt-safe pl-safe pr-safe">
-                <Nav />
+                <Nav showLockAll={lockEnabled} />
               </header>
               <main className="mx-auto max-w-5xl px-4 sm:px-6 py-6 sm:py-8 pl-safe pr-safe pb-safe">
                 {children}
               </main>
-              {isLockEnabled() && <AutoLock />}
+              {lockEnabled && <AutoLock />}
             </>
           ) : (
             <LockScreen />

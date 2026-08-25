@@ -24,7 +24,7 @@ type MemoryRow = {
 };
 
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
 
   const rows = db()
     .prepare(

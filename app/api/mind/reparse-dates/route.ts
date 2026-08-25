@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 // own header inherit the session's date. Cheap (no Claude / no Voyage) —
 // just a single SQL pass with one regex per page.
 export async function POST() {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   try {

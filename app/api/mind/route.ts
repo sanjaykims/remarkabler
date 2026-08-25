@@ -48,7 +48,7 @@ export const dynamic = "force-dynamic";
 // Everything is free per call — no Claude / Voyage requests. The backfill
 // itself lives at POST /api/mind/analyze.
 export async function GET() {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   try {

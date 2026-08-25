@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // map renders project onto the same axes. One Claude call total — cost is
 // fixed regardless of how big the corpus is.
 export async function POST() {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   try {

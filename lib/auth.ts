@@ -108,21 +108,9 @@ const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // seconds
 // (default 24).
 const INACTIVITY_TIMEOUT_MS =
   (Number(process.env.INACTIVITY_HOURS) || 24) * 60 * 60 * 1000;
-// Refresh the activity stamp at most this often, so isAuthenticated() —
-// which is called many times per page render — isn't writing to the
-// settings table on every single call.
+// Refresh each session at most this often, so isAuthenticated() is not
+// writing on every request inside one render.
 const ACTIVITY_REFRESH_THROTTLE_MS = 60 * 1000;
-
-function markActivityNow(now: number): void {
-  setSetting("last_activity_at", String(now));
-}
-
-function getLastActivityMs(): number | null {
-  const v = getSetting("last_activity_at");
-  if (!v) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
 
 /**
  * The lock is active only once the owner sets APP_PASSCODE in the environment.
@@ -144,23 +132,64 @@ function sessionSecret(): string {
   return s;
 }
 
+/**
+ * Invalidates every currently issued app session without changing the
+ * configured passcode or registered passkeys. Ordinary per-device logout must
+ * not call this: rotating the HMAC secret is deliberately the "lock all
+ * devices" operation.
+ */
+export function revokeAllSessions(): void {
+  db().transaction(() => {
+    db().prepare(`DELETE FROM app_sessions`).run();
+    setSetting("session_secret", crypto.randomBytes(32).toString("hex"));
+  })();
+}
+
+/**
+ * Sessions are stored by HASH, never by the raw id the cookie carries.
+ *
+ * On its own this is modest — forging a cookie also needs session_secret, and
+ * that is redacted from off-site backups. But an arbitrary-read of app.db
+ * would otherwise hand over live session ids directly, and there is no reason
+ * to keep a usable copy of a bearer value at rest when a digest works
+ * identically for lookup.
+ */
+function sessionRowId(sessionId: string): string {
+  return crypto.createHash("sha256").update(sessionId).digest("hex");
+}
+
 export function createSessionToken(): string {
-  // Any new session is a fresh authentication event — reset the activity
-  // clock so the inactivity timeout starts from now.
-  markActivityNow(Date.now());
-  const payload = String(Date.now() + SESSION_MAX_AGE * 1000);
+  const now = Date.now();
+  const sessionId = crypto.randomBytes(16).toString("hex");
+  const expiresAt = now + SESSION_MAX_AGE * 1000;
+  const payload = `v1.${sessionId}.${expiresAt}`;
   const sig = crypto
     .createHmac("sha256", sessionSecret())
     .update(payload)
     .digest("hex");
+  db().transaction(() => {
+    db()
+      .prepare(
+        `INSERT INTO app_sessions(id, last_activity_at, expires_at)
+         VALUES(?,?,?)`
+      )
+      .run(sessionRowId(sessionId), now, expiresAt);
+    db().prepare(`DELETE FROM app_sessions WHERE expires_at <= ?`).run(now);
+  })();
   return `${payload}.${sig}`;
 }
 
-function verifySessionToken(token: string): boolean {
-  const dot = token.indexOf(".");
-  if (dot < 0) return false;
+type VerifiedSession = { id: string; expiresAt: number };
+
+function verifySessionToken(token: string): VerifiedSession | null {
+  const dot = token.lastIndexOf(".");
+  if (dot < 0) return null;
   const payload = token.slice(0, dot);
   const sig = token.slice(dot + 1);
+  const parts = payload.split(".");
+  if (parts.length !== 3 || parts[0] !== "v1" || !/^[a-f0-9]{32}$/.test(parts[1])) {
+    return null;
+  }
   const expected = crypto
     .createHmac("sha256", sessionSecret())
     .update(payload)
@@ -169,33 +198,56 @@ function verifySessionToken(token: string): boolean {
     sig.length !== expected.length ||
     !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
   ) {
-    return false;
+    return null;
   }
-  const exp = Number(payload);
-  return Number.isFinite(exp) && exp > Date.now();
+  const expiresAt = Number(parts[2]);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
+  return { id: parts[1], expiresAt };
+}
+
+export function revokeSessionToken(token: string | undefined): void {
+  if (!token) return;
+  const verified = verifySessionToken(token);
+  if (verified) {
+    db()
+      .prepare(`DELETE FROM app_sessions WHERE id = ?`)
+      .run(sessionRowId(verified.id));
+  }
 }
 
 /**
  * True if the current request carries a valid session, or the lock is off.
  *
- * Also enforces the sliding inactivity timeout: a request whose session
+ * Also enforces the per-session sliding inactivity timeout: a request whose session
  * hasn't been touched in INACTIVITY_TIMEOUT_MS is rejected here, even if
- * the cookie's own HMAC is still intact. Active sessions get their
- * `last_activity_at` refreshed (throttled so we're not writing on every
- * single call inside a single render).
+ * the cookie's own HMAC is still intact. Active session records are refreshed
+ * at most once per minute.
  */
-export function isAuthenticated(): boolean {
+export async function isAuthenticated(): Promise<boolean> {
   if (!isLockEnabled()) return true;
-  const token = cookies().get(SESSION_COOKIE)?.value;
-  if (!token || !verifySessionToken(token)) return false;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const verified = token ? verifySessionToken(token) : null;
+  if (!verified) return false;
 
   const now = Date.now();
-  const last = getLastActivityMs();
-  if (last !== null && now - last > INACTIVITY_TIMEOUT_MS) {
-    return false; // session expired due to inactivity
+  const row = db()
+    .prepare(
+      `SELECT last_activity_at, expires_at FROM app_sessions WHERE id = ?`
+    )
+    .get(sessionRowId(verified.id)) as
+    | { last_activity_at: number; expires_at: number }
+    | undefined;
+  if (!row || row.expires_at !== verified.expiresAt) return false;
+  if (now - row.last_activity_at > INACTIVITY_TIMEOUT_MS) {
+    db()
+      .prepare(`DELETE FROM app_sessions WHERE id = ?`)
+      .run(sessionRowId(verified.id));
+    return false;
   }
-  if (last === null || now - last > ACTIVITY_REFRESH_THROTTLE_MS) {
-    markActivityNow(now);
+  if (now - row.last_activity_at > ACTIVITY_REFRESH_THROTTLE_MS) {
+    db()
+      .prepare(`UPDATE app_sessions SET last_activity_at = ? WHERE id = ?`)
+      .run(now, sessionRowId(verified.id));
   }
   return true;
 }
@@ -213,8 +265,8 @@ export function isAuthenticated(): boolean {
  * `if (!isAuthenticated()) return NextResponse.json({error:"Locked"},{status:401})`
  * that most routes already use.
  */
-export function requireAuth(): NextResponse | null {
-  if (isAuthenticated()) return null;
+export async function requireAuth(): Promise<NextResponse | null> {
+  if (await isAuthenticated()) return null;
   return NextResponse.json({ error: "Locked" }, { status: 401 });
 }
 
@@ -238,18 +290,48 @@ export function checkPasscode(input: string): boolean {
 // brute-forced by automated attempts. Persisted in `settings` (not just
 // in-memory) so it survives a Railway cold restart mid-attack, mirroring the
 // failure-backoff pattern already used for the Dropbox/reMarkable watchers.
-// A single 15-minute window serves both roles: up to AUTH_FAIL_MAX attempts
-// are allowed inside it, and once tripped the lock lasts until that same
-// window (measured from the FIRST failure in it) elapses — at which point
-// the very next attempt starts a fresh window. One constant, one meaning.
+// TWO limiters, deliberately. Route callers pass a per-request source
+// (lib/clientIp.ts) so one noisy source cannot lock the owner out — but that
+// source is derived from a proxy header, and the X-Forwarded-For convention is
+// APPEND, so its leftmost value is only trustworthy while a sanitizing edge
+// sits in front of us. If that assumption is ever wrong, an attacker rotating
+// the header would get an unlimited number of fresh 8-attempt buckets.
+//
+// So the per-source bucket is the FAST limiter (fairness), and a much higher
+// GLOBAL bucket is the FLOOR (a hard ceiling on total guesses). The floor is
+// set far above what one legitimate person fumbling their passcode produces,
+// so it cannot be tripped as a cheap owner-DoS, while still bounding a
+// distributed attacker: 60/hour against a 6-digit passcode is ~2 years.
+// Getting the source derivation wrong therefore degrades the limiter to
+// "slow", never to "unlimited".
+//
+// A valid passkey bypasses BOTH and clears them — that is proof of ownership,
+// and it is the owner's escape hatch if an attacker has filled the floor.
+// A single window serves both roles per bucket: up to MAX attempts are allowed
+// inside it, and once tripped the lock lasts until that same window (measured
+// from the FIRST failure in it) elapses.
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_FAIL_MAX = 8;
 const AUTH_FAIL_KEY = "auth_fail_state";
 
+const GLOBAL_WINDOW_MS = 60 * 60 * 1000;
+const GLOBAL_FAIL_MAX = 60;
+const GLOBAL_FAIL_KEY = "auth_fail_global";
+
 type AuthFailState = { count: number; windowStart: number };
 
-function getAuthFailState(): AuthFailState {
-  const raw = getSetting(AUTH_FAIL_KEY);
+function authFailKey(source?: string): string {
+  if (!source) return AUTH_FAIL_KEY; // compatibility for internal callers
+  const digest = crypto.createHash("sha256").update(source).digest("hex");
+  return `${AUTH_FAIL_KEY}:${digest}`;
+}
+
+function getAuthFailState(source?: string): AuthFailState {
+  return getRawAuthFailState(authFailKey(source));
+}
+
+function getRawAuthFailState(key: string): AuthFailState {
+  const raw = getSetting(key);
   if (!raw) return { count: 0, windowStart: 0 };
   try {
     const v = JSON.parse(raw);
@@ -262,27 +344,82 @@ function getAuthFailState(): AuthFailState {
   }
 }
 
-/** Milliseconds remaining before another passcode attempt is allowed, or null if not locked. */
-export function passcodeLockRemainingMs(): number | null {
-  const { count, windowStart } = getAuthFailState();
-  if (count < AUTH_FAIL_MAX) return null;
-  const elapsed = Date.now() - windowStart;
-  if (elapsed >= AUTH_WINDOW_MS) return null; // window has expired
-  return AUTH_WINDOW_MS - elapsed;
+function remainingFor(
+  state: AuthFailState,
+  max: number,
+  windowMs: number
+): number | null {
+  if (state.count < max) return null;
+  const elapsed = Date.now() - state.windowStart;
+  if (elapsed >= windowMs) return null; // window has expired
+  return windowMs - elapsed;
 }
 
-export function recordFailedPasscodeAttempt(): void {
-  const now = Date.now();
-  const { count, windowStart } = getAuthFailState();
-  const expired = windowStart === 0 || now - windowStart > AUTH_WINDOW_MS;
+/**
+ * Milliseconds remaining before another passcode attempt is allowed, or null
+ * if not locked. Locked when EITHER the caller's own bucket or the global
+ * floor is tripped; the longer remaining time wins.
+ */
+export function passcodeLockRemainingMs(source?: string): number | null {
+  const perSource = remainingFor(
+    getAuthFailState(source),
+    AUTH_FAIL_MAX,
+    AUTH_WINDOW_MS
+  );
+  const global = remainingFor(
+    getRawAuthFailState(GLOBAL_FAIL_KEY),
+    GLOBAL_FAIL_MAX,
+    GLOBAL_WINDOW_MS
+  );
+  if (perSource === null && global === null) return null;
+  return Math.max(perSource ?? 0, global ?? 0);
+}
+
+function bumpBucket(key: string, windowMs: number, now: number): void {
+  const { count, windowStart } = getRawAuthFailState(key);
+  const expired = windowStart === 0 || now - windowStart > windowMs;
   const next: AuthFailState = expired
     ? { count: 1, windowStart: now }
     : { count: count + 1, windowStart };
-  setSetting(AUTH_FAIL_KEY, JSON.stringify(next));
+  setSetting(key, JSON.stringify(next));
 }
 
-export function recordSuccessfulAuth(): void {
-  clearSetting(AUTH_FAIL_KEY);
+export function recordFailedPasscodeAttempt(source?: string): void {
+  const now = Date.now();
+  bumpBucket(authFailKey(source), AUTH_WINDOW_MS, now);
+  bumpBucket(GLOBAL_FAIL_KEY, GLOBAL_WINDOW_MS, now);
+  pruneExpiredAuthFailBuckets(now);
+}
+
+/**
+ * Drop per-source buckets whose window has long elapsed.
+ *
+ * Without this every distinct source that ever failed leaves a permanent
+ * `settings` row on the /data volume, which an attacker rotating the source
+ * value can grow without bound — and those rows also ship in the weekly
+ * off-site backup. Pruned opportunistically on write, mirroring how
+ * lib/pendingShares.ts prunes share_rate_events.
+ */
+function pruneExpiredAuthFailBuckets(now: number): void {
+  try {
+    db()
+      .prepare(
+        `DELETE FROM settings
+          WHERE key LIKE 'auth_fail_state:%'
+            AND CAST(json_extract(value, '$.windowStart') AS INTEGER) < ?`
+      )
+      .run(now - AUTH_WINDOW_MS);
+  } catch {
+    // best-effort; a malformed row simply isn't pruned this pass
+  }
+}
+
+export function recordSuccessfulAuth(source?: string): void {
+  clearSetting(authFailKey(source));
+  // Proof of ownership clears the global floor too — otherwise an attacker who
+  // filled it could keep the owner locked out even after a valid passkey.
+  clearSetting(GLOBAL_FAIL_KEY);
+  if (source) clearSetting(AUTH_FAIL_KEY); // legacy no-source bucket
 }
 
 const secureCookie = process.env.NODE_ENV === "production";

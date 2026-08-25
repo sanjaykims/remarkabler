@@ -179,6 +179,15 @@ describe('"Connects to" wikilink section (Part C)', () => {
     expect(md).not.toContain("People/Jin");
   });
 
+  it("normalizes raw entity names to the exact entity-stub target", () => {
+    const md = rw.renderReflectionNote(
+      { title: "Tagged", content: "text", created_at: "2026-07-19 09:00:00" },
+      [{ kind: "place", name: "Seoul [West]|Gate" }]
+    );
+    expect(md).toContain("- [[Seoul WestGate]]");
+    expect(md).not.toContain("[[Seoul [West]");
+  });
+
   it("renderReflectionNoteFiles joins entry_entities per row via reflectionPageId", () => {
     rw.saveReflection({ content: "a", reflectionId: "k1", title: "A" });
     dbMod

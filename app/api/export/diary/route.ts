@@ -16,7 +16,7 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 // the file back as a download.
 
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
 
   const md = renderDiaryMarkdown();
   const dateStamp = new Date().toISOString().slice(0, 10);

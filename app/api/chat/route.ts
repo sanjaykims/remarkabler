@@ -57,7 +57,7 @@ function ext(name: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
 
   // JSON, not multipart — Samsung Internet's multipart serialisation was
   // silently dropping the file part, so chat sends the attachment as
@@ -328,7 +328,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const conversationId =
     req.nextUrl.searchParams.get("conversationId") || "default";
 
@@ -377,7 +377,7 @@ export async function GET(req: NextRequest) {
 // Claude as raw history (POST filters archived_at IS NULL); their durable
 // substance is carried forward by the extracted chat_memories instead.
 export async function DELETE(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const conversationId =
     req.nextUrl.searchParams.get("conversationId") || "default";
 

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { db } from "./db";
 import { TZ_OFFSET_MIN } from "./format";
+import { cachedPlace, reverseGeocodePlace } from "./geocode";
 
 // OwnTracks background-location ingestion. The app receives raw points, then
 // clusters them into "stays" (a place you stayed a while) with arrival/leave
@@ -364,49 +365,6 @@ function recentStays(days: number): Stay[] {
   return stays;
 }
 
-function cacheKey(lat: number, lng: number): string {
-  return `${lat.toFixed(3)},${lng.toFixed(3)}`;
-}
-
-function cachedPlace(lat: number, lng: number): string | null {
-  const row = db()
-    .prepare(`SELECT place FROM geocode_cache WHERE key = ?`)
-    .get(cacheKey(lat, lng)) as { place: string } | undefined;
-  return row?.place ?? null;
-}
-
-async function geocode(lat: number, lng: number): Promise<string> {
-  const key = cacheKey(lat, lng);
-  const cached = db()
-    .prepare(`SELECT place FROM geocode_cache WHERE key = ?`)
-    .get(key) as { place: string } | undefined;
-  if (cached) return cached.place;
-
-  let place = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-  try {
-    const r = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=16&accept-language=en`,
-      { headers: { "User-Agent": "Remarkabler/1.0 (personal journaling app)" } }
-    );
-    if (r.ok) {
-      const j = (await r.json()) as any;
-      const a = j.address || {};
-      const label = [
-        j.name || a.amenity || a.shop || a.building,
-        a.suburb || a.neighbourhood || a.city_district,
-        a.city || a.town || a.village,
-      ]
-        .filter(Boolean)
-        .join(", ");
-      place = label || j.display_name || place;
-    }
-  } catch {
-    // keep coordinates
-  }
-  db().prepare(`INSERT OR IGNORE INTO geocode_cache(key, place) VALUES(?, ?)`).run(key, place);
-  return place;
-}
-
 function fmtLocal(tst: number): { date: string; time: string } {
   const d = new Date((tst + TZ_OFFSET_MIN * 60) * 1000);
   const iso = d.toISOString();
@@ -441,7 +399,7 @@ export async function owntracksRouteContext(
   let day = "";
   for (const s of stays) {
     const place = opts.allowNetwork
-      ? await geocode(s.lat, s.lng)
+      ? await reverseGeocodePlace(s.lat, s.lng)
       : cachedPlace(s.lat, s.lng) ?? `${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`;
     const sf = fmtLocal(s.start);
     const ef = fmtLocal(s.end);
@@ -475,7 +433,7 @@ export function warmCurrentLocationGeocode(): void {
   warmingCurrent = true;
   (async () => {
     try {
-      await geocode(current.lat, current.lng);
+      await reverseGeocodePlace(current.lat, current.lng);
     } catch {
       // best-effort
     } finally {
@@ -502,7 +460,7 @@ export function warmOwntracksGeocodes(days = 3): void {
       // chat path now so the latency is invisible.
       for (const s of uncached) {
         try {
-          await geocode(s.lat, s.lng);
+          await reverseGeocodePlace(s.lat, s.lng);
         } catch {
           // best-effort, keep going
         }

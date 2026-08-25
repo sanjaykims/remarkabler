@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 // pending" counter. Bounded by ANALYZE_MAX_LIMIT (200) so a single click
 // can't accidentally run the whole corpus uncapped.
 export async function POST() {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   try {

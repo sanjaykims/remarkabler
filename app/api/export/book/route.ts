@@ -15,7 +15,7 @@ export const maxDuration = 600;
 const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 
 export async function GET() {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
 
   const profile = getCurrentProfile() || "";
   const diary = buildNotesContext();

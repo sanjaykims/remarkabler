@@ -25,30 +25,167 @@ export type NotebookSummary = {
 };
 
 /**
- * Persist an uploaded PDF and create a notebook row in the "processing"
- * state. This is fast — it does NOT call Claude. The actual transcription
- * happens in processNotebook, which is meant to run in the background so
- * the upload/share request can return immediately.
+ * Persist an admitted PDF and create a durable OCR queue row. This is fast —
+ * it does NOT call Claude. Call queueNotebookProcessing after any source
+ * metadata has been stamped onto the row.
  */
 export function createNotebook(
   fileName: string,
-  pdfBytes: Uint8Array
+  pdfBytes: Uint8Array,
+  requestedId?: string
 ): NotebookSummary {
-  const id = randomUUID();
+  const id = requestedId || randomUUID();
   const name = fileName.replace(/\.pdf$/i, "").trim() || "Untitled notebook";
 
   const notebookDir = path.join(FILES_DIR, id);
+  // Rollback must remove only what THIS call created. mkdirSync({recursive})
+  // is a no-op on an existing directory, so with an explicit requestedId whose
+  // notebook already exists, the INSERT hits a UNIQUE constraint and the old
+  // blanket rmSync deleted that notebook's whole directory — destroying the
+  // durable PDF both the resume path and "View PDF" depend on. Callers guard
+  // against that today (app/api/shares/route.ts checks first), but the trap
+  // should not be left armed for the next one.
+  const dirExisted = fs.existsSync(notebookDir);
   fs.mkdirSync(notebookDir, { recursive: true });
-  fs.writeFileSync(path.join(notebookDir, "notebook.pdf"), pdfBytes);
-
-  db()
-    .prepare(
-      `INSERT INTO notebooks(id,name,synced_at,status)
-       VALUES(?,?,datetime('now'),'processing')`
-    )
-    .run(id, name);
+  const pdfPath = path.join(notebookDir, "notebook.pdf");
+  try {
+    fs.writeFileSync(pdfPath, pdfBytes, { mode: 0o600 });
+    db()
+      .prepare(
+        `INSERT INTO notebooks(id,name,synced_at,status)
+         VALUES(?,?,datetime('now'),'queued')`
+      )
+      .run(id, name);
+  } catch (error) {
+    try {
+      if (dirExisted) fs.rmSync(pdfPath, { force: true });
+      else fs.rmSync(notebookDir, { recursive: true, force: true });
+    } catch {
+      // Best-effort rollback of the filesystem half.
+    }
+    throw error;
+  }
 
   return { id, name };
+}
+
+export function ocrConcurrencyLimit(): number {
+  const raw = Number(process.env.OCR_CONCURRENCY_LIMIT);
+  if (!Number.isFinite(raw) || raw <= 0) return 2;
+  return Math.max(1, Math.min(5, Math.floor(raw)));
+}
+
+export function processingNotebookCount(): number {
+  const row = db()
+    .prepare(`SELECT COUNT(*) AS c FROM notebooks WHERE status = 'processing'`)
+    .get() as { c: number };
+  return row.c;
+}
+
+function claimNextQueuedNotebook(): string | null {
+  return db().transaction(() => {
+    const next = db()
+      .prepare(
+        `SELECT id FROM notebooks
+         WHERE status = 'queued'
+         ORDER BY synced_at ASC, rowid ASC
+         LIMIT 1`
+      )
+      .get() as { id: string } | undefined;
+    if (!next) return null;
+    const claimed = db()
+      .prepare(
+        `UPDATE notebooks
+           SET status = 'processing', error = NULL,
+               processing_started_at = datetime('now')
+         WHERE id = ? AND status = 'queued'`
+      )
+      .run(next.id);
+    return claimed.changes === 1 ? next.id : null;
+  })();
+}
+
+/**
+ * How long a whole-PDF OCR job may hold a concurrency slot before the reaper
+ * assumes its process died without writing a terminal status. Generous on
+ * purpose: a large notebook legitimately takes many minutes, and reaping a
+ * LIVE job would double-OCR it.
+ */
+const PROCESSING_STUCK_MS = 60 * 60 * 1000;
+
+/**
+ * Return slots held by jobs that will never finish.
+ *
+ * `recoverInterruptedNotebooks` only runs at process start, so a row whose job
+ * died without writing `done`/`error` — e.g. processNotebook's own error
+ * handler failing to write the status — holds an OCR slot until the next
+ * restart. With the default limit of 2, two such rows wedge ALL OCR
+ * indefinitely.
+ *
+ * Deliberately narrow: only rows that are safe to rebuild (no per-tablet-page
+ * rows) are touched, for the same reason boot recovery is narrow — re-running
+ * whole-PDF OCR over a notebook under incremental sync would DELETE its pages.
+ * A wedged sync row is left for boot recovery rather than raced here.
+ */
+export function reapStuckNotebookProcessing(now = Date.now()): number {
+  const cutoff = new Date(now - PROCESSING_STUCK_MS).toISOString().replace("T", " ").slice(0, 19);
+  const stuck = db()
+    .prepare(
+      `SELECT id FROM notebooks
+        WHERE status = 'processing'
+          AND processing_started_at IS NOT NULL
+          AND processing_started_at < ?
+          AND NOT EXISTS (
+            SELECT 1 FROM pages
+             WHERE pages.notebook_id = notebooks.id
+               AND pages.remarkable_page_id IS NOT NULL
+          )`
+    )
+    .all(cutoff) as Array<{ id: string }>;
+  const requeue = db().prepare(
+    `UPDATE notebooks SET status = 'queued', error = NULL WHERE id = ?`
+  );
+  for (const row of stuck) requeue.run(row.id);
+  if (stuck.length) {
+    console.warn(`[notes] re-queued ${stuck.length} stuck OCR job(s)`);
+  }
+  return stuck.length;
+}
+
+let queueDrainActive = false;
+
+/** Start as many queued OCR jobs as the shared concurrency budget permits. */
+export function drainNotebookProcessingQueue(): void {
+  if (queueDrainActive) return;
+  queueDrainActive = true;
+  try {
+    while (processingNotebookCount() < ocrConcurrencyLimit()) {
+      const id = claimNextQueuedNotebook();
+      if (!id) break;
+      // The .finally callback runs SQLite synchronously and can throw
+      // (SQLITE_BUSY, volume unmounted). A throw inside .finally rejects the
+      // promise it returns, and `void` leaves that rejection unhandled —
+      // fatal under modern Node. instrumentation.ts would log it as a last
+      // resort, but per CLAUDE.md every fire-and-forget chain ends with its
+      // own .catch().
+      void processNotebook(id)
+        .finally(drainNotebookProcessingQueue)
+        .catch((e) =>
+          console.warn("[notes] queue drain failed:", (e as Error).message)
+        );
+    }
+  } finally {
+    queueDrainActive = false;
+  }
+}
+
+export function queueNotebookProcessing(id: string): void {
+  const row = db()
+    .prepare(`SELECT status FROM notebooks WHERE id = ?`)
+    .get(id) as { status: string | null } | undefined;
+  if (!row) throw new Error("Notebook was not found.");
+  if (row.status !== "queued") return;
+  drainNotebookProcessingQueue();
 }
 
 /**
@@ -56,7 +193,7 @@ export function createNotebook(
  * mark the notebook "done" (or "error"). Designed to be called WITHOUT being
  * awaited — it never throws; failures are written to the notebook's status.
  */
-export async function processNotebook(id: string): Promise<void> {
+async function processNotebook(id: string): Promise<void> {
   try {
     const row = db()
       .prepare(`SELECT name FROM notebooks WHERE id = ?`)
@@ -76,18 +213,23 @@ export async function processNotebook(id: string): Promise<void> {
     );
 
     const setEntryDate = db().prepare(`UPDATE pages SET entry_date = ? WHERE id = ?`);
-    for (const p of pages) {
-      const pageId = `${id}:${p.pageIndex}`;
-      insertPage.run(pageId, id, p.pageIndex, p.text);
-      if (p.text) {
-        insertFts.run(p.text, row.name, pageId, id);
-        setEntryDate.run(extractEntryDate(p.text) || "none", pageId);
+    db().transaction(() => {
+      // A process can stop after OCR but before the final status update. Clear
+      // any partial prior write so the durable queue can retry idempotently.
+      db().prepare(`DELETE FROM pages_fts WHERE notebook_id = ?`).run(id);
+      db().prepare(`DELETE FROM pages WHERE notebook_id = ?`).run(id);
+      for (const p of pages) {
+        const pageId = `${id}:${p.pageIndex}`;
+        insertPage.run(pageId, id, p.pageIndex, p.text);
+        if (p.text) {
+          insertFts.run(p.text, row.name, pageId, id);
+          setEntryDate.run(extractEntryDate(p.text) || "none", pageId);
+        }
       }
-    }
-
-    db()
-      .prepare(`UPDATE notebooks SET status='done', error=NULL WHERE id = ?`)
-      .run(id);
+      db()
+        .prepare(`UPDATE notebooks SET status='done', error=NULL WHERE id = ?`)
+        .run(id);
+    })();
 
     // Embed each page semantically (Voyage). Failures are silent — search
     // falls back to FTS-only for pages without an embedding.
@@ -1199,6 +1341,21 @@ function getMaybeRunWeeklyBackup(): () => void {
  * each time.
  */
 export function runMaintenanceSweep(): void {
+  // Queue draining is deliberately outside the five-minute chore throttle.
+  // It is cheap when empty and lets persisted work resume immediately after
+  // a restart or as soon as another OCR slot becomes available.
+  //
+  // Wrapped like every other job in this sweep: runMaintenanceSweep() is
+  // called bare from request paths (app/page.tsx, the chat/notebooks/mind/
+  // memory routes), so an unguarded throw here would abort the whole sweep
+  // AND surface as a 500 on the page the user just opened.
+  try {
+    reapStuckNotebookProcessing();
+    drainNotebookProcessingQueue();
+  } catch (e) {
+    console.warn("[notes] queue drain failed:", (e as Error).message);
+  }
+
   // The relationship-export race fix shipped after some relationship rows had
   // already been written. Run this before the coarse maintenance throttle so a
   // fresh deploy reconciles the vault immediately on boot.

@@ -442,22 +442,39 @@ const ENTITY_STUB_FOLDER: Record<EntityStub["kind"], string> = {
   project: "Projects",
 };
 
+// One normalization rule for both entity-stub basenames and every wikilink
+// that targets them. Brackets and pipes must be removed (not merely made
+// filesystem-safe) because they alter Obsidian's [[target|alias]] syntax.
+// This mapping is intentionally unchanged from diaryExportDb's established
+// stub mapping; centralizing it prevents raw names from taking another path.
+export function sanitizeEntityName(name: string): string {
+  return name
+    .replace(/[[\]|]/g, "")
+    .replace(/[/\\:*?"<>]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // Turn a (kind, canonical name) into the stub's vault path. The basename MUST
 // equal the wikilink text the day files emit so [[Jin]] resolves here. Callers
-// pass names already run through lib/diaryExportDb.ts:sanitizeEntityName, which
-// strips the same path chars — so the day-file wikilink and this basename are
-// identically normalized and always match. The strip below is an idempotent
-// safety net for any caller that hasn't pre-sanitized.
+// may pass raw or pre-sanitized names; both converge through the same helper.
 export function entityStubFileName(
   kind: EntityStub["kind"],
   name: string
 ): string {
-  const base =
-    name
-      .replace(/[/\\:*?"<>|]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim() || "unnamed";
+  const base = sanitizeEntityName(name) || "unnamed";
   return `${ENTITY_STUB_FOLDER[kind]}/${base}.md`;
+}
+
+// Bare-basename target used by exported notes' [[Connects to]] links. Derive
+// it from the real path builder so target and filename cannot drift apart.
+export function entityStubWikiTarget(
+  kind: EntityStub["kind"],
+  name: string
+): string {
+  return entityStubFileName(kind, name)
+    .replace(/^[^/]+\//, "")
+    .replace(/\.md$/, "");
 }
 
 function renderEntityStub(stub: EntityStub, exportedAt: string): string {

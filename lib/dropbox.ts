@@ -4,8 +4,9 @@ import {
   setSetting,
   clearSetting,
 } from "@/lib/db";
-import { createNotebook, processNotebook } from "@/lib/notes";
-import { MAX_UPLOAD_BYTES } from "@/lib/upload";
+import { createNotebook, queueNotebookProcessing } from "@/lib/notes";
+import { looksLikePdf, MAX_UPLOAD_BYTES } from "@/lib/upload";
+export { looksLikePdf } from "@/lib/upload";
 import {
   renderDiaryDayFiles,
   renderEntityStubFiles,
@@ -60,31 +61,12 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes between polls
 // permissions) doesn't hammer Dropbox or our own logs every sweep.
 const POLL_FAILURE_BACKOFF_MS = 30 * 60 * 1000; // 30 minutes
 // Cap a single sweep so a freshly-connected account with hundreds of files
-// can't trigger hundreds of downloads at once. NOTE: this caps DOWNLOADS,
-// not concurrent Claude OCR jobs — the OCR concurrency budget is enforced
-// separately via the processing-notebook count, see ocrConcurrencyLimit().
+// can't trigger hundreds of downloads at once. OCR itself is bounded by the
+// durable shared queue in lib/notes.ts.
 const MAX_INGEST_PER_SWEEP = 10;
 // Above this Dropbox folder size we warn (and recommend the user enable
 // cursor-based polling). Below it the existing full-list polling is fine.
 const FOLDER_SIZE_WARN = 500;
-
-// Shared expensive-OCR gate. Manual uploads also start `status='processing'`
-// notebooks, so this budget is consumed by both paths — Dropbox backs off
-// when the budget is full, preventing a freshly-connected account from
-// stacking 20+ concurrent Claude OCR calls against the user's Anthropic key.
-// Default 2; configurable up to 5 via OCR_CONCURRENCY_LIMIT. Clamp safely.
-function ocrConcurrencyLimit(): number {
-  const raw = Number(process.env.OCR_CONCURRENCY_LIMIT);
-  if (!Number.isFinite(raw) || raw <= 0) return 2;
-  return Math.max(1, Math.min(5, Math.floor(raw)));
-}
-
-function processingNotebookCount(): number {
-  const row = db()
-    .prepare(`SELECT COUNT(*) AS c FROM notebooks WHERE status = 'processing'`)
-    .get() as { c: number };
-  return row.c;
-}
 
 // ───────────────────────────────────────────────────────────────────────────
 // Base-URL resolution for the OAuth redirect.
@@ -245,19 +227,6 @@ export function safeDropboxError(
   return summary
     ? `Dropbox ${status} (${kind}): ${summary}`
     : `Dropbox ${status} (${kind}).`;
-}
-
-// PDFs start with "%PDF" (0x25 0x50 0x44 0x46). Cheap post-download sanity
-// check — Dropbox's metadata-driven size guard is the main gate; this
-// catches files that arrived corrupted or were misclassified by extension.
-export function looksLikePdf(bytes: Uint8Array): boolean {
-  return (
-    bytes.length >= 4 &&
-    bytes[0] === 0x25 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x44 &&
-    bytes[3] === 0x46
-  );
 }
 
 // Where in Dropbox we look for notebooks. Defaults to /Diary (matching how
@@ -1234,20 +1203,10 @@ export async function maybeIngestDropbox(): Promise<{
 
     const seenIds = ingestSkipFileIds();
 
-    const ocrCap = ocrConcurrencyLimit();
     let ingested = 0;
     for (const f of pdfs) {
       if (seenIds.has(f.id)) continue;
       if (ingested >= MAX_INGEST_PER_SWEEP) break;
-
-      // Shared OCR budget — counts ALL notebooks with status='processing'
-      // (manual uploads + previous Dropbox ingests), not just this poll's.
-      // When the budget is full we stop starting new ones; the next sweep
-      // picks them up. Safe from deadlock because the startup migration
-      // resets stale 'processing' rows to 'error'.
-      if (processingNotebookCount() >= ocrCap) {
-        break;
-      }
 
       try {
         const bytes = await downloadFile(f.path_lower);
@@ -1269,9 +1228,7 @@ export async function maybeIngestDropbox(): Promise<{
         db()
           .prepare(`UPDATE notebooks SET dropbox_file_id = ? WHERE id = ?`)
           .run(f.id, nb.id);
-        // Fire-and-forget OCR — same as manual upload. The concurrency gate
-        // above is what bounds how many of these run at once.
-        void processNotebook(nb.id).catch(() => {});
+        queueNotebookProcessing(nb.id);
         ingested++;
       } catch (e) {
         // The only errors we silently continue past are file-local ones

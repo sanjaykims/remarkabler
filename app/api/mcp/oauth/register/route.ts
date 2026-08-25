@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { registerClient, corsHeaders } from "@/lib/mcpOauth";
+import {
+  registerClient,
+  corsHeaders,
+  MAX_DCR_BODY_BYTES,
+  parseClientRegistrationMetadata,
+} from "@/lib/mcpOauth";
 import {
   clientIp,
   isThrottled,
@@ -22,6 +27,38 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+async function readBoundedJson(req: Request): Promise<unknown> {
+  const declaredLength = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_DCR_BODY_BYTES) {
+    throw new Error("too_large");
+  }
+  if (!req.body) throw new Error("invalid_json");
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_DCR_BODY_BYTES) {
+      await reader.cancel();
+      throw new Error("too_large");
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
+  } catch {
+    throw new Error("invalid_json");
+  }
+}
+
 export async function POST(req: Request) {
   const ip = clientIp(req.headers);
   if (isThrottled(ip, Date.now(), REGISTER_THROTTLE_BUCKET)) {
@@ -33,34 +70,38 @@ export async function POST(req: Request) {
   }
   recordAuthFailure(ip, Date.now(), REGISTER_THROTTLE_BUCKET);
 
-  let body: { redirect_uris?: unknown; client_name?: unknown };
+  let body: unknown;
   try {
-    body = (await req.json()) as typeof body;
-  } catch {
+    body = await readBoundedJson(req);
+  } catch (error) {
+    const tooLarge = (error as Error).message === "too_large";
     return NextResponse.json(
-      { error: "invalid_client_metadata", error_description: "Body must be JSON." },
+      {
+        error: "invalid_client_metadata",
+        error_description: tooLarge
+          ? `Registration metadata exceeds ${MAX_DCR_BODY_BYTES} bytes.`
+          : "Body must be valid UTF-8 JSON.",
+      },
+      { status: tooLarge ? 413 : 400, headers: corsHeaders() }
+    );
+  }
+
+  const parsed = parseClientRegistrationMetadata(body);
+  if (!parsed.ok) {
+    return NextResponse.json(
+      { error: parsed.error, error_description: parsed.description },
       { status: 400, headers: corsHeaders() }
     );
   }
 
-  const redirectUris = Array.isArray(body.redirect_uris)
-    ? body.redirect_uris.filter((u): u is string => typeof u === "string" && u.length > 0)
-    : [];
-  if (redirectUris.length === 0) {
-    return NextResponse.json(
-      { error: "invalid_redirect_uri", error_description: "At least one redirect_uri is required." },
-      { status: 400, headers: corsHeaders() }
-    );
-  }
-
-  const clientName = typeof body.client_name === "string" ? body.client_name : undefined;
-  const client = registerClient(redirectUris, clientName);
+  const client = registerClient(parsed.metadata.redirect_uris, parsed.metadata.client_name);
 
   return NextResponse.json(
     {
       client_id: client.client_id,
       client_id_issued_at: Math.floor(Date.now() / 1000),
       redirect_uris: client.redirect_uris,
+      ...(client.client_name ? { client_name: client.client_name } : {}),
       token_endpoint_auth_method: "none",
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],

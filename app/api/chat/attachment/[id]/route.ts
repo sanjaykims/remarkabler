@@ -9,11 +9,9 @@ export const dynamic = "force-dynamic";
 
 const ATTACHMENT_DIR = path.join(DATA_DIR, "chat-attachments");
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  if (!isAuthenticated()) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  if (!(await isAuthenticated())) {
     return new NextResponse("Locked", { status: 401 });
   }
   const row = db()

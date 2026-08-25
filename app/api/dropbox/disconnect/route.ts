@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // cached access token is already invalid. Revoke failure is surfaced as a
 // warning, not a blocker.
 export async function POST() {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   const result = await disconnectDropbox();

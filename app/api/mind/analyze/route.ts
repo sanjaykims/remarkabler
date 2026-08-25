@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 // a row in entry_analysis. Bounded to ANALYZE_MAX_LIMIT so a single user
 // click can never accidentally request a multi-thousand-entry pass.
 export async function POST(req: NextRequest) {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   const limitRaw = Number(

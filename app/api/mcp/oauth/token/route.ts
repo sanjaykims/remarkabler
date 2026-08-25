@@ -74,7 +74,9 @@ export async function POST(req: Request) {
   if (grantType === "refresh_token") {
     const refreshToken = p.get("refresh_token") || "";
     const clientId = p.get("client_id") || "";
-    if (!refreshToken) return err("invalid_request", "Missing refresh_token.");
+    if (!refreshToken || !clientId)
+      return err("invalid_request", "Missing refresh_token or client_id.");
+    if (!getClient(clientId)) return err("invalid_client", "Unknown client_id.");
     const t = refreshAccessToken(refreshToken, clientId);
     if (!t) return err("invalid_grant", "Unknown or revoked refresh_token.");
     return NextResponse.json(

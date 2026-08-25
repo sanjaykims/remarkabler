@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // Returns the diary-native graph payload used by /graph: entities, diary days,
 // exported Claude notes, co-occurrence links, and typed relationships.
 export async function GET() {
-  if (!isAuthenticated()) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
   try {

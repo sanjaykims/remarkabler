@@ -4,8 +4,8 @@ import DiaryGraphClient from "./DiaryGraphClient";
 
 export const dynamic = "force-dynamic";
 
-export default function GraphPage() {
-  if (!isAuthenticated()) return null;
+export default async function GraphPage() {
+  if (!(await isAuthenticated())) return null;
   const graph = buildDiaryGraph();
   return <DiaryGraphClient initialGraph={graph} />;
 }

@@ -26,7 +26,7 @@ Companion docs — read in order if any is unfamiliar:
 
 ## At a glance
 
-- **Stack:** Next.js 14 App Router, TypeScript, `better-sqlite3`,
+- **Stack:** Next.js 16 App Router, TypeScript, `better-sqlite3`,
   `@anthropic-ai/sdk`, optional Voyage AI for embeddings, Tailwind.
 - **Deploy:** Railway, auto-deploys on every push to `main`. Persistent
   volume mounted at `/data` holds SQLite + uploaded PDFs.
@@ -46,7 +46,8 @@ Companion docs — read in order if any is unfamiliar:
 | `chatMemory.ts` | Durable cross-chat memory: extract on Clear → embed → dedup → insert → recall top-K on next turn. Fail-open. Also the rolling-memory pair (`createRollingBatch`/`maybeRollConversationMemory`) that compresses an active chat's out-of-window turns before a Clear. |
 | `chatMemoryBackfill.ts` | Pure helpers that split a long history into transcript-fit chunks (`CHUNK_TARGET_CHARS = 12_000`) so backfill doesn't truncate. |
 | `embeddings.ts` | Voyage AI: token-budget batching, 429 retry, Float32 BLOB codec, cosine similarity. Gated by `VOYAGE_API_KEY`. |
-| `notes.ts` | `createNotebook` / `processNotebook` (background OCR), `runMaintenanceSweep` (one throttled cascade for all chores), entry-date parsing + carry-forward, discipline-repo sync. Owns the synthetic-notebook ids (`DISCIPLINE_ID`, `CONVERSATIONS_NOTEBOOK_ID`, `REFLECTIONS_NOTEBOOK_ID`, `DECISIONS_NOTEBOOK_ID`) + real `CHAT_DIARY_NOTEBOOK_ID`, and the exclude-helpers `nonDiaryNotebookExcludeIdsForChat`/`ForMind`. |
+| `notes.ts` | `createNotebook` + `queueNotebookProcessing` (durable, bounded background OCR), `runMaintenanceSweep` (one throttled cascade for all chores), entry-date parsing + carry-forward, discipline-repo sync. Owns the synthetic-notebook ids (`DISCIPLINE_ID`, `CONVERSATIONS_NOTEBOOK_ID`, `REFLECTIONS_NOTEBOOK_ID`, `DECISIONS_NOTEBOOK_ID`) + real `CHAT_DIARY_NOTEBOOK_ID`, and the exclude-helpers `nonDiaryNotebookExcludeIdsForChat`/`ForMind`. |
+| `pendingShares.ts` | Inert public share-target quarantine: persistent rate/count/byte/retention caps; authenticated approval moves a PDF into the notebook OCR queue. |
 | `profile.ts` | The evolving "memory of you" (versioned `profile` table). |
 | `mind.ts` | `/mind` analytics: heatmap, theme cloud, sentiment timeline, 3D embedding map. Shared PCA + persisted axis labels. The `analyzePending` in-flight-guard pattern is reused by `chatMemory`. Excludes discipline + all three synthetic notebooks. |
 | `entityGraph.ts` | Pure `computeRelatedEntities` — ranks entities that share diary days with a target (the co-occurrence graph behind `related_entities` + the Obsidian graph). |
@@ -62,7 +63,7 @@ Companion docs — read in order if any is unfamiliar:
 | `entityTagging.ts` | Guaranteed, app-initiated entity-tagging for conversations/reflections/decisions, gated by `autoTagExportsEnabled()` (`MCP_AUTO_TAG_EXPORTS` layered on `MCP_ALLOW_WIKI_LINKING`). `sampleForTagging` + `autoTag*` + sweep backstops. |
 | `usage.ts` | `recordUsage` (per-call cost from list prices) + KST-aware monthly/daily/total aggregation. |
 | `extractText.ts` | Convert PDF/Word attachments to text on the server before sending to Claude. Saves ~3-5× tokens. Handwritten PDFs fall back to raw. |
-| `auth.ts` / `webauthn.ts` | Passcode + passkey (WebAuthn). HMAC session cookie. 24h server-side inactivity timeout. Passcode brute-force lockout (`auth_fail_state`). |
+| `auth.ts` / `webauthn.ts` | Passcode + passkey (WebAuthn). HMAC cookie + per-device server session, 24h inactivity, local/global revocation, passcode lockout recovery. |
 | `backup.ts` | Weekly tar.gz of `/data` to a private GitHub repo, keep-last-12. `dropbox_refresh_token` redacted. |
 | `dropbox.ts` | OAuth refresh-token flow, folder polling, dedupe by `dropbox_file_id` **+ tombstones**. Fired from `runMaintenanceSweep`. Also opt-in **per-day** diary auto-export back to Dropbox (`maybeExportDiaryToDropbox`, one `.md` per day into `dropboxExportFolder`, needs `files.content.write` scope) + the conversation/reflection/decision vault exporters. |
 | `diaryExport.ts` / `diaryExportDb.ts` | Diary→Markdown: pure assembly, carry-forward, per-day file builder + DB renderers. **Obsidian-native**: entity `[[wikilinks]]`, entity **stub notes** (with `## Related notes` back-links to tagged conversations/reflections/decisions), and the **vault-structure "second brain" notes** (`Home.md`, `People|Places|Projects.md`, `Profile.md` — `renderVaultStructureFiles`/`vaultStructureFileNames`). Excludes discipline + synthetic notebooks from day files, includes them in the entity graph/stubs. |
@@ -77,7 +78,8 @@ Companion docs — read in order if any is unfamiliar:
 | Table | What it holds |
 |---|---|
 | `settings` | key/value store (model overrides, persisted PCA axes, last-maintenance-at, `schema_pages_fts_v3` migration flag). |
-| `notebooks` | One row per uploaded/ingested notebook. `status` ∈ `processing` / `done` / `error`. `dropbox_file_id` for ingest dedupe. |
+| `notebooks` | One row per approved/ingested notebook. `status` is `queued` / `processing` / `done` / `error`. `dropbox_file_id` supports ingest dedupe. |
+| `pending_shares` / `share_rate_events` | Inert Android share submissions awaiting authenticated approval + hashed-source throttle events. |
 | `pages` | OCR'd pages. `embedding` BLOB (Voyage Float32), `entry_date` parsed from the diary header. |
 | `pages_fts` | FTS5 virtual table over `pages.ocr_text` + `notebook_name`. |
 | `chat_messages` | Conversation log. `archived_at` (Clear hides from POST history), `archive_batch_id` (chat-memory link), `model` (which model answered). |
@@ -103,6 +105,7 @@ Companion docs — read in order if any is unfamiliar:
 | `route_stops` | Clustered stays (place + dwell). |
 | `geocode_cache` | Nominatim cache (key → place). |
 | `credentials` | WebAuthn credentials (passkey). |
+| `app_sessions` | Per-device session id, expiry, and sliding activity time; enables true inactivity and revocation boundaries. |
 | `api_usage` | One row per Claude/Voyage call. Powers `/usage`. |
 
 ## API routes (`app/api/*`)
@@ -111,7 +114,7 @@ Companion docs — read in order if any is unfamiliar:
   `chat/attachment/[id]`, `chat/memories` (GET list+status), `chat/memories/[id]` (DELETE soft-delete),
   `chat/memories/retry/[batchId]` (POST reset stuck batch),
   `chat/memories/backfill-all` (POST chunked re-process, `?reset=true` for destructive clean re-run).
-- **Notes:** `notebooks`, `notebooks/[id]/pages`, `diary`, `graph`.
+- **Notes:** `notebooks`, `notebooks/[id]/pages`, `shares` (authenticated pending-share approval/discard), `diary`, `graph`.
 - **Memory/profile:** `memory` (the `/memory` page's profile editor — *not* chat memory).
 - **Insights:** `insights`.
 - **Mind:** `mind`, `mind/analyze`, `mind/reanalyze`, `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities` (Claude-driven entity dedup), `mind/build-wiki` (batched life-wiki build).
@@ -156,7 +159,8 @@ Companion docs — read in order if any is unfamiliar:
   `MCP_ALLOW_SENSITIVE_TOOLS=true`. Bearer auth via `MCP_AUTH_TOKEN`
   (comma-separated = zero-downtime rotation),
   fails closed when unset; backed by `lib/mcp.ts`; setup in `docs/mcp-setup.md`)
-  + `mcp/oauth/{register,authorize,token,protected-resource,authorization-server}`
+  + authenticated `mcp/audit` and `mcp/oauth/grants`, plus public
+  `mcp/oauth/{register,authorize,token,protected-resource,authorization-server}`
   (minimal OAuth 2.1 server so the claude.ai connector can complete its OAuth
   handshake — consent reuses `MCP_AUTH_TOKEN`; backed by `lib/mcpOauth.ts`;
   `/.well-known/oauth-*` discovery via `next.config.mjs` rewrites).

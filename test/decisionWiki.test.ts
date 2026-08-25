@@ -64,6 +64,15 @@ describe("renderDecisionNote (distinct type)", () => {
     expect(md).not.toContain("Projects/ETF");
   });
 
+  it("normalizes raw entity names to the exact entity-stub target", () => {
+    const md = dw.renderDecisionNote(
+      { title: "D", content: "text", created_at: "2026-07-19 09:00:00" },
+      [{ kind: "project", name: "ETF [2026]|Plan" }]
+    );
+    expect(md).toContain("- [[ETF 2026Plan]]");
+    expect(md).not.toContain("[[ETF [2026]");
+  });
+
   it("decisionPageId is deterministic: mcp-decisions:<key>", () => {
     expect(dw.decisionPageId("abc")).toBe("mcp-decisions:abc");
   });

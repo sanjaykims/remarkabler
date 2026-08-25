@@ -34,7 +34,7 @@ type Entry = {
 // Discipline-notebook pages are excluded when discipline-sharing is off,
 // matching how the rest of the app treats that notebook.
 export async function GET(req: NextRequest) {
-  if (!isAuthenticated()) return LOCKED();
+  if (!(await isAuthenticated())) return LOCKED();
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim() || "";
   const date = url.searchParams.get("date")?.trim() || "";

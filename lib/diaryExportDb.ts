@@ -23,6 +23,7 @@ import {
   carryForwardDates,
   effectiveDateKeys,
   entityStubFileName,
+  sanitizeEntityName,
   entityIndexFileName,
   HOME_FILE,
   PROFILE_FILE,
@@ -85,23 +86,75 @@ function fetchCanonicalEntityNames(): Map<string, string> {
   return map;
 }
 
-// Normalize an extracted entity name into one safe display form used
-// EVERYWHERE it appears: the day-file [[wikilink]] text, the YAML frontmatter
-// arrays, AND the entity stub's filename basename. Keeping all three derived
-// from this single function is what guarantees the day file's [[Dr Kim MD]]
-// resolves to the stub People/Dr Kim MD.md — if the wikilink text kept a
-// path char (/, :) that the filename dropped, the link would stay unresolved
-// in Obsidian, defeating the stubs (PR #104).
-//   * [ ] |  — corrupt wikilink/alias syntax → stripped
-//   * / \ : * ? " < >  — illegal in file paths (and / \ split wikilink
-//     targets into folders) → collapsed to a space
-//   * newlines / runs of whitespace → single space
-function sanitizeEntityName(name: string): string {
-  return name
-    .replace(/[[\]|]/g, "")
-    .replace(/[/\\:*?"<>]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+type EntityIdentity = {
+  kind: string;
+  name_norm: string;
+  display_name: string;
+};
+
+// Sanitization is deliberately lossy, so distinct canonical identities can
+// occasionally converge on one established vault path (for example A/B and
+// A:B). Keep the historical mapping untouched, but make the collision visible
+// so the owner can merge or rename the source entities deliberately.
+function warnOnEntityStubCollisions(canonicalNames: Map<string, string>): void {
+  const rows = db()
+    .prepare(
+      `SELECT e.kind, e.name_norm, MIN(e.name) AS display_name
+       FROM entry_entities e
+       JOIN pages p ON p.id = e.page_id
+       WHERE p.notebook_id != ?
+       GROUP BY e.kind, e.name_norm
+       UNION ALL
+       SELECT kind, name_norm, name AS display_name FROM entity_wiki
+       UNION ALL
+       SELECT kind, name_norm, name AS display_name FROM entity_conversation_notes
+       UNION ALL
+       SELECT subject_kind AS kind, subject_norm AS name_norm,
+              subject_name AS display_name FROM entity_relationships
+       UNION ALL
+       SELECT object_kind AS kind, object_norm AS name_norm,
+              object_name AS display_name FROM entity_relationships`
+    )
+    .all(DISCIPLINE_ID) as EntityIdentity[];
+
+  const byStub = new Map<
+    string,
+    Map<string, { nameNorm: string; name: string }>
+  >();
+  for (const row of rows) {
+    if (row.kind !== "person" && row.kind !== "place" && row.kind !== "project") {
+      continue;
+    }
+    const identityKey = `${row.kind}\0${row.name_norm}`;
+    const name =
+      canonicalNames.get(`${row.kind} ${row.name_norm}`) ?? row.display_name;
+    const stubName = sanitizeEntityName(name) || "unnamed";
+    const stubKey = `${row.kind}\0${stubName}`;
+    let identities = byStub.get(stubKey);
+    if (!identities) {
+      identities = new Map();
+      byStub.set(stubKey, identities);
+    }
+    if (!identities.has(identityKey)) {
+      identities.set(identityKey, { nameNorm: row.name_norm, name });
+    }
+  }
+
+  for (const [stubKey, identities] of byStub) {
+    if (identities.size < 2) continue;
+    const separator = stubKey.indexOf("\0");
+    const kind = stubKey.slice(0, separator) as EntityStub["kind"];
+    const stubName = stubKey.slice(separator + 1);
+    const sources = [...identities.values()].sort(
+      (a, b) => a.nameNorm.localeCompare(b.nameNorm) || a.name.localeCompare(b.name)
+    );
+    console.warn(
+      `[diary-export] Distinct ${kind} entities resolve to the same existing ` +
+        `stub path ${JSON.stringify(entityStubFileName(kind, stubName))}: ` +
+        `${sources.map((source) => JSON.stringify(source)).join(", ")}. ` +
+        "The filename mapping was preserved; merge or rename the source entities to resolve it."
+    );
+  }
 }
 
 // Shared fetch: all diary pages (discipline, mcp-conversations, AND
@@ -180,6 +233,8 @@ export function renderDiaryDayFiles(): Map<string, string> {
 export function collectEntityStubs(): EntityStub[] {
   const { rows, entitiesByPage } = fetchDiaryData();
   const enriched = carryForwardDates(rows);
+  const canonicalNames = fetchCanonicalEntityNames();
+  warnOnEntityStubCollisions(canonicalNames);
   // Claude-written profiles (one query), keyed by the SAME sanitized display
   // name the stub is keyed by, so the wiki body attaches to the right note.
   const summaryByKey = new Map<string, string>();
@@ -236,7 +291,6 @@ export function collectEntityStubs(): EntityStub[] {
   // person converge on one casing/stub. This same pass also builds the direct
   // back-links to the tagged note itself (Phase C's "## Related notes" section)
   // — one query, not two.
-  const canonicalNames = fetchCanonicalEntityNames();
   const relationshipsByKey = new Map<
     string,
     Array<{ predicate: string; otherName: string; direction: "out" | "in" }>

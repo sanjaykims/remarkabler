@@ -25,17 +25,26 @@ const SENSITIVE_SETTING_KEYS = [
   // reMarkable cloud device token — a long-lived credential to the user's
   // tablet account. Redact it from off-site backups, same as Dropbox's.
   "remarkable_device_token",
-  // The HMAC key that signs session cookies (lib/auth.ts). There is NO
-  // server-side session store, so isAuthenticated() trusts any cookie whose
-  // HMAC verifies against this key — meaning knowledge of session_secret
-  // alone lets an attacker forge a valid session and bypass the whole
+  // The HMAC key that signs session cookies (lib/auth.ts). Sessions are now
+  // also recorded server-side in app_sessions, but BOTH live in this same DB
+  // file — so knowledge of session_secret plus any live app_sessions row id
+  // lets an attacker forge a valid cookie and bypass the whole
   // passcode/passkey lock. It's strictly more powerful than the Dropbox token
   // above (defeats the app lock, not one integration), so it must never ship
   // in an off-site backup. On restore, sessionSecret() regenerates a fresh
   // key on first use — the only effect is that pre-existing sessions are
   // invalidated, which is the correct behavior for a restored instance.
   "session_secret",
+  // Global brute-force floor. Not a credential, but restoring a filled one
+  // would lock the restored instance out for its window.
+  "auth_fail_global",
 ];
+
+// Per-source lockout buckets are keyed auth_fail_state:<sha256(client ip)>,
+// so they need a prefix delete rather than an exact-key one. SHA-256 of an
+// IPv4 is a 4.3-billion-entry keyspace — trivially enumerable — so shipping
+// them off-site would disclose the set of addresses that hit the login page.
+const SENSITIVE_SETTING_PREFIXES = ["auth_fail_state:"];
 
 export function redactSensitiveSettings(stagedDbPath: string): void {
   // Open the staged copy with a SEPARATE Database handle so we can't
@@ -47,6 +56,22 @@ export function redactSensitiveSettings(stagedDbPath: string): void {
       for (const k of keys) del.run(k);
     });
     tx(SENSITIVE_SETTING_KEYS);
+
+    const delPrefix = staged.prepare(
+      `DELETE FROM settings WHERE key LIKE ? || '%'`
+    );
+    staged.transaction((prefixes: string[]) => {
+      for (const p of prefixes) delPrefix.run(p);
+    })(SENSITIVE_SETTING_PREFIXES);
+
+    // Live session records. session_secret is already redacted so these can't
+    // be forged into cookies, but there is no reason to ship them: a restored
+    // instance should start with no sessions.
+    try {
+      staged.prepare(`DELETE FROM app_sessions`).run();
+    } catch {
+      // table may not exist in an older staged copy
+    }
   } finally {
     staged.close();
   }
