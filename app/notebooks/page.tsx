@@ -391,6 +391,15 @@ export default function NotebooksPage() {
                     {(share.sizeBytes / 1024 / 1024).toFixed(1)} MB · received{" "}
                     {formatLocalTime(share.createdAt)}
                   </p>
+                  {/* The name above is chosen by whoever sent the share, and
+                      approving runs the full pipeline into the profile — so
+                      offer a look at the actual file first. */}
+                  <a
+                    href={`/api/shares/${share.id}/pdf`}
+                    className="text-xs underline opacity-60 hover:opacity-100"
+                  >
+                    Download to check before approving
+                  </a>
                 </div>
                 <div className="flex items-center gap-3">
                   <Button

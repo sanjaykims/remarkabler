@@ -39,7 +39,17 @@ function filePath(id: string): string {
 }
 
 function cleanName(value: string): string {
-  const base = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  const base = value
+    // C0/C7F controls.
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    // Bidi overrides/isolates and zero-width formatters. React escapes this
+    // name, so there is no XSS here — the risk is purely social. A hostile
+    // share can otherwise render as a filename the owner expects, and
+    // approving it admits attacker-chosen text into the corpus Claude reasons
+    // over. Strip the characters that let text lie about its own order.
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   return (base || "shared.pdf").slice(0, 180);
 }
 

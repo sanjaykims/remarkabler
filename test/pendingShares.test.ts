@@ -186,3 +186,45 @@ describe("quarantine abuse resistance", () => {
     expect(() => put("192.0.2.3", "big4.pdf")).toThrow(/storage is full/);
   });
 });
+
+describe("pre-approval preview", () => {
+  it("serves a quarantined PDF to the authenticated owner as an attachment", async () => {
+    const route = await import("@/app/api/shares/[id]/pdf/route");
+    const created = pendingMod.createPendingShare({
+      fileName: "note.pdf",
+      bytes: pdf,
+      source: "203.0.113.5",
+    });
+
+    const res = await route.GET({} as never, {
+      params: Promise.resolve({ id: created.id }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    // Never inline: rendering untrusted PDF bytes in a same-origin viewer
+    // would hand an attacker a parser surface on the origin holding the
+    // session cookie.
+    expect(res.headers.get("content-disposition")).toMatch(/^attachment/);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("404s for an unknown id", async () => {
+    const route = await import("@/app/api/shares/[id]/pdf/route");
+    const res = await route.GET({} as never, {
+      params: Promise.resolve({ id: "does-not-exist" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("strips bidi and zero-width characters from the displayed name", () => {
+    // A hostile share can otherwise render as a filename the owner expects.
+    const created = pendingMod.createPendingShare({
+      fileName: "Journal‮2026.pdf​",
+      bytes: pdf,
+      source: "203.0.113.6",
+    });
+    expect(created.name).not.toMatch(/[​-‏‪-‮⁦-⁩﻿]/);
+    expect(created.name).toContain("Journal");
+  });
+});
