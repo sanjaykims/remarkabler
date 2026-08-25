@@ -144,6 +144,28 @@ export function db(): Database.Database {
     `CREATE INDEX IF NOT EXISTS idx_chat_attachments_message
        ON chat_attachments(message_id)`
   );
+    // Server-side record of every WebAuthn challenge this server issued, and
+  // which ceremony it belongs to.
+  //
+  // The challenge cookie is CLIENT-SUPPLIED: httpOnly stops XSS reading it in
+  // a victim's browser, but a direct attacker just sends any value they like
+  // from curl. Trusting the cookie alone let an unauthenticated caller invent
+  // a challenge, build a self-attested credential against it, and enroll a
+  // passkey without ever passing the passcode gate on register-options.
+  // Consuming a row here makes the SERVER the authority: unknown challenges
+  // are refused, the ceremony column stops cross-use, and the delete makes
+  // each one single-use.
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS webauthn_challenges (
+      challenge TEXT PRIMARY KEY,
+      ceremony TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `);
+  _db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_created
+       ON webauthn_challenges(created_at)`
+  );
   _db.exec(`
     CREATE TABLE IF NOT EXISTS daily_summaries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -654,6 +654,15 @@ features need the deployed instance to fully verify.
   `test/webauthnChallengeSeparation.test.ts` pins both directions; never
   collapse the two cookies back into one, and never let `register-verify` fall
   back to a login-issued challenge.
+
+  **Separate cookie NAMES are not sufficient on their own** — that was a first
+  fix and it did not close the hole. The cookie is client-supplied: `httpOnly`
+  protects a victim's browser from XSS, but a direct attacker simply sends
+  `Cookie: fc_reg_challenge=<anything>` from curl, so they can invent a
+  challenge outright. The binding is `webauthn_challenges` +
+  `rememberChallenge`/`consumeChallenge` (`lib/auth.ts`): a verify step accepts
+  ONLY a challenge this server issued, for that exact ceremony, unexpired, and
+  exactly once. Keep the cookie as a carrier; never let it be the authority.
 - **The passcode has a brute-force lockout — don't bypass it.** `lib/auth.ts`
   tracks failures in the `auth_fail_state` setting; 8 wrong passcodes within
   a rolling 15-minute window lock further passcode attempts (`action:

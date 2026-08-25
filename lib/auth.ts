@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getSetting, setSetting, clearSetting } from "@/lib/db";
+import { db, getSetting, setSetting, clearSetting } from "@/lib/db";
 
 export const SESSION_COOKIE = "fc_session";
 // The two WebAuthn ceremonies get SEPARATE challenge cookies on purpose.
@@ -18,6 +18,85 @@ export const SESSION_COOKIE = "fc_session";
 // cryptography stands in the way — only this boundary does. Keep them apart.
 export const REG_CHALLENGE_COOKIE = "fc_reg_challenge";
 export const AUTH_CHALLENGE_COOKIE = "fc_auth_challenge";
+
+
+// ── WebAuthn challenge binding ─────────────────────────────────────────────
+//
+// The challenge cookie only CARRIES the value; the server decides whether it
+// is acceptable. Without this, separating the two cookie names was not enough:
+// the cookie is client-supplied, so an attacker sending
+// `Cookie: fc_reg_challenge=<anything>` from curl could satisfy
+// verifyRegistration against a value they chose themselves and enroll a
+// passkey without ever passing the passcode gate. httpOnly does not help —
+// it protects a victim's browser from XSS, not the server from a direct
+// caller.
+export type WebAuthnCeremony = "register" | "login";
+
+/** Matches the challenge cookie's 5-minute maxAge. */
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+
+// Hard ceiling on stored challenges.
+//
+// `login-options` is necessarily UNAUTHENTICATED — an unauthenticated visitor
+// has to be able to start a passkey login — and it now writes a row per call.
+// TTL cleanup alone only reaps rows older than CHALLENGE_TTL_MS, so a sustained
+// flood keeps an arbitrarily large set of FRESH rows (and WAL churn) on the
+// /data volume without ever passing the app lock.
+//
+// A row cap bounds that absolutely. Chosen over a per-IP throttle because the
+// bound must hold regardless of how trustworthy the client address is, and
+// because eviction is newest-first: a legitimate login's challenge is the most
+// recent row and is consumed within seconds, so a flood cannot evict it out
+// from under the owner.
+const MAX_STORED_CHALLENGES = 200;
+
+/** Record a challenge this server just issued, for the given ceremony. */
+export function rememberChallenge(
+  challenge: string,
+  ceremony: WebAuthnCeremony
+): void {
+  const now = Date.now();
+  db().transaction(() => {
+    db()
+      .prepare(
+        `INSERT OR REPLACE INTO webauthn_challenges(challenge, ceremony, created_at)
+         VALUES(?,?,?)`
+      )
+      .run(challenge, ceremony, now);
+    db()
+      .prepare(`DELETE FROM webauthn_challenges WHERE created_at < ?`)
+      .run(now - CHALLENGE_TTL_MS);
+    db()
+      .prepare(
+        `DELETE FROM webauthn_challenges
+          WHERE challenge NOT IN (
+            SELECT challenge FROM webauthn_challenges
+             ORDER BY created_at DESC, challenge DESC
+             LIMIT ?
+          )`
+      )
+      .run(MAX_STORED_CHALLENGES);
+  })();
+}
+
+/**
+ * Single-use check: true only if THIS server issued `challenge` for exactly
+ * `ceremony` and it has not expired. The row is deleted either way, so a
+ * challenge can never be replayed.
+ */
+export function consumeChallenge(
+  challenge: string,
+  ceremony: WebAuthnCeremony
+): boolean {
+  if (!challenge) return false;
+  const result = db()
+    .prepare(
+      `DELETE FROM webauthn_challenges
+        WHERE challenge = ? AND ceremony = ? AND created_at >= ?`
+    )
+    .run(challenge, ceremony, Date.now() - CHALLENGE_TTL_MS);
+  return result.changes === 1;
+}
 
 // How long a successful unlock keeps the app open on a device.
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // seconds

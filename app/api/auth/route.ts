@@ -11,6 +11,8 @@ import {
   passcodeLockRemainingMs,
   recordFailedPasscodeAttempt,
   recordSuccessfulAuth,
+  rememberChallenge,
+  consumeChallenge,
 } from "@/lib/auth";
 import {
   hasCredentials,
@@ -68,6 +70,7 @@ export async function POST(req: NextRequest) {
     }
     recordSuccessfulAuth();
     const options = await buildRegistrationOptions(rpID);
+    rememberChallenge(options.challenge, "register");
     const res = NextResponse.json(options);
     res.cookies.set(
       REG_CHALLENGE_COOKIE,
@@ -78,11 +81,14 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "register-verify") {
-    // Only a challenge minted by register-options is acceptable here. A
-    // login-issued one must never enroll a credential — login-options is
-    // ungated, so accepting it would bypass the passcode entirely.
+    // The cookie only CARRIES the challenge; consumeChallenge decides whether
+    // it is acceptable. It is client-supplied, so a direct attacker can send
+    // any value — separating the cookie names is not enough on its own. Only a
+    // challenge THIS server issued for the "register" ceremony, unexpired and
+    // unused, gets past here, so an unauthenticated caller cannot enroll a
+    // passkey without first passing the passcode gate on register-options.
     const challenge = req.cookies.get(REG_CHALLENGE_COOKIE)?.value;
-    if (!challenge) {
+    if (!challenge || !consumeChallenge(challenge, "register")) {
       return NextResponse.json(
         { error: "Setup timed out. Please try again." },
         { status: 400 }
@@ -116,6 +122,7 @@ export async function POST(req: NextRequest) {
 
   if (action === "login-options") {
     const options = await buildAuthenticationOptions(rpID);
+    rememberChallenge(options.challenge, "login");
     const res = NextResponse.json(options);
     res.cookies.set(
       AUTH_CHALLENGE_COOKIE,
@@ -127,7 +134,7 @@ export async function POST(req: NextRequest) {
 
   if (action === "login-verify") {
     const challenge = req.cookies.get(AUTH_CHALLENGE_COOKIE)?.value;
-    if (!challenge) {
+    if (!challenge || !consumeChallenge(challenge, "login")) {
       return NextResponse.json(
         { error: "Unlock timed out. Please try again." },
         { status: 400 }
