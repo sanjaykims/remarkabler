@@ -13,9 +13,12 @@ import LockAllButton from "./LockAllButton";
 // snapping.
 //
 // Every item must be visible at once on a phone — no sideways scrolling.
-// On small screens the wordmark takes its own line (basis-full) and the
-// links sit below it, wrapping to a second row only if the screen is too
-// narrow for all of them. From `sm` up it is the original single row.
+// On small screens the wordmark takes its own line (basis-full) and ALL the
+// links plus "Lock all" sit together in ONE row below it: the gap is tightened
+// to gap-x-1.5 (6px) because at 360px wide the seven links + Lock all need
+// ~270px of the ~328px available, and the old 12px gap pushed Lock all onto a
+// third line. They still wrap as a fallback on an even narrower screen. From
+// `sm` up it is the original single row with the original 12px gap.
 const LINKS = [
   { href: "/notebooks", label: "Notebooks" },
   { href: "/chat", label: "Chat" },
@@ -30,7 +33,7 @@ export default function Nav({ showLockAll = false }: { showLockAll?: boolean }) 
   const pathname = usePathname();
 
   return (
-    <nav className="mx-auto max-w-5xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs whitespace-nowrap">
+    <nav className="mx-auto max-w-5xl px-4 py-3 flex flex-wrap items-center gap-x-1.5 sm:gap-x-3 gap-y-1.5 text-xs whitespace-nowrap">
       <TransitionLink
         href="/"
         aria-current={pathname === "/" ? "page" : undefined}

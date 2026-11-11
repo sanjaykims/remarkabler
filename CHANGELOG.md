@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-11 (UI: tighten phone menu so links + Lock all share one row)
+
+Follow-up to the entry below. The first fix showed all seven links, but "Lock all"
+still wrapped onto a third line at 360px wide. The gap between menu items is now
+6px on phones (`gap-x-1.5`) and the original 12px from `sm` up
+(`sm:gap-x-3`), so the links and "Lock all" fit in a single row under the
+wordmark. Sized from a real phone screenshot (links ~232px + Lock all ~38px of
+~328px available); still wraps as a fallback on a narrower screen.
+
 ## 2026-11-11 (UI: show every top-menu item at once on phones)
 
 On a narrow phone screen the top menu (`app/Nav.tsx`) was a single row with
