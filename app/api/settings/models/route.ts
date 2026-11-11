@@ -10,8 +10,8 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 type Slot = { key: string; env: string; def: string };
 
 const SLOTS: Record<"main" | "chat" | "fallback", Slot> = {
-  main: { key: "model_main", env: "CLAUDE_MODEL", def: "claude-opus-4-7" },
-  chat: { key: "model_chat", env: "CHAT_MODEL", def: "claude-sonnet-5" },
+  main: { key: "model_main", env: "CLAUDE_MODEL", def: "claude-opus-5-5" },
+  chat: { key: "model_chat", env: "CHAT_MODEL", def: "claude-sonnet-5-5" },
   fallback: {
     key: "model_chat_fallback",
     env: "CHAT_FALLBACK_MODEL",

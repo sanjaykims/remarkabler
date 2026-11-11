@@ -13,6 +13,10 @@ type Prices = {
 };
 
 const PRICES: Record<string, Prices> = {
+  // 5.5 prices per a third-party summary of Anthropic's pricing page (Sonnet cache
+  // write = 1.25x input, derived). Estimates only; verify on Anthropic's page.
+  "claude-opus-5-5": { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.1 },
   "claude-opus-4-8": { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   "claude-opus-4-7": { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   "claude-opus-4-6": { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },

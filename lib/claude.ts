@@ -37,18 +37,18 @@ function modelMain(): string {
   return (
     getSetting("model_main") ||
     process.env.CLAUDE_MODEL ||
-    "claude-opus-4-7"
+    "claude-opus-5-5"
   );
 }
-function modelChat(): string {
+export function modelChat(): string {
   return (
     getSetting("model_chat") ||
     process.env.CHAT_MODEL ||
-    // Sonnet 5: adaptive thinking runs by default (no `thinking` param sent),
-    // sampling params and prefills are not used anywhere in this module, so
-    // the call shape is compatible as-is. Fallback stays on 4-6 — a DIFFERENT
-    // model is the point of an overload fallback.
-    "claude-sonnet-5"
+    // Sonnet 5.x: adaptive thinking runs by default (no `thinking` param sent),
+    // sampling params, forced tool_choice and prefills are not used anywhere in
+    // this module, so the call shape is compatible as-is. Fallback stays on
+    // 4-6 — a DIFFERENT model is the point of an overload fallback.
+    "claude-sonnet-5-5"
   );
 }
 function modelChatFallback(): string {

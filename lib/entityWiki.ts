@@ -6,7 +6,7 @@ import {
   REFLECTIONS_NOTEBOOK_ID,
   DECISIONS_NOTEBOOK_ID,
 } from "./notes";
-import { composeEntityWiki, type EntityWikiExcerpt } from "./claude";
+import { composeEntityWiki, modelChat, type EntityWikiExcerpt } from "./claude";
 
 // The "life wiki": a Claude-written profile per entity (kind, name_norm),
 // stored in entity_wiki and embedded atop that entity's Obsidian stub note.
@@ -201,7 +201,7 @@ export async function refreshEntityWiki(
   if (refreshInFlight)
     return { generated: 0, failed: 0, remaining: 0, entities: [], skipped: "in-flight" };
 
-  const model = process.env.CHAT_MODEL || "claude-sonnet-5";
+  const model = modelChat();
   let generated = 0;
   let failed = 0;
   let remaining = 0;

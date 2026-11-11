@@ -2,6 +2,7 @@ import { db, getSetting, setSetting } from "@/lib/db";
 import {
   analyzeEntryContent,
   labelEmbeddingAxes,
+  modelChat,
   type AxisLabels,
   type AxisExtremeEntry,
 } from "@/lib/claude";
@@ -248,7 +249,7 @@ export async function analyzePending(
     let analyzed = 0;
     let failed = 0;
     let lastError: string | undefined;
-    const model = process.env.CHAT_MODEL || "claude-sonnet-4-6";
+    const model = modelChat();
     for (const row of rows) {
       let result: Awaited<ReturnType<typeof analyzeEntryContent>> = null;
       try {

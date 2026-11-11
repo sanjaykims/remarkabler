@@ -1130,8 +1130,10 @@ export default function MemoryPage() {
               ] as const
             ).map(({ slot, label, hint, info }) => {
               const STANDARD = [
-                { value: "claude-sonnet-5", label: "Sonnet 5 — smartest Sonnet, best for chat" },
-                { value: "claude-opus-4-8", label: "Opus 4.8 — strongest, most expensive" },
+                { value: "claude-opus-5-5", label: "Opus 5.5 — strongest, best for handwriting & memory" },
+                { value: "claude-sonnet-5-5", label: "Sonnet 5.5 — fast and capable, best for background work" },
+                { value: "claude-opus-4-8", label: "Opus 4.8 — previous Opus" },
+                { value: "claude-sonnet-5", label: "Sonnet 5 — previous Sonnet" },
                 { value: "claude-sonnet-4-6", label: "Sonnet 4.6 — balanced" },
                 { value: "claude-haiku-4-5", label: "Haiku 4.5 — cheapest, fastest" },
               ];

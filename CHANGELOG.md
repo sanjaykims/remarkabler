@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-11 (Models: Opus 5.5 + Sonnet 5.5 defaults)
+
+Default models are now Opus 5.5 (`claude-opus-5-5`, OCR / profile / insights /
+daily summaries) and Sonnet 5.5 (`claude-sonnet-5-5`, background analysis, entity
+wiki, chat memory). Both are offered in the Memory page model picker. `/mind`
+analysis and the entity wiki now honor the in-app chat-model setting instead of a
+hardcoded env fallback. Cost table gained the 5.5 prices (third-party-sourced
+estimates, verify against Anthropic's pricing page). NOTE: Railway's
+`CLAUDE_MODEL`/`CHAT_MODEL` env vars (or the in-app setting) override these
+defaults, so update them there. Verify OCR quality on the deployed app.
+
 ## 2026-11-11 (Repo housekeeping: docs and Graphify map brought up to date)
 
 Refreshed the committed Graphify code graph (`graphify-out/`, now 1,997 nodes) to
