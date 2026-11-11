@@ -555,8 +555,8 @@ export default function DiaryGraphClient({
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="rounded border border-slate-800 bg-slate-950 text-slate-100 shadow-sm">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="min-w-0 rounded border border-slate-800 bg-slate-950 text-slate-100 shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
             <div>
               <h2 className="text-sm font-medium">Live Map</h2>

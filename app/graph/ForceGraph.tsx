@@ -421,12 +421,12 @@ export default function ForceGraph(props: Props) {
   });
 
   return (
-    <div ref={wrapRef} className={props.className}>
+    <div ref={wrapRef} className={`relative min-w-0 overflow-hidden ${props.className ?? ""}`}>
       <canvas
         ref={canvasRef}
         role="img"
         aria-label="Diary graph. Drag nodes, pinch to zoom, tap a node to highlight its links."
-        className="block touch-none"
+        className="absolute inset-0 block touch-none"
       />
     </div>
   );

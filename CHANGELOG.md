@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-11 (Graph: map fits the screen width on phones)
+
+The graph panel ran off the right edge of the screen: the canvas's fixed pixel
+width stretched its grid column. The grid is now an explicit `minmax(0,1fr)`
+column (`grid-cols-1`), the map section has `min-w-0`, and the canvas is
+absolutely positioned inside its clipped wrapper, so the map's right edge lines
+up with the filter row above it. Not run through `npm run build`; verify on the
+deployed app.
+
 ## 2026-11-11 (Graph: Obsidian-style interactive graph; Chat page removed)
 
 - `/graph` is now an Obsidian-style force-directed graph (`app/graph/ForceGraph.tsx`,
