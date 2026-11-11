@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/Button";
+import ForceGraph from "./ForceGraph";
 import type {
   DiaryGraphEdge,
   DiaryGraphEdgeType,
@@ -14,22 +15,6 @@ type Selection =
   | { kind: "node"; id: string }
   | { kind: "edge"; id: string }
   | null;
-
-type LayoutNode = DiaryGraphNode & {
-  x: number;
-  y: number;
-  r: number;
-};
-
-type GraphViewBox = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-const WIDTH = 1180;
-const HEIGHT = 760;
 
 const NODE_TYPES: DiaryGraphNodeType[] = [
   "person",
@@ -78,191 +63,6 @@ const EDGE_COLORS: Record<DiaryGraphEdgeType, string> = {
   co_occurs: "#22c55e",
   relationship: "#fb7185",
 };
-
-const ANCHORS: Record<DiaryGraphNodeType, { x: number; y: number }> = {
-  person: { x: 520, y: 230 },
-  place: { x: 340, y: 470 },
-  project: { x: 710, y: 455 },
-  day: { x: 175, y: 370 },
-  conversation: { x: 990, y: 240 },
-  reflection: { x: 980, y: 400 },
-  decision: { x: 965, y: 560 },
-};
-
-function hash(value: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < value.length; i++) {
-    h ^= value.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function jitter(value: string, spread: number): number {
-  return ((hash(value) / 0xffffffff) * 2 - 1) * spread;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function truncate(value: string, n: number): string {
-  return value.length > n ? `${value.slice(0, Math.max(0, n - 3))}...` : value;
-}
-
-function buildLayout(nodes: DiaryGraphNode[], edges: DiaryGraphEdge[]): LayoutNode[] {
-  const layout = nodes.map((node, index) => {
-    const anchor = ANCHORS[node.type];
-    const ring = 26 + (index % 9) * 12;
-    const angle = (hash(node.id) % 6283) / 1000;
-    const x = anchor.x + Math.cos(angle) * ring + jitter(`${node.id}:x`, 34);
-    const y = anchor.y + Math.sin(angle) * ring + jitter(`${node.id}:y`, 34);
-    return {
-      ...node,
-      x,
-      y,
-      r: node.size,
-      vx: 0,
-      vy: 0,
-    };
-  });
-  const byId = new Map(layout.map((node) => [node.id, node]));
-  const links = edges
-    .map((edge) => {
-      const source = byId.get(edge.source);
-      const target = byId.get(edge.target);
-      return source && target ? { edge, source, target } : null;
-    })
-    .filter((item): item is NonNullable<typeof item> => !!item);
-
-  for (let tick = 0; tick < 230; tick++) {
-    for (let i = 0; i < layout.length; i++) {
-      const a = layout[i];
-      for (let j = i + 1; j < layout.length; j++) {
-        const b = layout[j];
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let d2 = dx * dx + dy * dy;
-        if (d2 < 0.01) {
-          dx = jitter(`${a.id}:${b.id}`, 1);
-          dy = jitter(`${b.id}:${a.id}`, 1);
-          d2 = dx * dx + dy * dy || 1;
-        }
-        const d = Math.sqrt(d2);
-        const minDistance = a.r + b.r + 28;
-        const force =
-          d < minDistance
-            ? (minDistance - d) * 0.032
-            : Math.min(1100 / d2, 0.7);
-        const fx = (dx / d) * force;
-        const fy = (dy / d) * force;
-        a.vx -= fx;
-        a.vy -= fy;
-        b.vx += fx;
-        b.vy += fy;
-      }
-    }
-
-    for (const link of links) {
-      const { edge, source, target } = link;
-      let dx = target.x - source.x;
-      let dy = target.y - source.y;
-      const d = Math.sqrt(dx * dx + dy * dy) || 1;
-      const desired =
-        edge.type === "relationship" ? 138 : edge.type === "co_occurs" ? 118 : 172;
-      const strength =
-        edge.type === "relationship" ? 0.032 : edge.type === "co_occurs" ? 0.018 : 0.012;
-      const force = (d - desired) * strength * clamp(Math.sqrt(edge.weight), 1, 3);
-      dx /= d;
-      dy /= d;
-      source.vx += dx * force;
-      source.vy += dy * force;
-      target.vx -= dx * force;
-      target.vy -= dy * force;
-    }
-
-    for (const node of layout) {
-      const anchor = ANCHORS[node.type];
-      node.vx += (anchor.x - node.x) * 0.012;
-      node.vy += (anchor.y - node.y) * 0.012;
-      node.vx *= 0.74;
-      node.vy *= 0.74;
-      node.x = clamp(node.x + node.vx, 36, WIDTH - 36);
-      node.y = clamp(node.y + node.vy, 42, HEIGHT - 42);
-    }
-  }
-
-  return layout;
-}
-
-function edgePath(source: LayoutNode, target: LayoutNode, edge: DiaryGraphEdge): string {
-  if (edge.type !== "relationship") {
-    return `M ${source.x} ${source.y} L ${target.x} ${target.y}`;
-  }
-  const mx = (source.x + target.x) / 2;
-  const my = (source.y + target.y) / 2;
-  const dx = target.x - source.x;
-  const dy = target.y - source.y;
-  const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const bend = (hash(edge.id) % 2 === 0 ? 1 : -1) * 34;
-  const cx = mx + (-dy / len) * bend;
-  const cy = my + (dx / len) * bend;
-  return `M ${source.x} ${source.y} Q ${cx} ${cy} ${target.x} ${target.y}`;
-}
-
-function midpoint(source: LayoutNode, target: LayoutNode, edge: DiaryGraphEdge) {
-  if (edge.type !== "relationship") {
-    return { x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 };
-  }
-  const mx = (source.x + target.x) / 2;
-  const my = (source.y + target.y) / 2;
-  const dx = target.x - source.x;
-  const dy = target.y - source.y;
-  const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const bend = (hash(edge.id) % 2 === 0 ? 1 : -1) * 24;
-  return { x: mx + (-dy / len) * bend, y: my + (dx / len) * bend };
-}
-
-function fitGraphViewBox(nodes: LayoutNode[]): GraphViewBox {
-  if (nodes.length === 0) {
-    return { x: 0, y: 0, width: WIDTH, height: HEIGHT };
-  }
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const node of nodes) {
-    const labelPad = node.type === "day" ? 18 : 44;
-    minX = Math.min(minX, node.x - node.r - labelPad);
-    maxX = Math.max(maxX, node.x + node.r + labelPad);
-    minY = Math.min(minY, node.y - node.r - labelPad);
-    maxY = Math.max(maxY, node.y + node.r + labelPad + 18);
-  }
-  const pad = 70;
-  minX -= pad;
-  minY -= pad;
-  maxX += pad;
-  maxY += pad;
-
-  // Keep the graph large enough that a few active filters don't over-zoom,
-  // but let dense mobile views center on the actual occupied bounds instead
-  // of the fixed desktop coordinate system.
-  const minWidth = 520;
-  const minHeight = 440;
-  let width = maxX - minX;
-  let height = maxY - minY;
-  if (width < minWidth) {
-    const extra = (minWidth - width) / 2;
-    minX -= extra;
-    width = minWidth;
-  }
-  if (height < minHeight) {
-    const extra = (minHeight - height) / 2;
-    minY -= extra;
-    height = minHeight;
-  }
-  return { x: minX, y: minY, width, height };
-}
 
 function metricLabel(value: number, total?: number): string {
   if (total && total > value) return `${value}/${total}`;
@@ -330,65 +130,6 @@ function Metric({
         {metricLabel(value, total)}
       </p>
     </div>
-  );
-}
-
-function NodeShape({
-  node,
-  active,
-  dimmed,
-}: {
-  node: LayoutNode;
-  active: boolean;
-  dimmed: boolean;
-}) {
-  const color = NODE_COLORS[node.type];
-  const fill = node.type === "day" ? "#0f172a" : color;
-  const opacity = dimmed ? 0.22 : 1;
-  if (node.type === "day") {
-    const side = node.r * 1.55;
-    return (
-      <rect
-        x={node.x - side / 2}
-        y={node.y - side / 2}
-        width={side}
-        height={side}
-        rx={4}
-        fill={fill}
-        stroke={color}
-        strokeWidth={active ? 4 : 2}
-        opacity={opacity}
-      />
-    );
-  }
-  if (
-    node.type === "conversation" ||
-    node.type === "reflection" ||
-    node.type === "decision"
-  ) {
-    const r = node.r * 1.05;
-    return (
-      <path
-        d={`M ${node.x} ${node.y - r} L ${node.x + r} ${node.y} L ${node.x} ${
-          node.y + r
-        } L ${node.x - r} ${node.y} Z`}
-        fill="#020617"
-        stroke={color}
-        strokeWidth={active ? 4 : 2.2}
-        opacity={opacity}
-      />
-    );
-  }
-  return (
-    <circle
-      cx={node.x}
-      cy={node.y}
-      r={node.r}
-      fill={color}
-      stroke={active ? "#f8fafc" : "#020617"}
-      strokeWidth={active ? 4 : 2}
-      opacity={opacity}
-    />
   );
 }
 
@@ -643,19 +384,6 @@ export default function DiaryGraphClient({
     return { nodes, edges, matching };
   }, [edgeTypes, graph.edges, graph.nodes, minWeight, nodeTypes, query]);
 
-  const layoutNodes = useMemo(
-    () => buildLayout(filtered.nodes, filtered.edges),
-    [filtered.edges, filtered.nodes]
-  );
-  const graphViewBox = useMemo(
-    () => fitGraphViewBox(layoutNodes),
-    [layoutNodes]
-  );
-  const layoutById = useMemo(
-    () => new Map(layoutNodes.map((node) => [node.id, node])),
-    [layoutNodes]
-  );
-
   const selectedNodeId = selection?.kind === "node" ? selection.id : null;
   const selectedEdge =
     selection?.kind === "edge"
@@ -677,10 +405,11 @@ export default function DiaryGraphClient({
     return ids;
   }, [graph.edges, selectedEdge, selectedNodeId]);
 
-  const topLabelIds = useMemo(
-    () => new Set(graph.stats.topHubs.map((hub) => hub.id)),
-    [graph.stats.topHubs]
-  );
+  const labelIds = useMemo(() => {
+    const ids = new Set(graph.stats.topHubs.map((hub) => hub.id));
+    for (const id of filtered.matching) ids.add(id);
+    return ids;
+  }, [filtered.matching, graph.stats.topHubs]);
 
   async function refresh() {
     setRefreshing(true);
@@ -859,148 +588,18 @@ export default function DiaryGraphClient({
                 No graph nodes match the current filters.
               </div>
             ) : (
-              <svg
-                viewBox={`${graphViewBox.x} ${graphViewBox.y} ${graphViewBox.width} ${graphViewBox.height}`}
-                preserveAspectRatio="xMidYMid meet"
-                role="img"
-                aria-label="Diary entity graph"
-                className="block h-[72vh] min-h-[560px] w-full sm:h-[680px]"
-              >
-                <defs>
-                  <marker
-                    id="diary-graph-arrow"
-                    markerWidth="10"
-                    markerHeight="10"
-                    refX="8"
-                    refY="3"
-                    orient="auto"
-                    markerUnits="strokeWidth"
-                  >
-                    <path d="M 0 0 L 8 3 L 0 6 z" fill="#fb7185" />
-                  </marker>
-                </defs>
-                <g>
-                  {filtered.edges.map((edge) => {
-                    const source = layoutById.get(edge.source);
-                    const target = layoutById.get(edge.target);
-                    if (!source || !target) return null;
-                    const selected =
-                      selection?.kind === "edge"
-                        ? selection.id === edge.id
-                        : selectedNodeId
-                          ? edge.source === selectedNodeId || edge.target === selectedNodeId
-                          : false;
-                    const dimmed =
-                      highlightedIds.size > 0 &&
-                      !selected &&
-                      !highlightedIds.has(edge.source) &&
-                      !highlightedIds.has(edge.target);
-                    return (
-                      <path
-                        key={edge.id}
-                        d={edgePath(source, target, edge)}
-                        fill="none"
-                        stroke={EDGE_COLORS[edge.type]}
-                        strokeWidth={
-                          edge.type === "relationship"
-                            ? selected
-                              ? 4.5
-                              : 2.7
-                            : clamp(0.8 + Math.sqrt(edge.weight), 1.2, selected ? 5 : 3.6)
-                        }
-                        strokeOpacity={dimmed ? 0.12 : selected ? 0.92 : 0.42}
-                        strokeLinecap="round"
-                        markerEnd={edge.directed ? "url(#diary-graph-arrow)" : undefined}
-                        onClick={() => setSelection({ kind: "edge", id: edge.id })}
-                        className="cursor-pointer"
-                      />
-                    );
-                  })}
-                </g>
-                <g pointerEvents="none">
-                  {filtered.edges
-                    .filter((edge) => edge.type === "relationship")
-                    .slice(0, 70)
-                    .map((edge) => {
-                      const source = layoutById.get(edge.source);
-                      const target = layoutById.get(edge.target);
-                      if (!source || !target) return null;
-                      const selected =
-                        selection?.kind === "edge"
-                          ? selection.id === edge.id
-                          : selectedNodeId
-                            ? edge.source === selectedNodeId || edge.target === selectedNodeId
-                            : true;
-                      if (!selected && highlightedIds.size > 0) return null;
-                      const p = midpoint(source, target, edge);
-                      return (
-                        <text
-                          key={`${edge.id}:label`}
-                          x={p.x}
-                          y={p.y}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          className="select-none text-[10px] font-medium"
-                          fill="#fecdd3"
-                          stroke="#020617"
-                          strokeWidth={3}
-                          paintOrder="stroke"
-                        >
-                          {truncate(edge.label, 22)}
-                        </text>
-                      );
-                    })}
-                </g>
-                <g>
-                  {layoutNodes.map((node) => {
-                    const active =
-                      selection?.kind === "node"
-                        ? selection.id === node.id
-                        : selectedEdge
-                          ? selectedEdge.source === node.id || selectedEdge.target === node.id
-                          : false;
-                    const dimmed = highlightedIds.size > 0 && !highlightedIds.has(node.id);
-                    const matched = filtered.matching.has(node.id);
-                    const showLabel =
-                      active ||
-                      matched ||
-                      topLabelIds.has(node.id) ||
-                      (node.type !== "day" && node.size >= 17);
-                    return (
-                      <g
-                        key={node.id}
-                        role="button"
-                        aria-label={`${NODE_LABELS[node.type]} ${node.label}`}
-                        tabIndex={0}
-                        onClick={() => setSelection({ kind: "node", id: node.id })}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setSelection({ kind: "node", id: node.id });
-                          }
-                        }}
-                        className="cursor-pointer"
-                      >
-                        <NodeShape node={node} active={active} dimmed={dimmed} />
-                        {showLabel && (
-                          <text
-                            x={node.x}
-                            y={node.y + node.r + 13}
-                            textAnchor="middle"
-                            className="pointer-events-none select-none text-[11px] font-medium"
-                            fill={dimmed ? "#64748b" : "#f8fafc"}
-                            stroke="#020617"
-                            strokeWidth={4}
-                            paintOrder="stroke"
-                          >
-                            {truncate(node.label, node.type === "day" ? 10 : 24)}
-                          </text>
-                        )}
-                      </g>
-                    );
-                  })}
-                </g>
-              </svg>
+              <ForceGraph
+                className="h-[72vh] min-h-[480px] w-full sm:h-[680px]"
+                nodes={filtered.nodes}
+                edges={filtered.edges}
+                colors={NODE_COLORS}
+                selectedId={selectedNodeId}
+                highlightedIds={highlightedIds}
+                labelIds={labelIds}
+                onSelect={(id) =>
+                  setSelection(id ? { kind: "node", id } : null)
+                }
+              />
             )}
           </div>
         </section>

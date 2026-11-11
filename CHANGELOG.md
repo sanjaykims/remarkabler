@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-11 (Graph: Obsidian-style interactive graph; Chat page removed)
+
+- `/graph` is now an Obsidian-style force-directed graph (`app/graph/ForceGraph.tsx`,
+  canvas + `d3-force`): nodes repel, links pull, drag a node to pull its
+  neighbours, drag the background to pan, wheel / two-finger pinch to zoom, tap a
+  node to highlight it and its neighbours (others dim), labels fade in as you
+  zoom. Filters, search, metrics and the inspector are unchanged. Replaces the
+  fixed-anchor SVG layout.
+- Removed the Chat menu item and the `/chat` page. The home page's chat links now
+  point to the graph. Backend is untouched (`/api/chat`, chat memory, MCP tools).
+- Checked: typecheck, lint on `app/graph`, `npm test` (714 pass), and the graph
+  rendered in a scratch browser page. Full `npm run build` not run; verify on the
+  deployed app.
+
 ## 2026-11-11 (UI: page content now lines up with the menu on phones)
 
 Page content (e.g. the Memory page heading, text and boxes) touched the screen

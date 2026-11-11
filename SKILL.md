@@ -179,7 +179,7 @@ Companion docs — read in order if any is unfamiliar:
 |---|---|
 | `/` | Dashboard. Counts, recent notebooks, latest insight. Fires `runMaintenanceSweep` on load. |
 | `/notebooks` | Upload PDFs. Per-notebook expand → status + transcribed pages. Delete. |
-| `/chat` | Conversational chat with Claude over the profile. Image/PDF attachments. Voice in/out (Android). Clear button (= archive + chat-memory extraction). Tools include `top_entities` (aggregate "who/where/what do I mention most?") and `pages_for_entity` (drill down to actual pages for a named entity). |
+| `/chat` (REMOVED 2026-11-11; `/api/chat` kept) | Former conversational chat with Claude over the profile. Image/PDF attachments. Voice in/out (Android). Clear button (= archive + chat-memory extraction). Tools include `top_entities` (aggregate "who/where/what do I mention most?") and `pages_for_entity` (drill down to actual pages for a named entity). |
 | `/insights` | History of reflections. "Generate now" button (Opus). |
 | `/mind` | Heatmap (6 months) + theme cloud + "Who, where, what" (top people/places/projects) + sentiment timeline + 3D embedding map (`Map3D.tsx`). Axis labels under the map. "Re-analyse" / "Re-label" / "Merge duplicate names" / "Merge specific names" / "Build life wiki" buttons. |
 | `/graph` | Interactive native diary graph. Renders entities, diary days, exported Claude notes, co-occurrence links, typed relationships, filters/search, highlighting, and source evidence. |

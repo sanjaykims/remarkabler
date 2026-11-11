@@ -90,8 +90,8 @@ export default function Home() {
         <LinkButton href="/notebooks" variant="primary">
           Add a notebook
         </LinkButton>
-        <LinkButton href="/chat" variant="secondary">
-          Chat with your notes
+        <LinkButton href="/graph" variant="secondary">
+          Open the graph
         </LinkButton>
       </section>
 
@@ -110,8 +110,8 @@ export default function Home() {
               Claude transcribes each page.
             </li>
             <li>
-              <Link className="underline" href="/chat">
-                Chat with your notes →
+              <Link className="underline" href="/graph">
+                Explore the graph →
               </Link>
             </li>
           </ol>

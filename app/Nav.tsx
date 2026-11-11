@@ -27,7 +27,6 @@ import LockAllButton from "./LockAllButton";
 // and up; on `sm` and wider it reverts to text-xs and left-aligned.
 const LINKS = [
   { href: "/notebooks", label: "Notebooks" },
-  { href: "/chat", label: "Chat" },
   { href: "/mind", label: "Mind" },
   { href: "/graph", label: "Graph" },
   { href: "/insights", label: "Insights" },

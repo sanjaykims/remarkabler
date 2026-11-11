@@ -598,7 +598,7 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   with optional `?reset=true`), `librarian` (GET-only status for the Phase C
   librarian agent's heartbeat — see `lib/conversationEntities.ts`; no POST,
   the app doesn't run the agent itself).
-- UI pages (`app/*`): `notebooks`, `chat`, `insights`, `mind` (heatmap, theme
+- UI pages (`app/*`): `notebooks`, `graph` (Obsidian-style force-directed canvas, `app/graph/ForceGraph.tsx`; the in-app `/chat` page was removed 2026-11-11 — `/api/chat` + chat memory remain), `insights`, `mind` (heatmap, theme
   cloud, mood timeline, 3D embedding map — `app/mind/Map3D.tsx`), `memory`,
   `usage` (cost calendar).
 - `app/share/route.ts` — PWA Web Share Target; `public/manifest.json` — PWA
