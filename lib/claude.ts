@@ -185,8 +185,24 @@ const PROFILE_FORMAT = [
 /** Build the first profile of the person from their full notes corpus. */
 export async function buildSelfModel(opts: {
   notesContext: string;
+  /**
+   * Saved Claude sessions + the Obsidian vault folders Records and claude's lens
+   * (lib/insightSources.ts). When omitted they are fetched here, fail-soft, so
+   * every full profile build sees the full data context.
+   */
+  extraContext?: string;
 }): Promise<string> {
   const insights = recentInsightsBlock();
+  let extra = opts.extraContext;
+  if (extra === undefined) {
+    try {
+      // Dynamic import: insightSources -> dropbox -> notes -> claude would be a cycle.
+      const { buildInsightExtraContext } = await import("./insightSources");
+      extra = (await buildInsightExtraContext()).text;
+    } catch {
+      extra = "";
+    }
+  }
   const resp = await client().messages.create({
     model: modelMain(),
     max_tokens: 2048,
@@ -194,6 +210,11 @@ export async function buildSelfModel(opts: {
       "You are building a private, evolving profile of a person from their",
       "personal diary, so that an assistant can understand them deeply without",
       "re-reading everything each time.",
+      "Their own diary and their own Records notes are the primary evidence.",
+      "Saved sessions with Claude and Claude's Lens entries are Claude's earlier",
+      "observations and interpretations of them: use them as supporting context",
+      "and for things the person said in conversation, but do not treat an",
+      "earlier interpretation as established fact, and do not just echo it.",
       PROFILE_FORMAT,
     ].join("\n"),
     messages: [
@@ -205,6 +226,7 @@ export async function buildSelfModel(opts: {
           "=== MY DIARY ===",
           opts.notesContext,
           "=== END DIARY ===",
+          ...(extra && extra.trim() ? ["", extra.trim()] : []),
           ...(insights
             ? [
                 "",

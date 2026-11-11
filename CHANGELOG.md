@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-11 (Memory: full profile builds read the whole data context)
+
+"Rebuild from notes" (and any first-time profile build) now gives Claude your
+diary plus, as supporting evidence, the saved Claude sessions (conversations,
+reflections, decisions) and your Dropbox `Records` and `claude's lens` notes (same
+source as Insights; `buildSelfModel` fetches them itself, fail-soft). The prompt
+treats your own diary/Records as primary and Claude's Lens/sessions as earlier
+interpretations, not facts, so the profile doesn't just echo past reflections.
+Small incremental updates (one new entry) are unchanged; use Rebuild to fold
+vault notes in. Typecheck, lint and tests pass; the live Dropbox read is
+unverified without credentials.
+
 ## 2026-11-11 (Graph: Records and claude's lens notes appear as nodes)
 
 The graph now includes your Obsidian vault notes from `Records` (orange) and
