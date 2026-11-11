@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-11 (Graph: Records and claude's lens notes appear as nodes)
+
+The graph now includes your Obsidian vault notes from `Records` (orange) and
+`claude's lens` (magenta), read live and read-only from Dropbox (same folders and
+`insights_dropbox_folders` setting as Insights; up to 80 newest notes per folder,
+10-minute cache). Each note links to the diary day matching its date and to every
+person/place/project whose name it mentions (plain text or wikilink); both have
+filter toggles. If Dropbox can't be read, the graph still loads and says so.
+New `lib/vaultGraph.ts` + `test/vaultGraph.test.ts`. The live Dropbox read is
+unverified without credentials; check the deployed Graph page.
+
 ## 2026-11-11 (Insights: also read saved Claude sessions, Records and claude's lens)
 
 "Generate insights" (and the weekly auto-insight) now also feed Claude:

@@ -704,6 +704,78 @@ async function listTextFilesRecursive(folder: string): Promise<TextEntry[]> {
   return out;
 }
 
+export type DropboxTextFile = {
+  folder: string;
+  /** Dropbox display path of the note. */
+  path: string;
+  name: string;
+  modified: string;
+  /** Start of the note's text, clipped to `perFileChars`. */
+  text: string;
+};
+
+let textFilesCache: { key: string; at: number; value: DropboxTextFile[] } | null = null;
+
+/**
+ * Structured variant of readDropboxTextFolders for the graph: one entry per
+ * note (newest first within each folder, at most `perFolderMax`). Read-only,
+ * fail-soft (returns what it could read), cached for a few minutes.
+ */
+export async function readDropboxTextFiles(
+  folders: string[],
+  opts: { perFolderMax?: number; perFileChars?: number } = {}
+): Promise<{ files: DropboxTextFile[]; error?: string }> {
+  const perFolderMax = opts.perFolderMax ?? 80;
+  const perFile = opts.perFileChars ?? 4_000;
+  if (!dropboxConnected()) return { files: [], error: "Dropbox isn't connected." };
+  const key = `${folders.join("|")}:${perFolderMax}:${perFile}`;
+  if (
+    textFilesCache &&
+    textFilesCache.key === key &&
+    Date.now() - textFilesCache.at < TEXT_FOLDER_CACHE_MS
+  ) {
+    return { files: textFilesCache.value };
+  }
+  let firstError: string | undefined;
+  const out: DropboxTextFile[] = [];
+  for (const folder of folders) {
+    let entries: TextEntry[];
+    try {
+      entries = (await listTextFilesRecursive(folder)).slice(0, perFolderMax);
+    } catch (e) {
+      firstError = firstError || `${folder}: ${(e as Error).message}`;
+      continue;
+    }
+    for (let i = 0; i < entries.length; i += 4) {
+      const batch = entries.slice(i, i + 4);
+      const texts = await Promise.all(
+        batch.map(async (en) => {
+          try {
+            return new TextDecoder("utf-8").decode(await downloadFile(en.path));
+          } catch {
+            return null;
+          }
+        })
+      );
+      batch.forEach((en, j) => {
+        const raw = texts[j];
+        if (!raw || !raw.trim()) return;
+        out.push({
+          folder,
+          path: en.display,
+          name: en.display.split("/").pop() || en.display,
+          modified: en.modified,
+          text: raw.trim().slice(0, perFile),
+        });
+      });
+    }
+  }
+  if (out.length > 0 || !firstError) {
+    textFilesCache = { key, at: Date.now(), value: out };
+  }
+  return { files: out, ...(firstError && out.length === 0 ? { error: firstError } : {}) };
+}
+
 export async function readDropboxTextFolders(
   folders: string[],
   opts: { maxChars?: number; perFileChars?: number } = {}

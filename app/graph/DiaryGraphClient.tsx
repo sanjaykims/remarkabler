@@ -24,6 +24,8 @@ const NODE_TYPES: DiaryGraphNodeType[] = [
   "conversation",
   "reflection",
   "decision",
+  "record",
+  "lens",
 ];
 
 const EDGE_TYPES: DiaryGraphEdgeType[] = [
@@ -40,6 +42,8 @@ const NODE_LABELS: Record<DiaryGraphNodeType, string> = {
   conversation: "Conversations",
   reflection: "Reflections",
   decision: "Decisions",
+  record: "Records",
+  lens: "Claude's lens",
 };
 
 const EDGE_LABELS: Record<DiaryGraphEdgeType, string> = {
@@ -56,6 +60,8 @@ const NODE_COLORS: Record<DiaryGraphNodeType, string> = {
   conversation: "#fb7185",
   reflection: "#a78bfa",
   decision: "#84cc16",
+  record: "#fb923c",
+  lens: "#e879f9",
 };
 
 const EDGE_COLORS: Record<DiaryGraphEdgeType, string> = {
@@ -451,6 +457,12 @@ export default function DiaryGraphClient({
             People, places, projects, diary days, exported conversations, reflections,
             decisions, and the typed links between them.
           </p>
+          {(graph as { vaultError?: string }).vaultError && (
+            <p className="mt-1 max-w-2xl text-xs text-amber-600 dark:text-amber-400">
+              Couldn&apos;t read your Records / claude&apos;s lens folders from
+              Dropbox: {(graph as { vaultError?: string }).vaultError}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <p className="font-mono text-[11px] text-slate-500">

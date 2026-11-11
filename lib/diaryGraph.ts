@@ -23,11 +23,12 @@ import { decisionNoteFileName, type SavedDecisionRow } from "./decisionWiki";
 
 export type EntityKind = "person" | "place" | "project";
 export type ContentKind = "conversation" | "reflection" | "decision";
-export type DiaryGraphNodeType = EntityKind | "day" | ContentKind;
+export type VaultNoteKind = "record" | "lens";
+export type DiaryGraphNodeType = EntityKind | "day" | ContentKind | VaultNoteKind;
 export type DiaryGraphEdgeType = "mentions" | "co_occurs" | "relationship";
 
 export type DiaryGraphEvidence = {
-  kind: "diary" | ContentKind | "relationship";
+  kind: "diary" | ContentKind | VaultNoteKind | "relationship";
   label: string;
   date?: string | null;
   pageId?: string;
@@ -898,6 +899,8 @@ export function buildDiaryGraph(options: DiaryGraphOptions = {}): DiaryGraphPayl
     conversation: 4,
     reflection: 5,
     decision: 6,
+    record: 7,
+    lens: 8,
   };
   nodes.sort(
     (a, b) =>
