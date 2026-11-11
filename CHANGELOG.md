@@ -9,6 +9,15 @@ still wrapped onto a third line at 360px wide. The gap between menu items is now
 wordmark. Sized from a real phone screenshot (links ~232px + Lock all ~38px of
 ~328px available); still wraps as a fallback on a narrower screen.
 
+Same day, after seeing the result on a phone: the row stopped short of the right
+edge, so the link text now scales with the screen width
+(`clamp(11px, 3.2vw, 13px)`) and the items are spread with `justify-between`, so
+the row runs edge to edge. From `sm` up it reverts to `text-xs`, left-aligned,
+as before. Checked in headless Chromium with the real Clear Sans font at
+360–430px wide: two rows (wordmark, then all links + Lock all) with the last item
+flush to the right edge; at ~340px "Lock all" still wraps. Not a full `npm run
+build`; verify on the deployed app.
+
 ## 2026-11-11 (UI: show every top-menu item at once on phones)
 
 On a narrow phone screen the top menu (`app/Nav.tsx`) was a single row with

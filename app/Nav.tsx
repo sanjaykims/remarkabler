@@ -19,6 +19,12 @@ import LockAllButton from "./LockAllButton";
 // ~270px of the ~328px available, and the old 12px gap pushed Lock all onto a
 // third line. They still wrap as a fallback on an even narrower screen. From
 // `sm` up it is the original single row with the original 12px gap.
+//
+// The link text scales with the screen (clamp(11px, 3.2vw, 13px)) so the row
+// is as large as will fit on any phone, and `justify-between` spreads the
+// items evenly so the row runs edge to edge instead of leaving a gap on the
+// right. 3.2vw was sized so text + the 6px minimum gaps still fit at ~360px
+// and up; on `sm` and wider it reverts to text-xs and left-aligned.
 const LINKS = [
   { href: "/notebooks", label: "Notebooks" },
   { href: "/chat", label: "Chat" },
@@ -33,7 +39,7 @@ export default function Nav({ showLockAll = false }: { showLockAll?: boolean }) 
   const pathname = usePathname();
 
   return (
-    <nav className="mx-auto max-w-5xl px-4 py-3 flex flex-wrap items-center gap-x-1.5 sm:gap-x-3 gap-y-1.5 text-xs whitespace-nowrap">
+    <nav className="mx-auto max-w-5xl px-4 py-3 flex flex-wrap items-center justify-between sm:justify-start gap-x-1.5 sm:gap-x-3 gap-y-1.5 text-[length:clamp(11px,3.2vw,13px)] sm:text-xs whitespace-nowrap">
       <TransitionLink
         href="/"
         aria-current={pathname === "/" ? "page" : undefined}
