@@ -63,9 +63,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <header className="border-b border-slate-200 dark:border-slate-800 pt-safe pl-safe pr-safe">
                 <Nav showLockAll={lockEnabled} />
               </header>
-              <main className="mx-auto max-w-5xl px-4 sm:px-6 py-6 sm:py-8 pl-safe pr-safe pb-safe">
-                {children}
-              </main>
+              {/* Safe-area insets live on an OUTER wrapper so they add to the
+                  inner px-4 instead of overriding it (.pl-safe/.pr-safe set
+                  padding-left/right and used to zero out px-4 on phones).
+                  px-4 matches Nav's own px-4 so content aligns with the menu. */}
+              <div className="pl-safe pr-safe pb-safe">
+                <main className="mx-auto max-w-5xl px-4 py-6 sm:py-8">
+                  {children}
+                </main>
+              </div>
               {lockEnabled && <AutoLock />}
             </>
           ) : (

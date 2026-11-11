@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-11 (UI: page content now lines up with the menu on phones)
+
+Page content (e.g. the Memory page heading, text and boxes) touched the screen
+edges while the menu was inset 16px. Cause: `.pl-safe`/`.pr-safe` (safe-area
+padding) were on the same element as `px-4` and overrode it. They now sit on an
+outer wrapper in `app/layout.tsx`, with `px-4` on the inner `<main>`, so the
+safe-area inset adds to the 16px instead of replacing it. Desktop padding
+changed from `sm:px-6` to `px-4` so content also matches the menu's `px-4`.
+Not run through `npm run build`; verify on the deployed app.
+
 ## 2026-11-11 (UI: tighten phone menu so links + Lock all share one row)
 
 Follow-up to the entry below. The first fix showed all seven links, but "Lock all"
