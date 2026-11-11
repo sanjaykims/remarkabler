@@ -11,6 +11,11 @@ import LockAllButton from "./LockAllButton";
 // row from shifting when active changes. Links use TransitionLink so
 // navigating between pages cross-fades (View Transitions) instead of
 // snapping.
+//
+// Every item must be visible at once on a phone — no sideways scrolling.
+// On small screens the wordmark takes its own line (basis-full) and the
+// links sit below it, wrapping to a second row only if the screen is too
+// narrow for all of them. From `sm` up it is the original single row.
 const LINKS = [
   { href: "/notebooks", label: "Notebooks" },
   { href: "/chat", label: "Chat" },
@@ -25,12 +30,12 @@ export default function Nav({ showLockAll = false }: { showLockAll?: boolean }) 
   const pathname = usePathname();
 
   return (
-    <nav className="mx-auto max-w-5xl px-4 py-3 flex items-center gap-x-3 text-xs whitespace-nowrap overflow-x-auto">
+    <nav className="mx-auto max-w-5xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs whitespace-nowrap">
       <TransitionLink
         href="/"
         aria-current={pathname === "/" ? "page" : undefined}
         className={cn(
-          "text-base font-semibold tracking-tight border-b-2 mr-1",
+          "text-base font-semibold tracking-tight border-b-2 mr-1 basis-full sm:basis-auto",
           pathname === "/"
             ? "border-sky-600 dark:border-sky-500"
             : "border-transparent"

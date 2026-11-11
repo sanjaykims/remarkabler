@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-11 (UI: show every top-menu item at once on phones)
+
+On a narrow phone screen the top menu (`app/Nav.tsx`) was a single row with
+`overflow-x-auto whitespace-nowrap`, so the links after "Insights" (Memory,
+Cost, and the Lock button when shown) were cut off and needed a sideways swipe
+to reach.
+
+The nav now wraps instead of scrolling. On small screens the "Remarkabler"
+wordmark takes its own line (`basis-full`) and the seven links sit below it;
+they wrap to a second row only if the screen is too narrow for all of them.
+From the `sm` breakpoint up it is the original single row, unchanged.
+
+Not run through `npm run build` or checked in a browser at phone width in the
+session that made this change — verify on the deployed app.
+
 ## 2026-08-25 (Fix: a skipped export is not a completed repair)
 
 `maybeReconcileRelationshipExportRace` is a one-shot repair for entity stubs
