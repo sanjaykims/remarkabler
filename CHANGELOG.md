@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-11 (Insights: also read saved Claude sessions, Records and claude's lens)
+
+"Generate insights" (and the weekly auto-insight) now also feed Claude:
+- **Saved sessions with Claude** already in the app: conversations,
+  reflections and decision records (newest first, bounded to ~40k chars).
+- **Your Obsidian vault folders `Records` and `claude's lens`**, read live and
+  read-only from Dropbox at generate time (`readDropboxTextFolders` in
+  `lib/dropbox.ts`; .md/.txt only, newest first, ~60k chars, 10-minute cache).
+  Default paths are `/Apps/remotely-save/Diary/Records` and
+  `.../claude's lens`; override with the `insights_dropbox_folders` setting
+  (one path per line). Needs the Dropbox connection to reach those paths; if it
+  can't, Insights still run and the page says the folders couldn't be read.
+- New `lib/insightSources.ts`; after generating, the Insights page shows what was
+  also read. Typecheck, lint and `npm test` pass; the Dropbox read itself could
+  not be tested without live credentials — verify on the deployed app.
+
 ## 2026-11-11 (Graph: map fits the screen width on phones)
 
 The graph panel ran off the right edge of the screen: the canvas's fixed pixel

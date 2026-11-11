@@ -31,6 +31,7 @@ export default function InsightsPage() {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sourcesNote, setSourcesNote] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [weeklyEnabled, setWeeklyEnabled] = useState<boolean | null>(null);
   const [togglingWeekly, setTogglingWeekly] = useState(false);
@@ -68,11 +69,24 @@ export default function InsightsPage() {
     if (generating) return;
     setGenerating(true);
     setError(null);
+    setSourcesNote(null);
     try {
       const r = await fetch("/api/insights", { method: "POST" });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Failed to generate insights");
       track("insight_generated");
+      if (d.sources) {
+        const bits = [
+          `${d.sources.sessions} saved Claude session${d.sources.sessions === 1 ? "" : "s"}`,
+          `${d.sources.vaultFiles} Records / claude's lens note${d.sources.vaultFiles === 1 ? "" : "s"}`,
+        ];
+        setSourcesNote(
+          `Also read: ${bits.join(" and ")}.` +
+            (d.sources.vaultError
+              ? ` Couldn't read Dropbox folders (${d.sources.vaultError}).`
+              : "")
+        );
+      }
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -173,6 +187,9 @@ export default function InsightsPage() {
       )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {sourcesNote && (
+        <p className="text-xs text-slate-600 dark:text-slate-400">{sourcesNote}</p>
+      )}
       {generating && (
         <p className="text-sm opacity-70">
           Reading your notes and reflecting — this takes a few seconds…

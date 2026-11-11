@@ -636,6 +636,150 @@ async function downloadFile(path: string): Promise<Uint8Array> {
   return new Uint8Array(buf);
 }
 
+// ---- Read-only text-folder reader (feeds Insights) -------------------------
+// Reads the text notes (.md/.txt) under a few Dropbox folders, newest first,
+// within a character budget. Read-only (files.metadata.read + files.content.read,
+// already required for ingest). Fail-soft: never throws; returns the error.
+export type DropboxTextFolderRead = {
+  /** Folder-labelled text blocks, newest first within each folder. */
+  text: string;
+  files: number;
+  /** First problem hit (not connected / folder not found / no access), if any. */
+  error?: string;
+};
+
+type TextEntry = { path: string; display: string; modified: string; size: number };
+
+let textFolderCache: { key: string; at: number; value: DropboxTextFolderRead } | null =
+  null;
+const TEXT_FOLDER_CACHE_MS = 10 * 60 * 1000;
+
+async function listTextFilesRecursive(folder: string): Promise<TextEntry[]> {
+  const token = await getAccessToken();
+  const out: TextEntry[] = [];
+  let cursor: string | null = null;
+  do {
+    const url: string = cursor
+      ? "https://api.dropboxapi.com/2/files/list_folder/continue"
+      : "https://api.dropboxapi.com/2/files/list_folder";
+    const body = cursor
+      ? { cursor }
+      : { path: folder, recursive: true, include_deleted: false, limit: 2000 };
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      throw new DropboxApiError(resp.status, await parseErrorSummary(resp));
+    }
+    const data = (await resp.json()) as {
+      entries: Array<{
+        ".tag": string;
+        path_display?: string;
+        path_lower?: string;
+        server_modified?: string;
+        size?: number;
+      }>;
+      cursor?: string;
+      has_more?: boolean;
+    };
+    for (const e of data.entries) {
+      if (e[".tag"] !== "file") continue;
+      const display = e.path_display || e.path_lower || "";
+      if (!/\.(md|txt)$/i.test(display)) continue;
+      out.push({
+        path: e.path_lower || display,
+        display,
+        modified: e.server_modified || "",
+        size: e.size || 0,
+      });
+    }
+    cursor = data.has_more ? data.cursor || null : null;
+  } while (cursor);
+  out.sort((a, b) => (a.modified < b.modified ? 1 : a.modified > b.modified ? -1 : 0));
+  return out;
+}
+
+export async function readDropboxTextFolders(
+  folders: string[],
+  opts: { maxChars?: number; perFileChars?: number } = {}
+): Promise<DropboxTextFolderRead> {
+  const maxChars = opts.maxChars ?? 60_000;
+  const perFile = opts.perFileChars ?? 6_000;
+  if (!dropboxConnected()) {
+    return { text: "", files: 0, error: "Dropbox isn't connected." };
+  }
+  const key = `${folders.join("|")}:${maxChars}:${perFile}`;
+  if (
+    textFolderCache &&
+    textFolderCache.key === key &&
+    Date.now() - textFolderCache.at < TEXT_FOLDER_CACHE_MS
+  ) {
+    return textFolderCache.value;
+  }
+
+  let firstError: string | undefined;
+  const blocks: string[] = [];
+  let used = 0;
+  let files = 0;
+  const perFolderBudget = Math.floor(maxChars / Math.max(1, folders.length));
+
+  for (const folder of folders) {
+    let entries: TextEntry[];
+    try {
+      entries = await listTextFilesRecursive(folder);
+    } catch (e) {
+      // DropboxApiError's message is already the sanitized safeDropboxError text.
+      firstError = firstError || `${folder}: ${(e as Error).message}`;
+      continue;
+    }
+    let folderUsed = 0;
+    // Download in small parallel batches, newest first, until the budget is spent.
+    for (let i = 0; i < entries.length && folderUsed < perFolderBudget; i += 4) {
+      const batch = entries.slice(i, i + 4);
+      const texts = await Promise.all(
+        batch.map(async (en) => {
+          try {
+            const bytes = await downloadFile(en.path);
+            return new TextDecoder("utf-8").decode(bytes);
+          } catch {
+            return null;
+          }
+        })
+      );
+      for (let j = 0; j < batch.length; j++) {
+        const raw = texts[j];
+        if (!raw || !raw.trim()) continue;
+        const trimmed = raw.trim();
+        const clipped =
+          trimmed.length > perFile ? `${trimmed.slice(0, perFile)}\n[…clipped]` : trimmed;
+        const block = `--- ${batch[j].display} (${batch[j].modified.slice(0, 10)}) ---\n${clipped}\n`;
+        if (folderUsed + block.length > perFolderBudget) {
+          folderUsed = perFolderBudget; // stop this folder
+          break;
+        }
+        blocks.push(block);
+        folderUsed += block.length;
+        used += block.length;
+        files++;
+      }
+    }
+  }
+
+  const value: DropboxTextFolderRead = {
+    text: blocks.join("\n").trim(),
+    files,
+    ...(firstError && files === 0 ? { error: firstError } : {}),
+  };
+  if (!value.error) textFolderCache = { key, at: Date.now(), value };
+  void used;
+  return value;
+}
+
 // Upload (overwrite) a UTF-8 text file to Dropbox. Requires the
 // files.content.write scope — a scope the app does NOT request by default
 // (least privilege). If the user hasn't enabled it in the Dropbox app

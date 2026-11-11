@@ -2,6 +2,7 @@ import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
 import { db, getSetting, setSetting } from "./db";
+import { buildInsightExtraContext } from "./insightSources";
 import { ocrNotebookPdf, buildSelfModel, updateSelfModel, generateInsights, generateInsightTitle, summarizeDay } from "./claude";
 import { embedBatch, embedBatchOrThrow, embeddingsEnabled, encodeEmbedding } from "./embeddings";
 import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
@@ -1096,12 +1097,14 @@ export function maybeGenerateWeeklyInsight(): void {
     try {
       const notesContext = buildNotesContext();
       const chatContext = buildChatContext();
+      const extra = await buildInsightExtraContext().catch(() => null);
       const priorRows = db()
         .prepare(`SELECT content FROM insights ORDER BY id DESC LIMIT 3`)
         .all() as Array<{ content: string }>;
       const content = await generateInsights({
         notesContext,
         chatContext,
+        extraContext: extra?.text,
         priorInsights: priorRows.map((r) => r.content),
       });
       if (!content.trim()) return;

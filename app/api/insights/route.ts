@@ -3,6 +3,7 @@ import { db, getSetting, setSetting, clearSetting } from "@/lib/db";
 import { buildNotesContext, buildChatContext } from "@/lib/notes";
 import { generateInsights, generateInsightTitle } from "@/lib/claude";
 import { isAuthenticated } from "@/lib/auth";
+import { buildInsightExtraContext } from "@/lib/insightSources";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -101,6 +102,7 @@ export async function POST() {
 
   const notesContext = buildNotesContext();
   const chatContext = buildChatContext();
+  const extra = await buildInsightExtraContext().catch(() => null);
   const priorRows = db()
     .prepare(`SELECT content FROM insights ORDER BY id DESC LIMIT 3`)
     .all() as Array<{ content: string }>;
@@ -110,6 +112,7 @@ export async function POST() {
     content = await generateInsights({
       notesContext,
       chatContext,
+      extraContext: extra?.text,
       priorInsights: priorRows.map((r) => r.content),
     });
   } catch (err) {
@@ -140,5 +143,15 @@ export async function POST() {
     .prepare(`SELECT id, title, content, created_at FROM insights WHERE id = ?`)
     .get(info.lastInsertRowid);
 
-  return NextResponse.json({ ok: true, insight });
+  return NextResponse.json({
+    ok: true,
+    insight,
+    sources: extra
+      ? {
+          sessions: extra.sessions,
+          vaultFiles: extra.vaultFiles,
+          vaultError: extra.vaultError,
+        }
+      : undefined,
+  });
 }

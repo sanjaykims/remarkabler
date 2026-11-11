@@ -58,6 +58,7 @@ Companion docs — read in order if any is unfamiliar:
 | `mcpOauth.ts` | Minimal OAuth 2.1 server for the claude.ai connector (DCR + PKCE-S256, opaque tokens stored hashed, consent reuses `MCP_AUTH_TOKEN`). |
 | `conversationWiki.ts` / `conversationEntities.ts` | Phase B/C: store + verbatim-note renderer for exported subscription-conversations (`mcp_conversations`), and the "librarian" data layer (synthetic pages under `CONVERSATIONS_NOTEBOOK_ID`, `entity_conversation_notes`, heartbeat). |
 | `reflectionWiki.ts` / `reflectionEntities.ts` | Standalone AI-written reflections (`mcp_reflections`, `Reflections/` folder) — 1:1 mirror of the conversation pair, its own table/folder. Entity-linked. |
+| `insightSources.ts` | Extra Insights context: saved conversations/reflections/decisions + live read-only Dropbox `Records` / `claude's lens` folders (setting `insights_dropbox_folders`). Fail-soft. |
 | `decisionWiki.ts` / `decisionEntities.ts` | Decision Records (`mcp_decisions`, `Decisions/` folder) — 1:1 mirror of the reflection pair. Entity-linked. |
 | `chatDiary.ts` | "Chat diary": a REAL diary entry composed by talking to Claude (`save_diary_entry`). Lands in the non-excluded `CHAT_DIARY_NOTEBOOK_ID` and runs the full post-ingest pipeline (embed → profile fold → analyze → day-file export). |
 | `entityTagging.ts` | Guaranteed, app-initiated entity-tagging for conversations/reflections/decisions, gated by `autoTagExportsEnabled()` (`MCP_AUTO_TAG_EXPORTS` layered on `MCP_ALLOW_WIKI_LINKING`). `sampleForTagging` + `autoTag*` + sweep backstops. |

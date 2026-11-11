@@ -1342,6 +1342,8 @@ export async function generateInsightTitle(content: string): Promise<string> {
 export async function generateInsights(opts: {
   notesContext: string;
   chatContext: string;
+  /** Saved sessions with Claude + Obsidian vault notes (lib/insightSources.ts). */
+  extraContext?: string;
   priorInsights: string[];
 }): Promise<string> {
   // Split the system prompt into a CACHEABLE static block (instructions +
@@ -1365,6 +1367,10 @@ export async function generateInsights(opts: {
     "their goals and worries, and anything notable or worth their attention.",
     "Their notes are the main source. Their recent chats with you also count —",
     "what they ask about reveals their current concerns and interests.",
+    "Saved sessions with Claude and notes from their Obsidian vault (Records,",
+    "and Claude's Lens — earlier reflections written about them) may also be",
+    "provided: treat them as additional evidence, and do not simply restate",
+    "what earlier Claude's Lens entries already said.",
     "Be warm, honest, and concrete — point to what they actually wrote or asked.",
     "If previous insights are provided, build on them: note what has changed,",
     "progressed, or recurred, and do not simply repeat earlier observations.",
@@ -1376,6 +1382,7 @@ export async function generateInsights(opts: {
   ].join("\n");
 
   const dynamicContext = [
+    ...(opts.extraContext?.trim() ? [opts.extraContext.trim(), ""] : []),
     ...(opts.chatContext.trim()
       ? [
           "=== THE PERSON'S RECENT CHATS WITH YOU ===",
