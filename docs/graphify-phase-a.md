@@ -39,10 +39,10 @@ bundled assistant skills or reference projects.
 
 ## Current Snapshot
 
-- Built from source commit: `b12d95904973d3b0b368bed687fc95c254dba8c1`
-- Nodes: 1,505
-- Edges: 3,740
-- Communities: 109
+- Built from source commit: `0c6f00275f72d4e56d9c38976773cc9980facbdd`
+- Nodes: 1,997
+- Edges: 5,203
+- Communities: 119
 - Extraction confidence: 3,731 `EXTRACTED`, 9 `INFERRED`
 
 Graphify warned that one JSON/config file produced zero nodes:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-11 (Repo housekeeping: docs and Graphify map brought up to date)
+
+Refreshed the committed Graphify code graph (`graphify-out/`, now 1,997 nodes) to
+match today's changes, and updated `CLAUDE.md`, `SKILL.md` and
+`docs/graphify-phase-a.md` for the new modules (`insightSources`, `vaultGraph`,
+the force-directed `/graph`, removed `/chat` page).
+
 ## 2026-11-11 (Memory: full profile builds read the whole data context)
 
 "Rebuild from notes" (and any first-time profile build) now gives Claude your

@@ -527,6 +527,21 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   path except the write-access probe. This is the obsidian-mind
   knowledge-architecture layer, generated deterministically by Remarkabler
   rather than authored by an external agent (see the sole-writer rule below).
+- `lib/insightSources.ts` — extra context for Insights AND full profile builds:
+  `buildSavedSessionsContext` (saved `mcp_conversations`/`mcp_reflections`/
+  `mcp_decisions`, newest first, bounded) + `readDropboxTextFolders` (live,
+  read-only, cached read of the user's Dropbox vault folders `Records` and
+  `claude's lens`; default `/Apps/remotely-save/Diary/...`, override with the
+  `insights_dropbox_folders` setting) combined by `buildInsightExtraContext`.
+  Fail-soft always; `generateInsights` takes it as `extraContext`, and
+  `buildSelfModel` fetches it itself (dynamic import — insightSources →
+  dropbox → notes → claude would be a cycle). The profile prompt treats the
+  diary/Records as primary evidence and Claude's Lens/sessions as earlier
+  interpretations, not facts. Incremental `updateSelfModel` is unchanged.
+- `lib/vaultGraph.ts` — `addVaultNotesToGraph`: adds those same Dropbox notes to
+  `/graph` as `record` / `lens` nodes (`readDropboxTextFiles`, 80 newest per
+  folder), linked to the matching diary day and to every person/place/project
+  whose name appears in the note. Fail-soft; unit-tested with a mocked reader.
 - `lib/notebookDedup.ts` (pure: `classifyDuplicate`, `buildCloudCoverage`,
   `buildCandidate`) + `lib/notebookDedupDb.ts` (DB-backed
   `findDuplicateCandidates`) — flags old (Dropbox-ingested or manually
