@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-12 (Security: encrypted off-site backups)
+
+The GitHub backup is now AES-256-GCM encrypted before it leaves the server, so a
+stolen GitHub account or token can no longer read the diary. Set
+`BACKUP_PASSPHRASE` (12+ characters) in Railway; without it backups **pause** (they
+never fall back to plaintext). New backups are `backups/<stamp>.tar.gz.enc`.
+`/memory` shows encryption status and an "Encrypt older backups" button that
+converts existing plaintext backups (encrypted copy uploaded and verified before
+the plaintext file is removed). `scripts/decrypt-backup.mjs` restores a backup
+without the app. Caveat: GitHub keeps old commits, so old plaintext can remain in
+the repo's history until the repo is recreated or purged. Keep the passphrase
+somewhere safe: lose it and the backups can't be opened. Tests added; the real
+GitHub upload/migration can only be verified on the deployed app.
+
 ## 2026-11-11 (Models: Opus 5.5 + Sonnet 5.5 defaults)
 
 Default models are now Opus 5.5 (`claude-opus-5-5`, OCR / profile / insights /

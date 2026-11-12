@@ -74,7 +74,7 @@ and an accumulating record of "insights" about them. It's a long-horizon
 | `usage.ts` | `recordUsage` (per-call cost from list prices) + aggregation for the Cost tab. |
 | `extractText.ts` | Converts PDF/Word chat attachments to text (pdf-parse/mammoth) before sending to Claude — token savings. Handwritten PDFs fall back to raw. |
 | `auth.ts` / `webauthn.ts` | Passcode + passkey (WebAuthn) lock; HMAC cookie plus per-device `app_sessions`; 24h inactivity timeout; local and lock-all revocation. |
-| `backup.ts` | Weekly auto-backup of `/data` to a private GitHub repo, keep-last-12. |
+| `backup.ts` + `backupCrypto.ts` | Weekly auto-backup of `/data` to a private GitHub repo, keep-last-12. Backups are AES-256-GCM encrypted (`BACKUP_PASSPHRASE`) before upload and REFUSE to run without it; `encryptExistingBackups` migrates older plaintext ones; `scripts/decrypt-backup.mjs` restores without the app. |
 | `dropbox.ts` | reMarkable Connect → Dropbox auto-ingest. OAuth refresh-token flow, polling, dedupe by `dropbox_file_id`. Fired from `runMaintenanceSweep`. |
 | `remarkableCloud.ts` / `rmRender.ts` / `remarkableImport.ts` / `remarkableSync.ts` | reMarkable-cloud secondary source (rmapi-js, unofficial). Pair + list (Phase 0); `downloadNotebook` + `.rm`→PDF render (rm2pdf/pypdf, image-only) + on-demand import, dedupe by `remarkable_doc_id` (Phase 1b); sweep-driven zero-tap sync with per-page sha256 diffing over imported notebooks + auto-sync folders (Phase 2). |
 | `owntracks.ts` / `location.ts` / `format.ts` | Location ingestion (OwnTracks endpoint), stay clustering, reverse-geocoding via Nominatim, KST timezone helpers. |

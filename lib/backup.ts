@@ -3,6 +3,13 @@ import path from "path";
 import { execSync } from "child_process";
 import Database from "better-sqlite3";
 import { db, DATA_DIR, getSetting, setSetting, clearSetting } from "./db";
+import {
+  backupPassphrase,
+  decryptBackup,
+  encryptBackup,
+  ENCRYPTED_SUFFIX,
+  isEncryptedBackup,
+} from "./backupCrypto";
 
 // Settings keys whose values must NEVER leave Railway in a backup. The
 // staged DB copy gets these rows deleted before tar/push; the live DB is
@@ -110,6 +117,8 @@ export type BackupStatus = {
   lastAttemptAt: string | null;
   lastError: string | null;
   lastSizeBytes: number | null;
+  /** BACKUP_PASSPHRASE is set (>= 12 chars). Without it backups REFUSE to run. */
+  encryptionConfigured: boolean;
 };
 
 export function backupStatus(): BackupStatus {
@@ -121,6 +130,7 @@ export function backupStatus(): BackupStatus {
     lastAttemptAt: getSetting("backup_last_attempt_at"),
     lastError: getSetting("backup_last_error"),
     lastSizeBytes: sizeStr ? Number(sizeStr) || null : null,
+    encryptionConfigured: backupPassphrase() !== null,
   };
 }
 
@@ -155,7 +165,11 @@ async function listBackups(): Promise<RepoFile[]> {
     if (!resp.ok) return [];
     const data = (await resp.json()) as RepoFile[];
     return data
-      .filter((f) => f.type === "file" && f.name.endsWith(".tar.gz"))
+      .filter(
+        (f) =>
+          f.type === "file" &&
+          (f.name.endsWith(ENCRYPTED_SUFFIX) || f.name.endsWith(".tar.gz"))
+      )
       .sort((a, b) => a.name.localeCompare(b.name)); // oldest first
   } catch {
     return [];
@@ -201,6 +215,85 @@ async function pruneOldBackups(): Promise<number> {
     }
   }
   return deleted;
+}
+
+const PLAIN_SUFFIX = ".tar.gz";
+
+function isPlainBackupName(name: string): boolean {
+  return name.endsWith(PLAIN_SUFFIX) && !name.endsWith(ENCRYPTED_SUFFIX);
+}
+
+/** Raw bytes of one repo file (works past the 1 MB JSON `content` limit). */
+async function downloadRepoFile(repoPath: string): Promise<Buffer> {
+  const repo = process.env.BACKUP_REPO;
+  const token = process.env.BACKUP_GITHUB_TOKEN;
+  if (!repo || !token) throw new Error("Backup env vars not set");
+  const resp = await fetch(
+    `https://api.github.com/repos/${repo}/contents/${repoPath}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github.raw+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    }
+  );
+  if (!resp.ok) {
+    throw new Error(`Download failed (${resp.status}) for ${repoPath}`);
+  }
+  return Buffer.from(await resp.arrayBuffer());
+}
+
+export type EncryptExistingResult = {
+  encrypted: number;
+  failed: number;
+  remainingPlain: number;
+};
+
+/**
+ * One-time migration: replace every plaintext `backups/*.tar.gz` already in
+ * the repo with an encrypted `.tar.gz.enc` copy. Order matters: the encrypted
+ * copy is uploaded AND round-trip verified before the plaintext file is
+ * deleted, so a failure can never lose a backup. NOTE: deleting the plaintext
+ * file only removes it from the repo's current tree — GitHub keeps old commits,
+ * so the plaintext can still exist in git history until the repo is recreated
+ * or its history purged. Idempotent; safe to re-run.
+ */
+export async function encryptExistingBackups(): Promise<EncryptExistingResult> {
+  if (!backupConfigured()) {
+    throw new Error("Backup is not configured. Set BACKUP_REPO and BACKUP_GITHUB_TOKEN in Railway.");
+  }
+  const pass = backupPassphrase();
+  if (!pass) {
+    throw new Error(
+      "Set BACKUP_PASSPHRASE (at least 12 characters) in Railway first, then redeploy."
+    );
+  }
+  const plain = (await listBackups()).filter((f) => isPlainBackupName(f.name));
+  let encrypted = 0;
+  let failed = 0;
+  for (const f of plain) {
+    try {
+      const original = await downloadRepoFile(f.path);
+      // A file that is already encrypted under a plaintext name must not be
+      // double-wrapped; skip it and count it as a failure to surface it.
+      if (isEncryptedBackup(original)) throw new Error("already encrypted");
+      const enc = encryptBackup(original, pass);
+      if (!decryptBackup(enc, pass).equals(original)) {
+        throw new Error("round-trip mismatch");
+      }
+      await pushToGithub(
+        enc,
+        `backups/${f.name.slice(0, -PLAIN_SUFFIX.length)}${ENCRYPTED_SUFFIX}`,
+        `Encrypt backup ${f.name}`
+      );
+      await deleteBackupFile(f.path, f.sha, `Remove plaintext backup ${f.name}`);
+      encrypted++;
+    } catch {
+      failed++;
+    }
+  }
+  return { encrypted, failed, remainingPlain: failed };
 }
 
 async function pushToGithub(
@@ -264,6 +357,14 @@ export async function runBackup(): Promise<number> {
   if (!backupConfigured()) {
     throw new Error("Backup is not configured. Set BACKUP_REPO and BACKUP_GITHUB_TOKEN in Railway.");
   }
+  // Fail CLOSED: never upload a readable copy of the diary off-site. A missing
+  // or too-short passphrase stops the backup before anything is staged.
+  const passphrase = backupPassphrase();
+  if (!passphrase) {
+    throw new Error(
+      "Backup encryption is not set up. Add BACKUP_PASSPHRASE (at least 12 characters) in Railway, then redeploy. Backups are paused until then."
+    );
+  }
   const stamp = stampNow();
   const stagingDir = `/tmp/remarkabler-backup-staging-${stamp}`;
   const tarPath = `/tmp/remarkabler-backup-${stamp}.tar.gz`;
@@ -298,11 +399,16 @@ export async function runBackup(): Promise<number> {
     // 3. tar + gzip the whole staging directory.
     execSync(`tar czf "${tarPath}" -C "${stagingDir}" .`, { stdio: "pipe" });
 
-    // 4. Read the archive and push to GitHub.
-    const bytes = fs.readFileSync(tarPath);
+    // 4. Read the archive, ENCRYPT it, verify the round trip, and push only
+    // the ciphertext to GitHub.
+    const plainBytes = fs.readFileSync(tarPath);
+    const bytes = encryptBackup(plainBytes, passphrase);
+    if (!decryptBackup(bytes, passphrase).equals(plainBytes)) {
+      throw new Error("Backup encryption self-check failed; nothing was uploaded.");
+    }
     await pushToGithub(
       bytes,
-      `backups/${stamp}.tar.gz`,
+      `backups/${stamp}${ENCRYPTED_SUFFIX}`,
       `Backup ${stamp}`
     );
 

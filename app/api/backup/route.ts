@@ -3,6 +3,7 @@ import { isAuthenticated } from "@/lib/auth";
 import {
   backupConfigured,
   backupStatus,
+  encryptExistingBackups,
   runBackup,
 } from "@/lib/backup";
 import { setSetting, clearSetting } from "@/lib/db";
@@ -19,8 +20,18 @@ export async function GET() {
   return NextResponse.json(backupStatus());
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   if (!(await isAuthenticated())) return LOCKED();
+  // `{ "action": "encrypt-existing" }` runs the one-time migration of older
+  // plaintext backups; a bodyless POST is the normal "Backup now".
+  const body = (await req.json().catch(() => ({}))) as { action?: string };
+  if (body.action === "encrypt-existing") {
+    try {
+      return NextResponse.json({ ok: true, ...(await encryptExistingBackups()) });
+    } catch (err) {
+      return NextResponse.json({ error: (err as Error).message }, { status: 400 });
+    }
+  }
   if (!backupConfigured()) {
     return NextResponse.json(
       {

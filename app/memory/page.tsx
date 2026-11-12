@@ -70,9 +70,11 @@ export default function MemoryPage() {
     lastAt: string | null;
     lastError: string | null;
     lastSizeBytes: number | null;
+    encryptionConfigured?: boolean;
   };
   const [backup, setBackup] = useState<BackupStatus | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [encryptMsg, setEncryptMsg] = useState<string | null>(null);
 
   type LibrarianStatus = {
     configured: boolean;
@@ -472,6 +474,34 @@ export default function MemoryPage() {
       await loadBackup();
     } catch {
       // surfaced via lastError on the loaded status
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
+  async function encryptOldBackups() {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    setEncryptMsg(null);
+    try {
+      const r = await fetch("/api/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "encrypt-existing" }),
+      });
+      const j = (await r.json().catch(() => ({}))) as {
+        error?: string;
+        encrypted?: number;
+        failed?: number;
+      };
+      setEncryptMsg(
+        j.error
+          ? j.error
+          : `Encrypted ${j.encrypted ?? 0} older backup(s)` +
+              (j.failed ? `; ${j.failed} could not be converted — tap again to retry.` : ".")
+      );
+    } catch {
+      setEncryptMsg("Could not reach the server. Try again.");
     } finally {
       setBackupBusy(false);
     }
@@ -1719,6 +1749,19 @@ export default function MemoryPage() {
                 Last error: {backup.lastError}
               </p>
             )}
+            {backup.encryptionConfigured === false ? (
+              <p className="text-xs text-red-600">
+                Encryption is OFF, so backups are paused. Add{" "}
+                <code>BACKUP_PASSPHRASE</code> (at least 12 characters) in
+                Railway and redeploy. Backups are always encrypted before they
+                leave this server.
+              </p>
+            ) : (
+              <p className="text-xs opacity-70">
+                Encryption: ON (AES-256). Keep your passphrase safe &mdash;
+                without it a backup cannot be opened.
+              </p>
+            )}
             <Button
               onClick={runManualBackup}
               disabled={backupBusy}
@@ -1728,6 +1771,23 @@ export default function MemoryPage() {
             >
               {backupBusy ? "Backing up…" : "Backup now"}
             </Button>
+            {backup.encryptionConfigured !== false && (
+              <div className="space-y-1">
+                <Button
+                  onClick={encryptOldBackups}
+                  disabled={backupBusy}
+                  variant="secondary"
+                  size="xs"
+                  className="px-4 py-2 text-sm"
+                >
+                  Encrypt older backups
+                </Button>
+                <p className="text-xs opacity-60">
+                  One-time: converts backups made before encryption existed.
+                </p>
+                {encryptMsg && <p className="text-xs break-words">{encryptMsg}</p>}
+              </div>
+            )}
           </>
         ) : (
           <p className="text-xs opacity-70 break-words">

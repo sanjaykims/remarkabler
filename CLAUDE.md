@@ -470,6 +470,11 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
 - `lib/backup.ts` — weekly tar.gz backup of `DATA_DIR` to a private GitHub repo
   (`maybeRunWeeklyBackup`, with a failure backoff so a broken backup doesn't
   retry every sweep; manual `runBackup` via `/api/backup` ignores the backoff).
+  Backups are encrypted (`lib/backupCrypto.ts`, AES-256-GCM, scrypt key from
+  `BACKUP_PASSPHRASE`) and pushed as `backups/<stamp>.tar.gz.enc`;
+  `encryptExistingBackups` (POST `/api/backup` `{action:"encrypt-existing"}`,
+  "Encrypt older backups" on `/memory`) converts older plaintext ones;
+  `scripts/decrypt-backup.mjs` restores without the app.
 - `lib/dropbox.ts` — Dropbox auto-ingest: OAuth (refresh-token flow),
   read-only folder polling, dedupe by `notebooks.dropbox_file_id` **plus
   `dropbox_ingest_tombstones`** (the "already seen" set is `ingestSkipFileIds()`
@@ -708,6 +713,18 @@ features need the deployed instance to fully verify.
   WebAuthn `login-verify` is deliberately NOT gated — a forged assertion isn't
   practically guessable, so limiting it would only add self-lockout risk with
   no security benefit.
+- **Off-site backups are ENCRYPTED and fail closed — never upload plaintext.**
+  The GitHub backup repo is a second copy of the whole diary, so a stolen
+  GitHub account/token must not be enough to read it. `runBackup` throws before
+  staging anything if `BACKUP_PASSPHRASE` (>= 12 chars) is missing, encrypts
+  the tarball (AES-256-GCM, scrypt, `RMKB1` header), round-trip verifies, and
+  uploads only ciphertext. Do NOT add a "fall back to plaintext" path, and do
+  not log or store the passphrase. `encryptExistingBackups` uploads + verifies
+  the encrypted copy BEFORE deleting the plaintext file; note old plaintext
+  stays in GitHub commit history until the repo is recreated/purged.
+  `scripts/decrypt-backup.mjs` duplicates the decrypt format (pinned by
+  `test/backupCrypto.test.ts`) — change both together. Losing the passphrase
+  makes backups unreadable.
 - **Every data API route must gate behind the app lock — a test enforces it.**
   Enforcement is per-route (each handler calls `isAuthenticated()` or the
   shared `requireAuth()` helper in `lib/auth.ts`), and `test/authGuard.test.ts`

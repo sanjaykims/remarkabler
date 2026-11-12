@@ -66,7 +66,7 @@ Companion docs — read in order if any is unfamiliar:
 | `usage.ts` | `recordUsage` (per-call cost from list prices) + KST-aware monthly/daily/total aggregation. |
 | `extractText.ts` | Convert PDF/Word attachments to text on the server before sending to Claude. Saves ~3-5× tokens. Handwritten PDFs fall back to raw. |
 | `auth.ts` / `webauthn.ts` | Passcode + passkey (WebAuthn). HMAC cookie + per-device server session, 24h inactivity, local/global revocation, passcode lockout recovery. |
-| `backup.ts` | Weekly tar.gz of `/data` to a private GitHub repo, keep-last-12. `dropbox_refresh_token` redacted. |
+| `backup.ts` + `backupCrypto.ts` | Weekly tar.gz of `/data` to a private GitHub repo, keep-last-12, AES-256-GCM encrypted with `BACKUP_PASSPHRASE` (refuses to run without it; `scripts/decrypt-backup.mjs` restores). `dropbox_refresh_token` redacted. |
 | `dropbox.ts` | OAuth refresh-token flow, folder polling, dedupe by `dropbox_file_id` **+ tombstones**. Fired from `runMaintenanceSweep`. Also opt-in **per-day** diary auto-export back to Dropbox (`maybeExportDiaryToDropbox`, one `.md` per day into `dropboxExportFolder`, needs `files.content.write` scope) + the conversation/reflection/decision vault exporters. |
 | `diaryExport.ts` / `diaryExportDb.ts` | Diary→Markdown: pure assembly, carry-forward, per-day file builder + DB renderers. **Obsidian-native**: entity `[[wikilinks]]`, entity **stub notes** (with `## Related notes` back-links to tagged conversations/reflections/decisions), and the **vault-structure "second brain" notes** (`Home.md`, `People|Places|Projects.md`, `Profile.md` — `renderVaultStructureFiles`/`vaultStructureFileNames`). Excludes discipline + synthetic notebooks from day files, includes them in the entity graph/stubs. |
 | `notebookDedup.ts` / `notebookDedupDb.ts` | Flags old notebooks whose diary dates are already covered by a reMarkable-cloud import (`/notebooks` "Possible duplicates"). |
@@ -257,7 +257,7 @@ attribute cost to features and surfaces.
 - `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` / `APP_BASE_URL` / `DROPBOX_INGEST_PATH` — Dropbox auto-ingest. `OCR_CONCURRENCY_LIMIT` caps shared OCR budget (default 2, max 5).
 - `OWNTRACKS_TOKEN` — enables OwnTracks ingestion endpoint. `LOCATION_TZ_OFFSET` (minutes, default 540 = Seoul).
 - `DISCIPLINE_REPO` / `DISCIPLINE_GITHUB_TOKEN` / `DISCIPLINE_BRANCH` — GitHub discipline-notes source.
-- `BACKUP_REPO` / `BACKUP_GITHUB_TOKEN` — off-site auto-backup.
+- `BACKUP_REPO` / `BACKUP_GITHUB_TOKEN` / `BACKUP_PASSPHRASE` (12+ chars; required — backups are encrypted and pause without it) — off-site auto-backup.
 - **MCP (subscription-Claude diary access):** `MCP_AUTH_TOKEN` (16+ chars,
   comma-separated for rotation; unset = endpoint disabled/fails closed),
   `APP_BASE_URL` (fixes the OAuth public origin). Write-tool flags, each OFF by
