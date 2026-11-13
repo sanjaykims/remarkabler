@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { db } from "./db";
 import { TZ_OFFSET_MIN } from "./format";
-import { thinRoute, type RoutePoint } from "./mapData";
+import { mapWindowStart, thinRoute, type RoutePoint } from "./mapData";
 import { cachedPlace, reverseGeocodePlace } from "./geocode";
 
 // OwnTracks background-location ingestion. The app receives raw points, then
@@ -332,8 +332,8 @@ function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): nu
 
 type Stay = { lat: number; lng: number; start: number; end: number };
 
-function recentStays(days: number): Stay[] {
-  const since = Math.floor(Date.now() / 1000) - days * 86400;
+function recentStays(days: number, sinceOverride?: number): Stay[] {
+  const since = sinceOverride ?? Math.floor(Date.now() / 1000) - days * 86400;
   const pts = db()
     .prepare(
       `SELECT lat, lng, tst FROM location_points WHERE tst >= ? ORDER BY tst ASC`
@@ -492,13 +492,14 @@ export function mapData(days: number): {
   route: RoutePoint[];
   latest: RoutePoint | null;
 } {
-  const since = Math.floor(Date.now() / 1000) - days * 86400;
+  // Calendar days (local midnight), so "Today" is only today.
+  const since = mapWindowStart(Math.floor(Date.now() / 1000), TZ_OFFSET_MIN, days);
   const pts = db()
     .prepare(
       `SELECT lat, lng, tst FROM location_points WHERE tst >= ? ORDER BY tst ASC`
     )
     .all(since) as RoutePoint[];
-  const stays = recentStays(days).map((s) => {
+  const stays = recentStays(days, since).map((s) => {
     const sf = fmtLocal(s.start);
     const ef = fmtLocal(s.end);
     return {

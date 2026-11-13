@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-13 (Map: Today means today)
+
+The map's "Today" range was the last 24 hours, so it also drew the previous evening's trip home
+as a third line. Ranges are now calendar days from local midnight (Today = since 00:00; 2 days =
+yesterday + today; etc.) via `mapWindowStart` in `lib/mapData.ts`.
+
 ## 2026-11-13 (Map: colour by time)
 
 The Map trail now changes colour with time, blue at the earliest point of the chosen range to orange

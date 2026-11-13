@@ -61,3 +61,18 @@ export function timeColor(f: number): string {
 export function timeFraction(tst: number, from: number, to: number): number {
   return to > from ? Math.min(1, Math.max(0, (tst - from) / (to - from))) : 0;
 }
+
+/**
+ * Unix seconds of local midnight for the day containing `nowSec`, in a zone
+ * `offMin` minutes ahead of UTC. "Today" on the map means since this, not
+ * "the last 24 hours" (which would drag in last night's trip home).
+ */
+export function localDayStart(nowSec: number, offMin: number): number {
+  const shifted = nowSec + offMin * 60;
+  return shifted - (((shifted % 86400) + 86400) % 86400) - offMin * 60;
+}
+
+/** Start of the window for "last N calendar days, including today". */
+export function mapWindowStart(nowSec: number, offMin: number, days: number): number {
+  return localDayStart(nowSec, offMin) - (Math.max(1, days) - 1) * 86400;
+}

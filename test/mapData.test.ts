@@ -48,3 +48,23 @@ describe("time colours", () => {
     expect(timeFraction(15, 10, 20)).toBe(0.5);
   });
 });
+
+import { localDayStart, mapWindowStart } from "../lib/mapData";
+describe("calendar-day window", () => {
+  // 2026-11-13 18:03 KST = 09:03 UTC
+  const now = Date.UTC(2026, 10, 13, 9, 3) / 1000;
+  const kstMidnight = Date.UTC(2026, 10, 12, 15, 0) / 1000; // 11-13 00:00 KST
+  it("today starts at local midnight, not 24h ago", () => {
+    expect(localDayStart(now, 540)).toBe(kstMidnight);
+    expect(mapWindowStart(now, 540, 1)).toBe(kstMidnight);
+    expect(mapWindowStart(now, 540, 1)).toBeGreaterThan(now - 86400);
+  });
+  it("N days includes the earlier calendar days", () => {
+    expect(mapWindowStart(now, 540, 2)).toBe(kstMidnight - 86400);
+    expect(mapWindowStart(now, 540, 7)).toBe(kstMidnight - 6 * 86400);
+  });
+  it("works in UTC and west of UTC", () => {
+    expect(localDayStart(now, 0)).toBe(Date.UTC(2026, 10, 13) / 1000);
+    expect(localDayStart(now, -300)).toBe(Date.UTC(2026, 10, 13, 5) / 1000);
+  });
+});
