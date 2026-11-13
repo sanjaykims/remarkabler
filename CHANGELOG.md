@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-13 (Map PIN)
+
+The Map tab now sits behind its own 4-digit PIN on top of the app lock. First open asks you to
+create one; after that every open of the Map asks for it (the unlock cookie is cleared when you
+leave the tab or the page goes to the background, and expires after 10 minutes regardless).
+Enforced server-side: `/api/map` returns 403 without the signed, short-lived `fc_map_unlock`
+cookie (`lib/mapPin.ts`, `app/api/map/pin/route.ts`). PIN stored as a salted scrypt hash
+(`map_pin_hash`), redacted from off-site backups along with `map_pin_fail`. Because 4 digits is
+only 10,000 guesses, 5 wrong tries lock it for 15 min, then 1 h, 4 h, and 24 h for every
+lockout after. Forgot the PIN: reset by entering the app passcode (needs `APP_PASSCODE` set;
+shares the passcode brute-force limiter). Changing the PIN or "Lock all" invalidates unlocks.
+Scope: only the Map tab/`/api/map` — the Memory page's location views are not behind the PIN.
+
 ## 2026-11-13 (Map tab)
 
 New `/map` tab: a Leaflet map of the OwnTracks trail (stays as yellow dots, thinned route

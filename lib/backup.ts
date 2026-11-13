@@ -45,6 +45,10 @@ const SENSITIVE_SETTING_KEYS = [
   // Global brute-force floor. Not a credential, but restoring a filled one
   // would lock the restored instance out for its window.
   "auth_fail_global",
+  // Map-tab PIN: a salted hash of a 4-digit PIN is trivially brute-forced
+  // offline, so it never ships off-site (restore => set a fresh PIN).
+  "map_pin_hash",
+  "map_pin_fail",
 ];
 
 // Per-source lockout buckets are keyed auth_fail_state:<sha256(client ip)>,

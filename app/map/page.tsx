@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { Eyebrow } from "@/components/Eyebrow";
 import type { MapStayDto, RoutePointDto } from "./MapView";
+import PinGate from "./PinGate";
 
 // Leaflet touches `window`, so it must only load in the browser.
 const MapView = dynamic(() => import("./MapView"), {
@@ -20,25 +21,70 @@ const RANGES = [
 
 type Data = { stays: MapStayDto[]; route: RoutePointDto[]; latest: RoutePointDto | null };
 
+type Gate = { configured: boolean; unlocked: boolean; lockedMs: number; attemptsLeft: number };
+
 export default function MapPage() {
+  const [gate, setGate] = useState<Gate | null>(null);
   const [days, setDays] = useState(1);
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
 
+  // Ask the server whether the PIN is already satisfied.
   useEffect(() => {
+    fetch("/api/map/pin")
+      .then((r) => r.json())
+      .then((g) => setGate(g))
+      .catch(() => setError("Couldn't reach the server."));
+  }, []);
+
+  // Re-lock whenever you leave the tab or the page goes to the background, so
+  // opening the Map always asks for the PIN again.
+  useEffect(() => {
+    const lock = () => {
+      fetch("/api/map/pin", {
+        method: "POST",
+        keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "lock" }),
+      }).catch(() => {});
+    };
+    const onHide = () => {
+      if (document.visibilityState === "hidden") {
+        lock();
+        setData(null);
+        setGate((g) => (g ? { ...g, unlocked: false } : g));
+      }
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", lock);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", lock);
+      lock();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!gate?.unlocked) return;
     let cancelled = false;
     setData(null);
     setError(null);
     setFocus(null);
     fetch(`/api/map?days=${days}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((r) => {
+        if (r.status === 403) {
+          setGate((g) => (g ? { ...g, unlocked: false } : g));
+          return Promise.reject(new Error("PIN required"));
+        }
+        return r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`));
+      })
       .then((d) => !cancelled && setData(d))
       .catch((e) => !cancelled && setError(String(e.message || e)));
     return () => {
       cancelled = true;
     };
-  }, [days]);
+  }, [days, gate?.unlocked]);
 
   const stays = data?.stays ?? [];
 
@@ -52,6 +98,16 @@ export default function MapPage() {
         </p>
       </section>
 
+      {gate && !gate.unlocked && (
+        <PinGate
+          configured={gate.configured}
+          lockedMs={gate.lockedMs}
+          attemptsLeft={gate.attemptsLeft}
+          onUnlocked={() => setGate({ ...gate, configured: true, unlocked: true, lockedMs: 0 })}
+        />
+      )}
+
+      {gate?.unlocked && (<>
       <div className="flex gap-2 flex-wrap">
         {RANGES.map((r) => (
           <button
@@ -104,6 +160,8 @@ export default function MapPage() {
             </li>
           ))}
       </ul>
+
+      </>)}
 
       <p className="text-xs opacity-60 leading-relaxed">
         Privacy: the map background is loaded from OpenStreetMap&apos;s tile server, which can see the

@@ -55,6 +55,14 @@ beforeAll(async () => {
     `INSERT INTO settings (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run("auth_fail_global", '{"count":9,"windowStart":1}');
+  conn.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run("map_pin_hash", "salt:hash");
+  conn.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run("map_pin_fail", '{"fails":1}');
   // Non-sensitive setting — should survive redaction.
   conn.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?)
@@ -89,6 +97,8 @@ describe("redactSensitiveSettings", () => {
       // delete, not an exact-key one, since the ip hash is part of the key.
       expect(get("auth_fail_state:deadbeef")).toBeUndefined();
       expect(get("auth_fail_global")).toBeUndefined();
+      expect(get("map_pin_hash")).toBeUndefined();
+      expect(get("map_pin_fail")).toBeUndefined();
       // Non-sensitive key still present.
       expect(get("mind_dates_reparsed_v2")).toBe("yes");
     } finally {
