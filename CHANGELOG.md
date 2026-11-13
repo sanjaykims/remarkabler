@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-13 (Saved places removed again)
+
+The in-app "Saved places" feature added earlier the same day (`saved_places` table,
+`lib/savedPlaces.ts`, `/api/places`, the `/memory` card) was reverted. Named places
+now live in the owner's Supabase `saved_places` table and are matched by Claude on
+request instead, so Remarkabler no longer keeps its own copy. Location behavior is
+back to the geocoder-only names. An empty `saved_places` table may remain in an
+already-deployed SQLite file; it is unused and harmless.
+
 ## 2026-11-12 (Security: encrypted off-site backups)
 
 The GitHub backup is now AES-256-GCM encrypted before it leaves the server, so a
