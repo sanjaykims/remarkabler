@@ -106,6 +106,7 @@ Companion docs — read in order if any is unfamiliar:
 | `location_points` | OwnTracks raw points. |
 | `route_stops` | Clustered stays (place + dwell). |
 | `geocode_cache` | Nominatim cache (key → place). |
+| `saved_places` | User-named places (name, lat, lng, radius_m); override the geocoded name and skip Nominatim. |
 | `credentials` | WebAuthn credentials (passkey). |
 | `app_sessions` | Per-device session id, expiry, and sliding activity time; enables true inactivity and revocation boundaries. |
 | `api_usage` | One row per Claude/Voyage call. Powers `/usage`. |
@@ -133,7 +134,7 @@ Companion docs — read in order if any is unfamiliar:
   `remarkable_doc_id`) + `lib/remarkableSync.ts` (sweep-driven page-hash
   incremental polling of imported notebooks + enabled folders).
 - **Discipline:** `discipline` (GET + POST sync), `discipline/settings` (enable toggle).
-- **Location:** `location` (GET + POST manual log), `location/settings`, `owntracks` (`?token=` push endpoint).
+- **Location:** `location` (GET + POST manual log), `location/settings`, `places` (GET/POST/DELETE saved places; POST with no coordinates saves the latest OwnTracks point), `owntracks` (`?token=` push endpoint).
 - **MCP:** `mcp` (remote MCP endpoint, Streamable HTTP — read-only diary tools
   for Claude on the user's subscription, + three MCP-only companion tools
   `get_profile`/`recall_memories`/`get_guidance`. **Sanctioned write tools, each

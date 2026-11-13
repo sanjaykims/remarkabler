@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-13 (Saved places)
+
+Name a spot once and it keeps that name. On `/memory` → **Saved places**, type a
+name and tap **Save here**: the newest OwnTracks position is stored in the new
+`saved_places` table (default radius 75 m, 25–500 m allowed). Any stay or current
+position inside a saved place now shows your name (e.g. "카공족 쌍문역1호점")
+instead of the Nominatim street guess, in chat and in the MCP `get_recent_locations`
+tool. Those points are also never sent to OpenStreetMap. New `lib/savedPlaces.ts`
+(pure `nearestSavedPlace` + validated add/list/delete), authenticated
+`/api/places` (GET/POST/DELETE; POST with no coordinates saves the latest point).
+The MCP endpoint stays read-only; naming places is app-side only. Tests in
+`test/savedPlaces.test.ts`; `npm test` (76 files, 735 tests) and `npm run build`
+pass. Not verified live: saving from a phone against real OwnTracks data.
+
 ## 2026-11-12 (Security: encrypted off-site backups)
 
 The GitHub backup is now AES-256-GCM encrypted before it leaves the server, so a

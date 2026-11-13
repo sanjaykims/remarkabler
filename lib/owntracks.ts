@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { db } from "./db";
 import { TZ_OFFSET_MIN } from "./format";
 import { cachedPlace, reverseGeocodePlace } from "./geocode";
+import { listSavedPlaces, nearestSavedPlace } from "./savedPlaces";
 
 // OwnTracks background-location ingestion. The app receives raw points, then
 // clusters them into "stays" (a place you stayed a while) with arrival/leave
@@ -96,7 +97,11 @@ export function currentLocation(): CurrentLocation | null {
     tst: row.tst,
     atTime: `${local.date} ${local.time}`,
     minutesAgo: Math.max(0, Math.round(ageSec / 60)),
-    place: cachedPlace(row.lat, row.lng),
+    // A user-saved name wins over the geocoder's street guess (and, being
+    // non-null, also stops warmCurrentLocationGeocode from calling out).
+    place:
+      nearestSavedPlace(row.lat, row.lng, listSavedPlaces())?.name ??
+      cachedPlace(row.lat, row.lng),
     stale: ageSec > CURRENT_LOCATION_LIVE_SEC,
   };
 }
@@ -395,12 +400,16 @@ export async function owntracksRouteContext(
 ): Promise<string> {
   const stays = recentStays(days).slice(-40);
   if (stays.length === 0) return "";
+  const saved = listSavedPlaces();
   const lines: string[] = [];
   let day = "";
   for (const s of stays) {
-    const place = opts.allowNetwork
-      ? await reverseGeocodePlace(s.lat, s.lng)
-      : cachedPlace(s.lat, s.lng) ?? `${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`;
+    // Saved (user-named) places first: no cache lookup, no network call.
+    const place =
+      nearestSavedPlace(s.lat, s.lng, saved)?.name ??
+      (opts.allowNetwork
+        ? await reverseGeocodePlace(s.lat, s.lng)
+        : cachedPlace(s.lat, s.lng) ?? `${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`);
     const sf = fmtLocal(s.start);
     const ef = fmtLocal(s.end);
     if (sf.date !== day) {
@@ -451,7 +460,12 @@ export function warmCurrentLocationGeocode(): void {
 export function warmOwntracksGeocodes(days = 3): void {
   if (warmingGeocodes) return;
   const stays = recentStays(days).slice(-40);
-  const uncached = stays.filter((s) => cachedPlace(s.lat, s.lng) === null);
+  const saved = listSavedPlaces();
+  const uncached = stays.filter(
+    (s) =>
+      nearestSavedPlace(s.lat, s.lng, saved) === null &&
+      cachedPlace(s.lat, s.lng) === null
+  );
   if (uncached.length === 0) return;
   warmingGeocodes = true;
   (async () => {
