@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-13 (Map: colour by time)
+
+The Map trail now changes colour with time, blue at the earliest point of the chosen range to orange
+at the latest (blue → violet → red → orange, so the middle stays vivid), with a colour key and the
+start/end times under the map. Stay dots take the colour of when you arrived. Pure helpers
+`timeColor`/`timeFraction` in `lib/mapData.ts`; `/api/map` also returns `tzOffsetMin`.
+
 ## 2026-11-13 (Map PIN)
 
 The Map tab now sits behind its own 4-digit PIN on top of the app lock. First open asks you to

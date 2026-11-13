@@ -3,10 +3,12 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { timeColor, timeFraction } from "@/lib/mapData";
 
 export type MapStayDto = {
   lat: number;
   lng: number;
+  start: number;
   place: string | null;
   date: string;
   startTime: string;
@@ -52,18 +54,31 @@ export default function MapView({
     if (!m || !g) return;
     g.clearLayers();
     const bounds: L.LatLngTuple[] = [];
+    // Colour = time. Earliest point of the range is blue, latest is orange.
+    const t0 = route.length ? route[0].tst : 0;
+    const t1 = route.length ? route[route.length - 1].tst : 0;
     if (route.length > 1) {
-      const ll = route.map((p) => [p.lat, p.lng] as L.LatLngTuple);
-      L.polyline(ll, { color: "#0284c7", weight: 3, opacity: 0.7 }).addTo(g);
-      bounds.push(...ll);
+      for (let i = 1; i < route.length; i++) {
+        const a = route[i - 1];
+        const b = route[i];
+        L.polyline(
+          [
+            [a.lat, a.lng],
+            [b.lat, b.lng],
+          ],
+          { color: timeColor(timeFraction(b.tst, t0, t1)), weight: 4, opacity: 0.9, lineCap: "round" }
+        ).addTo(g);
+        bounds.push([a.lat, a.lng]);
+      }
+      bounds.push([route[route.length - 1].lat, route[route.length - 1].lng]);
     }
     stays.forEach((s) => {
       const label = `${s.place ?? `${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`}<br>${s.date} ${s.startTime}–${s.endTime}`;
       L.circleMarker([s.lat, s.lng], {
         radius: 8,
-        color: "#0c4a6e",
-        weight: 2,
-        fillColor: "#facc15",
+        color: "#ffffff",
+        weight: 3,
+        fillColor: timeColor(timeFraction(s.start, t0, t1)),
         fillOpacity: 0.95,
       })
         .bindPopup(label)

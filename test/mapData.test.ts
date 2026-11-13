@@ -32,3 +32,19 @@ describe("thinRoute", () => {
     expect(thinRoute([p(0, 37)])).toHaveLength(1);
   });
 });
+
+import { timeColor, timeFraction } from "../lib/mapData";
+describe("time colours", () => {
+  it("runs from blue to orange and clamps", () => {
+    expect(timeColor(0)).toBe("hsl(215 85% 50%)");
+    expect(timeColor(1)).toBe("hsl(25 85% 50%)");
+    expect(timeColor(-5)).toBe(timeColor(0));
+    expect(timeColor(9)).toBe(timeColor(1));
+    expect(timeColor(NaN)).toBe(timeColor(0));
+    expect(timeColor(0.5)).not.toBe(timeColor(0));
+  });
+  it("fraction handles empty span", () => {
+    expect(timeFraction(5, 5, 5)).toBe(0);
+    expect(timeFraction(15, 10, 20)).toBe(0.5);
+  });
+});

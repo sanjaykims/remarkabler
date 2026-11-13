@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Eyebrow } from "@/components/Eyebrow";
 import type { MapStayDto, RoutePointDto } from "./MapView";
 import PinGate from "./PinGate";
+import { timeColor } from "@/lib/mapData";
 
 // Leaflet touches `window`, so it must only load in the browser.
 const MapView = dynamic(() => import("./MapView"), {
@@ -19,7 +20,12 @@ const RANGES = [
   { days: 30, label: "30 days" },
 ];
 
-type Data = { stays: MapStayDto[]; route: RoutePointDto[]; latest: RoutePointDto | null };
+type Data = { tzOffsetMin: number; stays: MapStayDto[]; route: RoutePointDto[]; latest: RoutePointDto | null };
+
+function fmt(tst: number, offMin: number): string {
+  const iso = new Date((tst + offMin * 60) * 1000).toISOString();
+  return `${iso.slice(5, 10)} ${iso.slice(11, 16)}`;
+}
 
 type Gate = { configured: boolean; unlocked: boolean; lockedMs: number; attemptsLeft: number };
 
@@ -94,7 +100,7 @@ export default function MapPage() {
         <Eyebrow>Where I&apos;ve been</Eyebrow>
         <h1 className="text-3xl font-semibold tracking-tight text-balance">Map</h1>
         <p className="opacity-70 text-sm leading-relaxed max-w-prose">
-          Your OwnTracks trail. Yellow dots are places you stayed; the red dot is your latest position.
+          Your OwnTracks trail. The line goes from blue (earliest) to orange (latest). Round dots are places you stayed, coloured by when you arrived; the red-ringed dot is your latest position.
         </p>
       </section>
 
@@ -133,6 +139,22 @@ export default function MapPage() {
         latest={data?.latest ?? null}
         focus={focus}
       />
+
+      {data && data.route.length > 1 && (
+        <div className="space-y-1">
+          <div
+            aria-hidden
+            className="h-2.5 rounded"
+            style={{
+              background: `linear-gradient(to right, ${[0, 0.25, 0.5, 0.75, 1].map(timeColor).join(", ")})`,
+            }}
+          />
+          <div className="flex justify-between text-xs opacity-70">
+            <span>Earliest · {fmt(data.route[0].tst, data.tzOffsetMin)}</span>
+            <span>Latest · {fmt(data.route[data.route.length - 1].tst, data.tzOffsetMin)}</span>
+          </div>
+        </div>
+      )}
 
       {data && stays.length === 0 && (
         <p className="text-sm opacity-70">

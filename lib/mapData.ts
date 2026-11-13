@@ -45,3 +45,19 @@ export function thinRoute(
   out.push(kept[kept.length - 1]);
   return out;
 }
+
+/**
+ * Colour for position `f` (0 = earliest, 1 = latest) along the trail.
+ * Blue → violet → red → orange: opposite ends of the wheel, and the middle
+ * stays vivid (a straight RGB blend would go grey). Returns a CSS hsl().
+ */
+export function timeColor(f: number): string {
+  const t = Math.min(1, Math.max(0, Number.isFinite(f) ? f : 0));
+  const hue = 215 + 170 * t; // 215 (blue) → 385 ≡ 25 (orange)
+  return `hsl(${Math.round(hue) % 360} 85% 50%)`;
+}
+
+/** Fraction of `tst` between `from` and `to`; 0 when the span is empty. */
+export function timeFraction(tst: number, from: number, to: number): number {
+  return to > from ? Math.min(1, Math.max(0, (tst - from) / (to - from))) : 0;
+}
