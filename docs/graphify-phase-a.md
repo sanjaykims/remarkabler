@@ -15,6 +15,7 @@ Local cache/state files are intentionally ignored:
 - `graphify-out/cache/`
 - `graphify-out/.graphify_root`
 - `graphify-out/.graphify_analysis.json`
+- `graphify-out/.graphify_build.json`
 - `graphify-out/manifest.json`
 
 Those files contain local paths, mtimes, or cache state and should not be
