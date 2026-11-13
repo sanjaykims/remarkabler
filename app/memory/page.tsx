@@ -36,10 +36,6 @@ export default function MemoryPage() {
   const [locs, setLocs] = useState<Array<{ place: string; local_time: string }>>([]);
   const [locBusy, setLocBusy] = useState(false);
   const [locMsg, setLocMsg] = useState<string | null>(null);
-  const [savedPlaces, setSavedPlaces] = useState<Array<{ id: number; name: string }>>([]);
-  const [placeName, setPlaceName] = useState("");
-  const [placeBusy, setPlaceBusy] = useState(false);
-  const [placeMsg, setPlaceMsg] = useState<string | null>(null);
   const [ot, setOt] = useState<{
     configured: boolean;
     points: number;
@@ -195,48 +191,6 @@ export default function MemoryPage() {
     } catch {
       setLocs([]);
     }
-  }
-
-  async function loadPlaces() {
-    try {
-      const d = await fetch("/api/places").then((r) => r.json());
-      setSavedPlaces(d.places || []);
-    } catch {
-      setSavedPlaces([]);
-    }
-  }
-
-  // Saves the newest OwnTracks position (the server has it) under this name.
-  async function savePlaceHere() {
-    const name = placeName.trim();
-    if (!name || placeBusy) return;
-    setPlaceBusy(true);
-    setPlaceMsg(null);
-    try {
-      const r = await fetch("/api/places", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Couldn't save the place");
-      setPlaceName("");
-      setPlaceMsg(`Saved “${d.place.name}”.`);
-      await loadPlaces();
-    } catch (e) {
-      setPlaceMsg((e as Error).message);
-    } finally {
-      setPlaceBusy(false);
-    }
-  }
-
-  async function removePlace(id: number) {
-    try {
-      await fetch(`/api/places?id=${id}`, { method: "DELETE" });
-    } catch {
-      // best-effort; the reload below shows the truth
-    }
-    await loadPlaces();
   }
 
   async function loadOt() {
@@ -755,7 +709,6 @@ export default function MemoryPage() {
     load();
     loadDisc();
     loadLocs();
-    loadPlaces();
     loadOt();
     loadLocSettings();
     loadDiscSettings();
@@ -1065,53 +1018,6 @@ export default function MemoryPage() {
           </details>
         )}
 
-      </section>
-
-      <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-3">
-        <h2 className="font-medium">Saved places</h2>
-        <p className="text-xs opacity-70">
-          Stand where you are, type a name, and tap Save. Anywhere within about
-          75 m of that spot then shows your name (for example &ldquo;카공족
-          쌍문역1호점&rdquo;) in chat and in Claude&rsquo;s location tools,
-          instead of a street guess — and is never sent to OpenStreetMap. Uses
-          your latest OwnTracks position.
-        </p>
-        <div className="flex gap-2">
-          <input
-            value={placeName}
-            onChange={(e) => setPlaceName(e.target.value)}
-            maxLength={80}
-            placeholder="Name this place"
-            aria-label="Place name"
-            className="min-w-0 flex-1 rounded border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm"
-          />
-          <Button
-            onClick={savePlaceHere}
-            disabled={placeBusy || !placeName.trim() || locEnabled === false}
-            variant="solid"
-            size="xs"
-            className="px-4 py-2 text-sm"
-          >
-            {placeBusy ? "Saving…" : "Save here"}
-          </Button>
-        </div>
-        {placeMsg && <p className="text-sm opacity-70">{placeMsg}</p>}
-        {savedPlaces.length > 0 && (
-          <ul className="text-sm space-y-1">
-            {savedPlaces.map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-3">
-                <span className="truncate">{p.name}</span>
-                <button
-                  onClick={() => removePlace(p.id)}
-                  className="shrink-0 text-xs opacity-60 underline"
-                  aria-label={`Remove ${p.name}`}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
       </section>
 
       <section className="rounded border border-slate-200 dark:border-slate-800 p-4 space-y-2">

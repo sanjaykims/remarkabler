@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { addLocation, listRecentLocations, isLocationEnabled } from "@/lib/location";
 import { reverseGeocodePlace } from "@/lib/geocode";
-import { savedPlaceName } from "@/lib/savedPlaces";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,10 +36,7 @@ export async function POST(req: NextRequest) {
   ) {
     return NextResponse.json({ error: "Invalid coordinates." }, { status: 400 });
   }
-  // A user-saved name wins and skips the external geocoder entirely.
-  const place = (
-    savedPlaceName(lat, lng) ?? (await reverseGeocodePlace(lat, lng))
-  ).slice(0, 200);
+  const place = (await reverseGeocodePlace(lat, lng)).slice(0, 200);
   addLocation({
     lat,
     lng,

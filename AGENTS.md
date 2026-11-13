@@ -107,7 +107,7 @@ and an accumulating record of "insights" about them. It's a long-horizon
   - `librarian` (GET-only status for the Phase C librarian agent's
     heartbeat — no POST, the app doesn't run the agent itself).
   - `discipline` (GET + POST sync), `discipline/settings`.
-  - `location` (GET + POST), `location/settings`, `places` (saved places: GET/POST/DELETE), `owntracks` (`?token=`).
+  - `location` (GET + POST), `location/settings`, `owntracks` (`?token=`).
   - `export` (raw bundle), `export/diary` (diary-only Markdown), `export/book` (Opus editor pass).
   - `settings/models`, `auth`.
 - `app/share/route.ts` — PWA Web Share Target. `public/manifest.json` — PWA.

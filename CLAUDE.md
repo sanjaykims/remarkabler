@@ -191,8 +191,7 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `(kind, name_norm)`; see `lib/entityMerge.ts`), `entity_wiki` (Claude-written
   profile per entity + a `source_hash` of its mentioning pages, embedded atop
   the Obsidian stub; see `lib/entityWiki.ts`), `locations`,
-  `location_points`, `route_stops`, `geocode_cache`, `saved_places`
-  (user-named places; see `lib/savedPlaces.ts`), `chat_archive_batches`
+  `location_points`, `route_stops`, `geocode_cache`, `chat_archive_batches`
   + `chat_memories` (durable chat-memory layer; one batch per Clear,
   soft-deleted items don't resurrect), `dropbox_ingest_tombstones` +
   `remarkable_ingest_tombstones` (deleted source ids the Dropbox watcher /
@@ -574,14 +573,7 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `incrementalSyncNotebook`; per-page sha256 diffing so a daily diary session
   OCRs 1-2 pages, never the notebook.
 - `lib/location.ts` + `lib/owntracks.ts` — OwnTracks ingestion, stay
-  clustering, reverse-geocoding; `lib/savedPlaces.ts` — user-named places
-  (pure `nearestSavedPlace`, validated `addSavedPlace`/`listSavedPlaces`/
-  `deleteSavedPlace`). A saved place within its radius (default 75 m) WINS over
-  the Nominatim name in `currentLocation`, `owntracksRouteContext` and the manual
-  `/api/location` log, and those points skip the external geocoder entirely
-  (the warm passes filter them out too). Written only via authenticated
-  `/api/places` + the `/memory` "Saved places" card — never an MCP tool (the
-  endpoint stays read-only); `lib/github.ts` — discipline repo fetch;
+  clustering, reverse-geocoding; `lib/github.ts` — discipline repo fetch;
   `lib/cleanup.ts`, `lib/upload.ts`, `lib/extractText.ts`, `lib/format.ts` —
   support utilities; `lib/auth.ts` + `lib/webauthn.ts` — passkey/passcode lock
   (`lib/auth.ts` also gates the passcode itself with a brute-force lockout —
@@ -613,7 +605,7 @@ Tailwind CSS. All data (SQLite `app.db` + uploaded PDFs) lives under
   `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities`,
   `mind/build-wiki`), `embeddings`, `backup`,
   `discipline`, `dropbox/{connect,callback,status,disconnect,export}`,
-  `location`, `places` (saved places), `owntracks`, `mcp` (remote MCP endpoint — see `lib/mcp.ts`) +
+  `location`, `owntracks`, `mcp` (remote MCP endpoint — see `lib/mcp.ts`) +
   authenticated `mcp/audit` + `mcp/oauth/grants`, and public
   `mcp/oauth/{register,authorize,token,protected-resource,authorization-server}`
   (OAuth 2.1 server for the claude.ai connector — see `lib/mcpOauth.ts`; the

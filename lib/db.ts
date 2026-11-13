@@ -695,18 +695,6 @@ CREATE TABLE IF NOT EXISTS geocode_cache (
   place TEXT NOT NULL
 );
 
--- User-named places ("카공족 쌍문역1호점"). A stay or the current position
--- within radius_m of one of these shows that name instead of the Nominatim
--- street guess, and is never sent to the external geocoder.
-CREATE TABLE IF NOT EXISTS saved_places (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  lat REAL NOT NULL,
-  lng REAL NOT NULL,
-  radius_m INTEGER NOT NULL DEFAULT 75,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE IF NOT EXISTS mcp_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts TEXT NOT NULL DEFAULT (datetime('now')),
