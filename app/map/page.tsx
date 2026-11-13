@@ -1,0 +1,114 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
+import { Eyebrow } from "@/components/Eyebrow";
+import type { MapStayDto, RoutePointDto } from "./MapView";
+
+// Leaflet touches `window`, so it must only load in the browser.
+const MapView = dynamic(() => import("./MapView"), {
+  ssr: false,
+  loading: () => <div className="h-[55vh] rounded border border-slate-200 dark:border-slate-800" />,
+});
+
+const RANGES = [
+  { days: 1, label: "Today" },
+  { days: 2, label: "2 days" },
+  { days: 7, label: "7 days" },
+  { days: 30, label: "30 days" },
+];
+
+type Data = { stays: MapStayDto[]; route: RoutePointDto[]; latest: RoutePointDto | null };
+
+export default function MapPage() {
+  const [days, setDays] = useState(1);
+  const [data, setData] = useState<Data | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [focus, setFocus] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setData(null);
+    setError(null);
+    setFocus(null);
+    fetch(`/api/map?days=${days}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => !cancelled && setData(d))
+      .catch((e) => !cancelled && setError(String(e.message || e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [days]);
+
+  const stays = data?.stays ?? [];
+
+  return (
+    <div className="space-y-5">
+      <section className="space-y-2 pt-1">
+        <Eyebrow>Where I&apos;ve been</Eyebrow>
+        <h1 className="text-3xl font-semibold tracking-tight text-balance">Map</h1>
+        <p className="opacity-70 text-sm leading-relaxed max-w-prose">
+          Your OwnTracks trail. Yellow dots are places you stayed; the red dot is your latest position.
+        </p>
+      </section>
+
+      <div className="flex gap-2 flex-wrap">
+        {RANGES.map((r) => (
+          <button
+            key={r.days}
+            onClick={() => setDays(r.days)}
+            aria-pressed={days === r.days}
+            className={`px-3 py-1.5 rounded border text-sm ${
+              days === r.days
+                ? "border-sky-600 bg-sky-600 text-white"
+                : "border-slate-300 dark:border-slate-700"
+            }`}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+
+      {error && <p className="text-sm text-red-600">Couldn&apos;t load the map data ({error}).</p>}
+
+      <MapView
+        stays={stays}
+        route={data?.route ?? []}
+        latest={data?.latest ?? null}
+        focus={focus}
+      />
+
+      {data && stays.length === 0 && (
+        <p className="text-sm opacity-70">
+          No stays recorded in this range yet. A stay needs about 8 minutes in one spot.
+        </p>
+      )}
+
+      <ul className="space-y-2">
+        {stays
+          .map((s, i) => ({ s, i }))
+          .reverse()
+          .map(({ s, i }) => (
+            <li key={i}>
+              <button
+                onClick={() => setFocus(i)}
+                className="w-full text-left rounded border border-slate-200 dark:border-slate-800 p-3"
+              >
+                <div className="text-sm font-medium">
+                  {s.place ?? `${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`}
+                </div>
+                <div className="text-xs opacity-70">
+                  {s.date} · {s.startTime}–{s.endTime}
+                </div>
+              </button>
+            </li>
+          ))}
+      </ul>
+
+      <p className="text-xs opacity-60 leading-relaxed">
+        Privacy: the map background is loaded from OpenStreetMap&apos;s tile server, which can see the
+        area you are viewing. Your OwnTracks data itself never leaves this app.
+      </p>
+    </div>
+  );
+}

@@ -29,6 +29,7 @@ const LINKS = [
   { href: "/notebooks", label: "Notebooks" },
   { href: "/mind", label: "Mind" },
   { href: "/graph", label: "Graph" },
+  { href: "/map", label: "Map" },
   { href: "/insights", label: "Insights" },
   { href: "/memory", label: "Memory" },
   { href: "/usage", label: "Cost" },

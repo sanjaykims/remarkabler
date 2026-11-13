@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-13 (Map tab)
+
+New `/map` tab: a Leaflet map of the OwnTracks trail (stays as yellow dots, thinned route
+polyline, latest position in red) with Today / 2 days / 7 days / 30 days ranges and a tappable
+stay list. Data comes from the auth-gated `GET /api/map?days=N` (`mapData()` in
+`lib/owntracks.ts`, pure helpers in `lib/mapData.ts`); place names are cache-only, so viewing
+the map never triggers a Nominatim call. Not exposed over MCP (location stays a sensitive,
+app-only surface). Map tiles load from OpenStreetMap's public tile server, so OSM can see the
+area being viewed; the page says so. Vector markers only (no image assets).
+
 ## 2026-11-13 (Saved places removed again)
 
 The in-app "Saved places" feature added earlier the same day (`saved_places` table,

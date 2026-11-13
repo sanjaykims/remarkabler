@@ -82,7 +82,7 @@ and an accumulating record of "insights" about them. It's a long-horizon
 | `cleanup.ts` / `upload.ts` | Orphan-attachment sweep; upload validation/duck-typing. |
 
 ### `app/` — UI + API
-- Pages: `/` (dashboard), `/notebooks`, `/graph`, `/insights`, `/memory`,
+- Pages: `/` (dashboard), `/notebooks`, `/graph`, `/map` (Leaflet trail of OwnTracks stays/route via `/api/map`; OSM tiles, cache-only place names), `/insights`, `/memory`,
   `/mind` (heatmap, theme cloud, mood timeline, 3D embedding map —
   `app/mind/Map3D.tsx`), `/graph` (interactive diary/entity relationship
   map), `/usage` (cost calendar).
