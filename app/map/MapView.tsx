@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { timeColor, timeFraction } from "@/lib/mapData";
+import { movementWindow, timeColor, timeFraction } from "@/lib/mapData";
 
 export type MapStayDto = {
   lat: number;
@@ -54,9 +54,8 @@ export default function MapView({
     if (!m || !g) return;
     g.clearLayers();
     const bounds: L.LatLngTuple[] = [];
-    // Colour = time. Earliest point of the range is blue, latest is orange.
-    const t0 = route.length ? route[0].tst : 0;
-    const t1 = route.length ? route[route.length - 1].tst : 0;
+    // Colour = time. First movement is blue, final arrival is orange.
+    const { from: t0, to: t1 } = movementWindow(route);
     if (route.length > 1) {
       for (let i = 1; i < route.length; i++) {
         const a = route[i - 1];

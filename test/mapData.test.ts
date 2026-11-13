@@ -68,3 +68,20 @@ describe("calendar-day window", () => {
     expect(localDayStart(now, -300)).toBe(Date.UTC(2026, 10, 13, 5) / 1000);
   });
 });
+
+import { movementWindow } from "../lib/mapData";
+describe("movementWindow", () => {
+  const p = (tst: number, lat: number) => ({ lat, lng: 127, tst });
+  it("skips dwell before the first move and after the last arrival", () => {
+    const route = [
+      p(0, 37), p(100, 37.00001), p(200, 37.00002), // dwell at A
+      p(300, 37.01), p(400, 37.02),                  // moving
+      p(500, 37.03), p(600, 37.03001), p(700, 37.03002), // dwell at B
+    ];
+    expect(movementWindow(route)).toEqual({ from: 300, to: 400 });
+  });
+  it("falls back to first/last when nothing moved, and handles empty", () => {
+    expect(movementWindow([p(5, 37), p(9, 37.00001)])).toEqual({ from: 5, to: 9 });
+    expect(movementWindow([])).toEqual({ from: 0, to: 0 });
+  });
+});

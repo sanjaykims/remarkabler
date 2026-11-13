@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Eyebrow } from "@/components/Eyebrow";
 import type { MapStayDto, RoutePointDto } from "./MapView";
 import PinGate from "./PinGate";
-import { timeColor } from "@/lib/mapData";
+import { movementWindow, timeColor } from "@/lib/mapData";
 
 // Leaflet touches `window`, so it must only load in the browser.
 const MapView = dynamic(() => import("./MapView"), {
@@ -100,7 +100,7 @@ export default function MapPage() {
         <Eyebrow>Where I&apos;ve been</Eyebrow>
         <h1 className="text-3xl font-semibold tracking-tight text-balance">Map</h1>
         <p className="opacity-70 text-sm leading-relaxed max-w-prose">
-          Your OwnTracks trail. The line goes from blue (earliest) to orange (latest). Round dots are places you stayed, coloured by when you arrived; the red-ringed dot is your latest position.
+          Your OwnTracks trail. The line goes from blue (first move of the day) to orange (last arrival). Round dots are places you stayed, coloured by when you arrived; the red-ringed dot is your latest position.
         </p>
       </section>
 
@@ -150,8 +150,8 @@ export default function MapPage() {
             }}
           />
           <div className="flex justify-between text-xs opacity-70">
-            <span>Earliest · {fmt(data.route[0].tst, data.tzOffsetMin)}</span>
-            <span>Latest · {fmt(data.route[data.route.length - 1].tst, data.tzOffsetMin)}</span>
+            <span>First move · {fmt(movementWindow(data.route).from, data.tzOffsetMin)}</span>
+            <span>Last arrival · {fmt(movementWindow(data.route).to, data.tzOffsetMin)}</span>
           </div>
         </div>
       )}

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-13 (Map: colours start at first movement)
+
+The blue → orange colour scale now spans the actual movement of the range (first point away from
+where it started, to the last arrival), not the whole window, so overnight dwell at home no longer
+eats the colour range: the first trip of the day is blue and the last arrival orange. Legend now
+reads "First move / Last arrival". Pure `movementWindow` in `lib/mapData.ts`.
+
 ## 2026-11-13 (Graphify map refreshed)
 
 Re-ran the documented code-only Graphify extraction so `graphify-out/` now includes the Map tab,

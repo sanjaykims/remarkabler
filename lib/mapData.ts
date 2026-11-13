@@ -76,3 +76,34 @@ export function localDayStart(nowSec: number, offMin: number): number {
 export function mapWindowStart(nowSec: number, offMin: number, days: number): number {
   return localDayStart(nowSec, offMin) - (Math.max(1, days) - 1) * 86400;
 }
+
+/**
+ * The span of the trail that is actually movement: from the first point that
+ * is clearly away from where the range started, to the last point that is
+ * still clearly away from where it ended. Colours are spread over this span
+ * (blue at first move, orange at final arrival) so overnight dwell at home
+ * doesn't eat the colour range. Falls back to first/last when nothing moved.
+ */
+export function movementWindow(
+  route: RoutePoint[],
+  thresholdM = 200
+): { from: number; to: number } {
+  if (route.length === 0) return { from: 0, to: 0 };
+  const first = route[0];
+  const last = route[route.length - 1];
+  let from = first.tst;
+  for (const p of route) {
+    if (metres(first, p) > thresholdM) {
+      from = p.tst;
+      break;
+    }
+  }
+  let to = last.tst;
+  for (let i = route.length - 1; i >= 0; i--) {
+    if (metres(last, route[i]) > thresholdM) {
+      to = route[i].tst;
+      break;
+    }
+  }
+  return to > from ? { from, to } : { from: first.tst, to: last.tst };
+}
