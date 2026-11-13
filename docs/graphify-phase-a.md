@@ -22,7 +22,7 @@ versioned.
 
 ## Generation Command
 
-Generated on 2026-07-25 with `graphify 0.9.26`:
+Generated on 2026-07-25 with `graphify 0.9.26`; refreshed 2026-11-13 with the same commands (adds the Map tab, PIN gate and time-colour code):
 
 ```bash
 GRAPHIFY_QUERY_LOG_DISABLE=1 graphify extract . --code-only --max-workers 4
@@ -39,11 +39,11 @@ bundled assistant skills or reference projects.
 
 ## Current Snapshot
 
-- Built from source commit: `0c6f00275f72d4e56d9c38976773cc9980facbdd`
-- Nodes: 1,997
-- Edges: 5,203
-- Communities: 119
-- Extraction confidence: 3,731 `EXTRACTED`, 9 `INFERRED`
+- Built from source commit: `1d15c1d7462fc80d1d2d8e902d6cd6180b7984b3`
+- Nodes: 2,085
+- Edges: 5,457
+- Communities: 116
+- Extraction confidence: all `EXTRACTED` except 13 `INFERRED` edges
 
 Graphify warned that one JSON/config file produced zero nodes:
 

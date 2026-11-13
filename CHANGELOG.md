@@ -1,10 +1,10 @@
 # Changelog
 
-## 2026-11-13 (Session tracking rule)
+## 2026-11-13 (Graphify map refreshed)
 
-Added a standing rule (CLAUDE.md) and the first log, `docs/sessions/2026-11-13-18-12-00-KST.md`:
-every working session is logged in the repo (engineering-only, since the repo is public), every
-commit is pushed, and Graphify is always used when touching code.
+Re-ran the documented code-only Graphify extraction so `graphify-out/` now includes the Map tab,
+the PIN gate and the time-colour code (2,085 nodes). Removed the session-log rule: the repo only
+needs to stay current with features, not conversation logs.
 
 ## 2026-11-13 (Map: Today means today)
 

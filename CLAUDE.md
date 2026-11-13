@@ -51,9 +51,9 @@ artifacts and repo rules, not local hook/cache files.
 - **Use Graphify whenever you touch code** (see the Graphify section above) — never skip it
   because it isn't installed; install it with the documented isolated venv.
 - **Push everything to GitHub.** Every commit is pushed to the remote right away.
-- **Track every working session in the repo:** add a log under `docs/sessions/` (named
-  `YYYY-MM-DD-HH-MM-SS-KST.md`) and a `CHANGELOG.md` entry. This repo is public, so keep logs
-  engineering-only: no personal locations, coordinates, place names, PINs, tokens, or diary content.
+- **Keep the repo current with every feature** (code, `CHANGELOG.md`, the docs, and the Graphify
+  map). No conversation or session logs are needed. This repo is public, so never commit
+  personal locations, place names, PINs, tokens, passcodes, or diary content.
 
 ## What this is
 
