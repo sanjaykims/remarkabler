@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Eyebrow } from "@/components/Eyebrow";
 import type { MapStayDto, RoutePointDto } from "./MapView";
 import PinGate from "./PinGate";
-import { movementWindow, timeColor } from "@/lib/mapData";
+import { formatCoords, movementWindow, timeColor } from "@/lib/mapData";
 
 // Leaflet touches `window`, so it must only load in the browser.
 const MapView = dynamic(() => import("./MapView"), {
@@ -35,6 +35,21 @@ export default function MapPage() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
+  // Which stay row is showing its exact coordinates, and whether the copy worked.
+  // State only: never persisted, and cleared when the page is hidden or re-locked.
+  const [coordsFor, setCoordsFor] = useState<number | null>(null);
+  const [copied, setCopied] = useState<"idle" | "ok" | "fail">("idle");
+
+  async function copyCoords(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied("ok");
+    } catch {
+      // Clipboard can be blocked; the text stays selectable as a fallback.
+      setCopied("fail");
+    }
+    setTimeout(() => setCopied("idle"), 1500);
+  }
 
   // Ask the server whether the PIN is already satisfied.
   useEffect(() => {
@@ -59,6 +74,7 @@ export default function MapPage() {
       if (document.visibilityState === "hidden") {
         lock();
         setData(null);
+        setCoordsFor(null);
         setGate((g) => (g ? { ...g, unlocked: false } : g));
       }
     };
@@ -77,6 +93,7 @@ export default function MapPage() {
     setData(null);
     setError(null);
     setFocus(null);
+    setCoordsFor(null);
     fetch(`/api/map?days=${days}`)
       .then((r) => {
         if (r.status === 403) {
@@ -169,7 +186,12 @@ export default function MapPage() {
           .map(({ s, i }) => (
             <li key={i}>
               <button
-                onClick={() => setFocus(i)}
+                onClick={() => {
+                  setFocus(i);
+                  setCoordsFor(coordsFor === i ? null : i);
+                  setCopied("idle");
+                }}
+                aria-expanded={coordsFor === i}
                 className="w-full text-left rounded border border-slate-200 dark:border-slate-800 p-3"
               >
                 <div className="text-sm font-medium">
@@ -179,6 +201,17 @@ export default function MapPage() {
                   {s.date} · {s.startTime}–{s.endTime}
                 </div>
               </button>
+              {coordsFor === i && formatCoords(s.lat, s.lng) && (
+                <div className="mt-1 flex items-center gap-2 rounded border border-slate-200 dark:border-slate-800 px-3 py-2">
+                  <code className="flex-1 text-sm select-all">{formatCoords(s.lat, s.lng)}</code>
+                  <button
+                    onClick={() => copyCoords(formatCoords(s.lat, s.lng))}
+                    className="px-3 py-1 rounded border border-sky-600 bg-sky-600 text-white text-sm"
+                  >
+                    {copied === "ok" ? "Copied" : copied === "fail" ? "Couldn't copy" : "Copy"}
+                  </button>
+                </div>
+              )}
             </li>
           ))}
       </ul>

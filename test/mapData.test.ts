@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampMapDays, thinRoute, MAP_MAX_DAYS } from "../lib/mapData";
+import { clampMapDays, formatCoords, thinRoute, MAP_MAX_DAYS } from "../lib/mapData";
 
 describe("clampMapDays", () => {
   it("defaults and clamps", () => {
@@ -83,5 +83,20 @@ describe("movementWindow", () => {
   it("falls back to first/last when nothing moved, and handles empty", () => {
     expect(movementWindow([p(5, 37), p(9, 37.00001)])).toEqual({ from: 5, to: 9 });
     expect(movementWindow([])).toEqual({ from: 0, to: 0 });
+  });
+});
+
+describe("formatCoords", () => {
+  it("formats lat, lng at 6 decimals", () => {
+    expect(formatCoords(37.5, 127.25)).toBe("37.500000, 127.250000");
+    expect(formatCoords(0.1234567, -0.7654321)).toBe("0.123457, -0.765432");
+  });
+  it("handles zero and negative values and a custom precision", () => {
+    expect(formatCoords(0, 0)).toBe("0.000000, 0.000000");
+    expect(formatCoords(-33.8, -70.6, 2)).toBe("-33.80, -70.60");
+  });
+  it("returns empty for non-finite input", () => {
+    expect(formatCoords(NaN, 1)).toBe("");
+    expect(formatCoords(1, Infinity)).toBe("");
   });
 });

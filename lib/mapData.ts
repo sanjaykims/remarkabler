@@ -107,3 +107,13 @@ export function movementWindow(
   }
   return to > from ? { from, to } : { from: first.tst, to: last.tst };
 }
+
+/**
+ * "lat, lng" at 6 decimals (~0.1 m), the format Google/Apple Maps accept when
+ * pasted. Lets the owner read a stay's exact coordinates off the PIN-gated Map
+ * page. Returns "" for non-finite input so the UI can hide the readout.
+ */
+export function formatCoords(lat: number, lng: number, dp = 6): string {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "";
+  return `${lat.toFixed(dp)}, ${lng.toFixed(dp)}`;
+}

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-13 (Map: tap a stay to see and copy its exact coordinates)
+
+On `/map`, tapping a stay in the list now reveals its exact latitude/longitude (6 decimals, the
+"lat, lng" format Google/Apple Maps accept) with a one-tap Copy button. Until now stays that had a
+cached place name never showed their numbers. Client-side only: it renders data the PIN-gated
+`/api/map` already returns, adds no route or payload field, keeps nothing in storage, and clears when
+the page is hidden or re-locked. Pure `formatCoords` in `lib/mapData.ts` with tests.
+
 ## 2026-11-13 (Map: colours start at first movement)
 
 The blue → orange colour scale now spans the actual movement of the range (first point away from

@@ -186,7 +186,7 @@ Companion docs — read in order if any is unfamiliar:
 | `/mind` | Heatmap (6 months) + theme cloud + "Who, where, what" (top people/places/projects) + sentiment timeline + 3D embedding map (`Map3D.tsx`). Axis labels under the map. "Re-analyse" / "Re-label" / "Merge duplicate names" / "Merge specific names" / "Build life wiki" buttons. |
 | `/graph` | Interactive native diary graph. Renders entities, diary days, exported Claude notes, co-occurrence links, typed relationships, filters/search, highlighting, and source evidence. |
 | `/memory` | Profile editor (the textarea) + Discipline, Location, OwnTracks, Models, Voyage status, Dropbox (+ vault auto-export toggle), Backup, reMarkable import/auto-sync, **Chat memory** (collapsible), Librarian heartbeat status, Export sections. |
-| `/map` | Leaflet map of OwnTracks stays + route (`/api/map`, `lib/mapData.ts`). OSM tiles. |
+| `/map` | Leaflet map of OwnTracks stays + route (`/api/map`, `lib/mapData.ts`). OSM tiles. Tap a stay to show/copy its coordinates. |
 | `/usage` | Cost calendar (daily/monthly), feature breakdown. KST timezone. |
 
 ## UI structure
