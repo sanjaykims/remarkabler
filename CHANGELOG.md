@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-13 (Session tracking rule)
+
+Added a standing rule (CLAUDE.md) and the first log, `docs/sessions/2026-11-13-18-12-00-KST.md`:
+every working session is logged in the repo (engineering-only, since the repo is public), every
+commit is pushed, and Graphify is always used when touching code.
+
 ## 2026-11-13 (Map: Today means today)
 
 The map's "Today" range was the last 24 hours, so it also drew the previous evening's trip home

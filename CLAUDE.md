@@ -46,6 +46,15 @@ snapshot's source commit, refresh the graph with the documented code-only
 commands before relying on it for large work. Commit only portable graph
 artifacts and repo rules, not local hook/cache files.
 
+## Standing rules from the owner
+
+- **Use Graphify whenever you touch code** (see the Graphify section above) — never skip it
+  because it isn't installed; install it with the documented isolated venv.
+- **Push everything to GitHub.** Every commit is pushed to the remote right away.
+- **Track every working session in the repo:** add a log under `docs/sessions/` (named
+  `YYYY-MM-DD-HH-MM-SS-KST.md`) and a `CHANGELOG.md` entry. This repo is public, so keep logs
+  engineering-only: no personal locations, coordinates, place names, PINs, tokens, or diary content.
+
 ## What this is
 
 "Remarkabler" (formerly "Feed Claude"): a self-hosted Next.js app. The user
