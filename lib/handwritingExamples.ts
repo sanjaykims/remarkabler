@@ -32,11 +32,43 @@ export function examplesAvailable(): boolean {
   }
 }
 
+export type Box = [number, number, number, number];
+
+/** Crop one word out of a notebook's stored PDF as a small PNG. Resolves null (never throws)
+ *  when the renderer, the PDF, the box or the page mapping isn't usable. */
+export async function cropPng(notebookId: string, pageIndex: number, box: Box | null | undefined): Promise<Buffer | null> {
+  try {
+    if (!box || !examplesAvailable()) return null;
+    const pdf = path.join(FILES_DIR, notebookId, "notebook.pdf");
+    if (!fs.existsSync(pdf)) return null;
+    // The crop only lands on the right page when the PDF has one page per page row
+    // (a sliced tall reMarkable page would shift the numbering), so the script checks it.
+    const rows = (
+      db().prepare(`SELECT COUNT(*) AS n FROM pages WHERE notebook_id = ?`).get(notebookId) as { n: number }
+    ).n;
+    const tmpDir = path.join(DATA_DIR, "tmp");
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const out = path.join(tmpDir, `crop-${crypto.randomUUID()}.png`);
+    try {
+      await execFileAsync(PYTHON, [CROP, pdf, String(pageIndex + 1), ...box.map(String), out, String(rows)], {
+        timeout: 30_000,
+      });
+      const png = fs.readFileSync(out);
+      return png.length === 0 || png.length > MAX_PNG_BYTES ? null : png;
+    } finally {
+      fs.rmSync(out, { force: true });
+    }
+  } catch (e) {
+    console.warn("[handwritingExamples] crop failed:", (e as Error).message);
+    return null;
+  }
+}
+
 export type CaptureArgs = {
   notebookId: string;
   /** 0-based page row index; the PDF page is pageIndex + 1 */
   pageIndex: number;
-  box: [number, number, number, number] | null | undefined;
+  box: Box | null | undefined;
   /** what the owner confirmed the handwriting says */
   text: string;
   /** what it was first read as (same as text when simply confirmed) */
@@ -47,42 +79,23 @@ export type CaptureArgs = {
 export async function captureExample(a: CaptureArgs): Promise<boolean> {
   try {
     const text = a.text.replace(/\s+/g, " ").trim();
-    if (!a.box || !text || text.length > MAX_TEXT || !examplesAvailable()) return false;
-    const pdf = path.join(FILES_DIR, a.notebookId, "notebook.pdf");
-    if (!fs.existsSync(pdf)) return false;
+    if (!a.box || !text || text.length > MAX_TEXT) return false;
     const have = db()
       .prepare(`SELECT COUNT(*) AS n FROM ocr_examples WHERE text = ?`)
       .get(text) as { n: number };
     if (have.n >= MAX_PER_TEXT) return false;
-    // The crop only lands on the right page when the PDF has one page per page row
-    // (a sliced tall reMarkable page would shift the numbering), so the script checks it.
-    const rows = (
-      db().prepare(`SELECT COUNT(*) AS n FROM pages WHERE notebook_id = ?`).get(a.notebookId) as { n: number }
-    ).n;
-    const tmpDir = path.join(DATA_DIR, "tmp");
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const out = path.join(tmpDir, `crop-${crypto.randomUUID()}.png`);
-    try {
-      await execFileAsync(
-        PYTHON,
-        [CROP, pdf, String(a.pageIndex + 1), ...a.box.map(String), out, String(rows)],
-        { timeout: 30_000 }
-      );
-      const png = fs.readFileSync(out);
-      if (png.length === 0 || png.length > MAX_PNG_BYTES) return false;
-      db()
-        .prepare(`INSERT INTO ocr_examples(id, text, wrong, notebook_id, png) VALUES(?,?,?,?,?)`)
-        .run(crypto.randomUUID(), text, a.wrong && a.wrong !== text ? a.wrong : null, a.notebookId, png);
-      db()
-        .prepare(
-          `DELETE FROM ocr_examples WHERE id IN (
-             SELECT id FROM ocr_examples ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?)`
-        )
-        .run(MAX_EXAMPLES_TOTAL);
-      return true;
-    } finally {
-      fs.rmSync(out, { force: true });
-    }
+    const png = await cropPng(a.notebookId, a.pageIndex, a.box);
+    if (!png) return false;
+    db()
+      .prepare(`INSERT INTO ocr_examples(id, text, wrong, notebook_id, png) VALUES(?,?,?,?,?)`)
+      .run(crypto.randomUUID(), text, a.wrong && a.wrong !== text ? a.wrong : null, a.notebookId, png);
+    db()
+      .prepare(
+        `DELETE FROM ocr_examples WHERE id IN (
+           SELECT id FROM ocr_examples ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?)`
+      )
+      .run(MAX_EXAMPLES_TOTAL);
+    return true;
   } catch (e) {
     console.warn("[handwritingExamples] capture failed:", (e as Error).message);
     return false;

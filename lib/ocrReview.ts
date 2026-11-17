@@ -2,7 +2,7 @@ import { db } from "./db";
 import { correctPageText } from "./notes";
 import { anchorPhrase, contextSnippet, replaceAt } from "./ocrFlags";
 import { recordLearned } from "./ocrLearning";
-import { captureExample } from "./handwritingExamples";
+import { captureExample, examplesAvailable } from "./handwritingExamples";
 
 // Proofreading review queue. The transcription is saved immediately with
 // Claude's best reading; doubtful spots become `ocr_flags` rows the owner
@@ -22,6 +22,8 @@ export type ReviewCard = {
   candidates: string[];
   reason: string;
   context: { before: string; match: string; after: string };
+  /** true when a picture of the handwritten word can be shown (/api/ocr-review/crop) */
+  hasCrop: boolean;
 };
 
 type FlagRow = {
@@ -34,6 +36,7 @@ type FlagRow = {
   phrase: string;
   candidates: string;
   reason: string | null;
+  box: string | null;
   ocr_text: string | null;
 };
 
@@ -51,7 +54,7 @@ export function listReviewCards(limit = 5): ReviewCard[] {
   const rows = d
     .prepare(
       `SELECT f.id, f.notebook_id, n.name AS notebook_name, f.page_id, f.page_index,
-              f.start_offset, f.phrase, f.candidates, f.reason, p.ocr_text
+              f.start_offset, f.phrase, f.candidates, f.reason, f.box, p.ocr_text
          FROM ocr_flags f
          JOIN notebooks n ON n.id = f.notebook_id
          LEFT JOIN pages p ON p.id = f.page_id
@@ -87,6 +90,7 @@ export function listReviewCards(limit = 5): ReviewCard[] {
       candidates,
       reason: r.reason || "",
       context: contextSnippet(text, start, r.phrase.length),
+      hasCrop: !!r.box && examplesAvailable(),
     });
   }
   return cards;

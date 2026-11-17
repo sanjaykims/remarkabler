@@ -12,6 +12,7 @@ type Card = {
   candidates: string[];
   reason: string;
   context: { before: string; match: string; after: string };
+  hasCrop?: boolean;
 };
 
 // "Needs your eye": spots Claude wasn't sure how to read. The page text is
@@ -125,6 +126,15 @@ export default function OcrReview({ onLocked }: { onLocked: () => void }) {
               </>
             )}
           </p>
+          {c.hasCrop && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/ocr-review/crop?id=${encodeURIComponent(c.id)}`}
+              alt="Your handwriting for this spot"
+              className="max-w-full rounded border border-slate-300 dark:border-slate-700 bg-white"
+              onError={(e) => (e.currentTarget.style.display = "none")}
+            />
+          )}
           <p className="text-sm leading-relaxed break-words">
             {c.context.before}
             <mark className="bg-amber-200 dark:bg-amber-900 text-inherit rounded px-0.5">
