@@ -90,7 +90,7 @@ export function listReviewCards(limit = 5): ReviewCard[] {
       candidates,
       reason: r.reason || "",
       context: contextSnippet(text, start, r.phrase.length),
-      hasCrop: !r.page_id.includes(":rm:") && examplesAvailable(),
+      hasCrop: examplesAvailable(),
     });
   }
   return cards;
@@ -124,7 +124,6 @@ function captureHandwriting(
   },
   confirmed: string
 ) {
-  if (row.page_id.includes(":rm:")) return;
   let box: [number, number, number, number] | null = null;
   try {
     const b = row.box ? JSON.parse(row.box) : null;
@@ -136,6 +135,7 @@ function captureHandwriting(
   void captureExample({
     notebookId: row.notebook_id,
     pageIndex: row.page_index,
+    pageRowId: row.page_id,
     box,
     // `text` is the page transcript BEFORE this answer changed it, which is what the PDF shows.
     locate: text

@@ -74,6 +74,7 @@ Companion docs — read in order if any is unfamiliar:
 | `handwritingNotes.ts` | Phase 3: `maybeRefreshHandwritingNotes` (in-flight guarded, never throws) asks `composeHandwritingNotes` for a short handwriting-habits note once 8 new corrections exist; stored in settings, fed into OCR hints. |
 | `retranscribe.ts` | Opt-in whole-notebook re-transcription queue (`/api/ocr-review/retranscribe`, `ocr_text_backup`). |
 | `writingCoach.ts` | Automatic writing coach for recent diary pages (`writing_coach`, `writing_coach_pages`, `/api/writing-coach`, section on `/insights`). |
+| `pdfPageMap.ts` | Pure: which PDF page shows a page row (`pagemap.json` for reMarkable-cloud notebooks). |
 | `secondLook.ts` | Pure logic for the OCR second look (parse answers, apply confident ones). The call is `secondLook` in `claude.ts`. |
 | `handwritingExamples.ts` | Phase 5: crops confirmed words (`docker/cropword`, Docker only) into `ocr_examples`; `pickExamples`/`exampleBlocks` feed labelled handwriting images to OCR/proofread prompts. Fail-open, local-only. |
 | `ocrDiff.ts` / `ocrLearning.ts` | Proofreading Phase 2 (learning). `ocrDiff.wordChanges` (pure) extracts small word substitutions from a manual edit; `ocrLearning` records confirmed terms / corrected pairs in `ocr_learned`, builds the advisory OCR hint block (`buildOcrHints`), ranks card candidates, and computes the progress stats. Fail-open, local-only. |

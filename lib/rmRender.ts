@@ -48,10 +48,14 @@ from pypdf import PdfWriter
 out = sys.argv[1]
 ins = sys.argv[2:]
 w = PdfWriter()
+counts = []
 for p in ins:
+    before = len(w.pages)
     w.append(p)
+    counts.append(len(w.pages) - before)
 with open(out, "wb") as f:
     w.write(f)
+print(",".join(str(c) for c in counts))
 `;
 
 export class RendererUnavailableError extends Error {
@@ -86,6 +90,9 @@ export type RenderResult = {
   rendered: number;
   // Page ids that failed to render and were skipped.
   failed: string[];
+  // How many PDF pages each successfully rendered input page became, in order (a tall,
+  // scrolled tablet page is sliced into several). Empty if the merger didn't report it.
+  pageCounts: Array<{ pageId: string; count: number }>;
 };
 
 /**
@@ -106,6 +113,7 @@ export async function renderNotebookToPdf(
   fs.mkdirSync(workDir, { recursive: true });
 
   const okPdfs: string[] = [];
+  const okIds: string[] = [];
   const failed: string[] = [];
   try {
     for (let i = 0; i < pages.length; i++) {
@@ -121,6 +129,7 @@ export async function renderNotebookToPdf(
         // failure — don't feed an empty page to the merger.
         if (fs.existsSync(outPdf) && fs.statSync(outPdf).size > 0) {
           okPdfs.push(outPdf);
+          okIds.push(page.pageId);
         } else {
           failed.push(page.pageId);
         }
@@ -136,11 +145,19 @@ export async function renderNotebookToPdf(
     }
 
     const mergedPath = path.join(workDir, "merged.pdf");
-    await execFileAsync(RENDERER_PYTHON, ["-c", MERGE_PY, mergedPath, ...okPdfs], {
+    const merge = await execFileAsync(RENDERER_PYTHON, ["-c", MERGE_PY, mergedPath, ...okPdfs], {
       timeout: MERGE_TIMEOUT_MS,
     });
     const pdf = fs.readFileSync(mergedPath);
-    return { pdf, rendered: okPdfs.length, failed };
+    const nums = String(merge.stdout || "")
+      .trim()
+      .split(",")
+      .map((x) => Number(x));
+    const pageCounts =
+      nums.length === okIds.length && nums.every((n) => Number.isInteger(n) && n > 0)
+        ? okIds.map((pageId, i) => ({ pageId, count: nums[i] }))
+        : [];
+    return { pdf, rendered: okPdfs.length, failed, pageCounts };
   } finally {
     // Always clean the scratch dir — these are throwaway per-import temp files.
     try {

@@ -32,8 +32,7 @@ export async function GET(req: NextRequest) {
         ocr_text: string | null;
       }
     | undefined;
-  // reMarkable-sync notebooks store per-tablet-page rows whose flags don't map onto the merged PDF.
-  if (!row || row.page_id.includes(":rm:")) return NextResponse.json({ error: "No picture" }, { status: 404 });
+  if (!row) return NextResponse.json({ error: "No picture" }, { status: 404 });
   let box: Box | null = null;
   try {
     const b = row.box ? JSON.parse(row.box) : null;
@@ -47,7 +46,8 @@ export async function GET(req: NextRequest) {
     row.page_index,
     box,
     true,
-    text ? { text, offset: Math.max(0, anchorPhrase(text, row.phrase, row.start_offset)), len: row.phrase.length } : undefined
+    text ? { text, offset: Math.max(0, anchorPhrase(text, row.phrase, row.start_offset)), len: row.phrase.length } : undefined,
+    row.page_id
   );
   if (!png) return NextResponse.json({ error: "No picture" }, { status: 404 });
   return new NextResponse(new Uint8Array(png), {

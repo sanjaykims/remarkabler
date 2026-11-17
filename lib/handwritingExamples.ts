@@ -4,6 +4,7 @@ import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { db } from "./db";
+import { pickPdfPage, type PageMap } from "./pdfPageMap";
 
 // Visual learning: every word the owner confirms is saved as a small crop of
 // their own handwriting plus the confirmed text, and a few of those crops are
@@ -93,22 +94,39 @@ export async function cropPng(
   pageIndex: number,
   box: Box | null | undefined,
   wide = false,
-  locate?: Locate
+  locate?: Locate,
+  /** the page row id; needed for reMarkable-cloud pages, whose PDF page comes from the page map */
+  pageRowId?: string
 ): Promise<Buffer | null> {
   try {
-    // The crop only lands on the right page when the PDF has one page per page row
-    // (a sliced tall reMarkable page would shift the numbering), so the script checks it.
+    const dir = path.join(FILES_DIR, notebookId);
     const rows = (
       db().prepare(`SELECT COUNT(*) AS n FROM pages WHERE notebook_id = ?`).get(notebookId) as { n: number }
     ).n;
-    return await cropFile(
-      path.join(FILES_DIR, notebookId, "notebook.pdf"),
-      pageIndex + 1,
+    const row = pageRowId
+      ? (db().prepare(`SELECT page_index, remarkable_page_id FROM pages WHERE id = ?`).get(pageRowId) as
+          | { page_index: number; remarkable_page_id: string | null }
+          | undefined)
+      : undefined;
+    let map: PageMap | null = null;
+    if (row?.remarkable_page_id) {
+      try {
+        map = JSON.parse(fs.readFileSync(path.join(dir, "pagemap.json"), "utf8")) as PageMap;
+      } catch {
+        map = null;
+      }
+    }
+    // The crop only lands on the right page when the PDF has the page count we expect
+    // (the script checks it and refuses otherwise).
+    const at = pickPdfPage({
+      rmPageId: row?.remarkable_page_id,
+      flagPageIndex: pageIndex,
+      rowPageIndex: row?.page_index ?? pageIndex,
       rows,
-      box,
-      wide ? "wide" : "tight",
-      locate
-    );
+      map,
+    });
+    if (!at) return null;
+    return await cropFile(path.join(dir, "notebook.pdf"), at.pageNo, at.expect, box, wide ? "wide" : "tight", locate);
   } catch {
     return null;
   }
@@ -121,6 +139,7 @@ export type CaptureArgs = {
   box: Box | null | undefined;
   /** the page transcript and the word's place in it, for locating it from the line structure */
   locate?: Locate;
+  pageRowId?: string;
   /** what the owner confirmed the handwriting says */
   text: string;
   /** what it was first read as (same as text when simply confirmed) */
@@ -136,7 +155,7 @@ export async function captureExample(a: CaptureArgs): Promise<boolean> {
       .prepare(`SELECT COUNT(*) AS n FROM ocr_examples WHERE text = ?`)
       .get(text) as { n: number };
     if (have.n >= MAX_PER_TEXT) return false;
-    const png = await cropPng(a.notebookId, a.pageIndex, a.box, false, a.locate);
+    const png = await cropPng(a.notebookId, a.pageIndex, a.box, false, a.locate, a.pageRowId);
     if (!png) return false;
     db()
       .prepare(`INSERT INTO ocr_examples(id, text, wrong, notebook_id, png) VALUES(?,?,?,?,?)`)

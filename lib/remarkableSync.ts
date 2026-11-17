@@ -10,6 +10,7 @@ import {
   type RemarkableNotebook,
 } from "./remarkableCloud";
 import { renderNotebookToPdf, renderersAvailable } from "./rmRender";
+import { buildPageMap } from "./pdfPageMap";
 import {
   lockRemarkableImport,
   unlockRemarkableImport,
@@ -976,6 +977,13 @@ async function incrementalSyncNotebook(
       const merged = await renderNotebookToPdf(dl.pages);
       fs.mkdirSync(pdfDir, { recursive: true });
       fs.writeFileSync(path.join(pdfDir, "notebook.pdf"), merged.pdf);
+      // Where each tablet page sits in that PDF, so a review card can show the handwriting.
+      const mapFile = path.join(pdfDir, "pagemap.json");
+      if (merged.pageCounts.length) {
+        fs.writeFileSync(mapFile, JSON.stringify(buildPageMap(merged.pageCounts)));
+      } else {
+        fs.rmSync(mapFile, { force: true });
+      }
     } catch (e) {
       console.warn("[remarkableSync] notebook.pdf refresh failed:", (e as Error).message);
     }
