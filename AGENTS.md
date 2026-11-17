@@ -82,7 +82,7 @@ and an accumulating record of "insights" about them. It's a long-horizon
 | `cleanup.ts` / `upload.ts` | Orphan-attachment sweep; upload validation/duck-typing. |
 
 ### `app/` — UI + API
-- Pages: `/` (dashboard), `/notebooks`, `/graph`, `/map` (Leaflet trail of OwnTracks stays/route via `/api/map`; OSM tiles, cache-only place names; extra 4-digit PIN via `lib/mapPin.ts`), `/notebooks` (with a "Needs your eye" proofreading queue: `lib/ocrFlags.ts`/`ocrFlagStore.ts`/`ocrReview.ts`, `/api/ocr-review`) is also behind its own 4-digit PIN (`lib/notebooksPin.ts`; shared mechanics in `lib/pinGate.ts`; routes call `notebooksPinDenied`), `/insights`, `/memory`,
+- Pages: `/` (dashboard), `/notebooks`, `/graph`, `/map` (Leaflet trail of OwnTracks stays/route via `/api/map`; OSM tiles, cache-only place names; extra 4-digit PIN via `lib/mapPin.ts`), `/notebooks` (with a "Needs your eye" proofreading queue: `lib/ocrFlags.ts`/`ocrFlagStore.ts`/`ocrReview.ts`, `/api/ocr-review`; learning from answers/edits: `ocrLearning.ts`/`ocrDiff.ts`, table `ocr_learned`) is also behind its own 4-digit PIN (`lib/notebooksPin.ts`; shared mechanics in `lib/pinGate.ts`; routes call `notebooksPinDenied`), `/insights`, `/memory`,
   `/mind` (heatmap, theme cloud, mood timeline, 3D embedding map —
   `app/mind/Map3D.tsx`), `/graph` (interactive diary/entity relationship
   map), `/usage` (cost calendar).

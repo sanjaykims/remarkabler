@@ -795,6 +795,18 @@ features need the deployed instance to fully verify.
   cycle. Applying a choice must go through `correctPageText` (never a raw UPDATE) so FTS,
   embedding, analysis, dates and summaries follow; `/api/ocr-review` stays behind the app lock
   AND the Notebooks PIN (cards quote diary text) and is NOT exposed on MCP.
+- **Proofreading learning is advisory, fail-open and local-only.** `lib/ocrLearning.ts` /
+  `lib/ocrDiff.ts` record owner answers and small manual-edit fixes in `ocr_learned`, and feed the next
+  OCR prompt a capped hint block (`buildOcrHints`). Every learning call is best-effort in `try/catch`
+  and must never fail or delay a transcription, a page edit, or an owner's card answer. The hints are
+  suggestions, not retraining, and the data never goes in the repo or on MCP. `ocrLearning.ts` uses the
+  literal `"github-discipline"` (not `DISCIPLINE_ID` from `lib/notes.ts`) to avoid the
+  notes -> claude -> ocrLearning import cycle. Manual-edit learning only keeps substitutions of at most 3
+  words and 12 hunks per edit, and skips punctuation-only changes.
+- **Graphify-first is enforced by hooks.** `.claude/hooks/graphify_gate.py` (PreToolUse on edits)
+  blocks code edits until `graphify query|explain|path` ran in the session within 45 min;
+  `graphify_mark.py` (PostToolUse on Bash) records it. Registered in `.claude/settings.json`; they
+  take effect in a new session. Do not remove them.
 - **Rolling memory must stay OUTSIDE the raw-history window.** As an active
   conversation grows, `maybeRollConversationMemory` (fired un-awaited from the
   chat POST) compresses its older turns into `chat_memories` *before* a Clear,

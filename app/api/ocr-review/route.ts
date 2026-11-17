@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { notebooksPinDenied } from "@/lib/notebooksPin";
 import { listReviewCards, pendingFlagCount, resolveFlag, type ResolveAction } from "@/lib/ocrReview";
+import { proofreadingStats } from "@/lib/ocrLearning";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,11 @@ export async function GET(req: NextRequest) {
   if (!(await isAuthenticated())) return LOCKED();
   const pinDenied = notebooksPinDenied(req);
   if (pinDenied) return pinDenied;
-  return NextResponse.json({ cards: listReviewCards(5), total: pendingFlagCount() });
+  return NextResponse.json({
+    cards: listReviewCards(5),
+    total: pendingFlagCount(),
+    stats: proofreadingStats(),
+  });
 }
 
 // POST {action: "choose", id, index} | {action: "custom", id, text} | {action: "keep", id}

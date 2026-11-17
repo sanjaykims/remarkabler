@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-11-17 (Transcription proofreading, Phase 2: learning)
+
+Your answers now teach the transcriber. "Keep as written" records a confirmed spelling (e.g. a
+deliberate "reMarkablER"); choosing or typing a fix records a wrong -> right pair; correcting a page by
+hand also learns small word-level fixes (diffed by `lib/ocrDiff.ts`: substitutions of at most 3 words,
+at most 12 per edit; rewrites are ignored). The next OCR prompt gets an advisory hint block
+(`buildOcrHints`: confirmed terms, past misreadings, and your most frequent diary names; capped at
+about 2500 chars) and flags for confirmed terms are dropped. Candidates on new cards are ranked with
+your learned fixes first. The Needs-your-eye section shows a progress block (totals, learned counts,
+per-week flagged/corrected/kept). Learning is advisory and fail-open: it never blocks or fails a
+transcription or an answer. Data lives only in the local table `ocr_learned`; not on MCP, not in git.
+New: `lib/ocrDiff.ts`, `lib/ocrLearning.ts`, table `ocr_learned`. Tests: `test/ocrDiff.test.ts`,
+`test/ocrLearningDb.test.ts`.
+
+Dev tooling: Graphify is now enforced automatically. A PreToolUse hook (`.claude/hooks/graphify_gate.py`)
+blocks code edits until a `graphify query|explain|path` has run in the session within 45 minutes; a
+PostToolUse hook (`graphify_mark.py`) records the run. Registered in `.claude/settings.json`; takes
+effect in new sessions.
+
 ## 2026-11-17 (Transcription proofreading, Phase 1: "Needs your eye")
 
 While transcribing, Claude now also flags words/names/numbers it is genuinely unsure about, with 1-3

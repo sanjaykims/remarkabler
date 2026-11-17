@@ -579,6 +579,27 @@ CREATE TABLE IF NOT EXISTS ocr_flags (
 CREATE INDEX IF NOT EXISTS idx_ocr_flags_status ON ocr_flags(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_ocr_flags_page ON ocr_flags(page_id, status);
 
+-- What the proofreading loop has learned about THIS writer's handwriting
+-- (lib/ocrLearning.ts). kind 'corrected': Claude read 'wrong', the owner says
+-- 'right'. kind 'confirmed': the owner confirmed 'wrong' is right as written
+-- (wrong = right), so it is known vocabulary and must stop being flagged.
+-- Fed back into the OCR prompt as advisory hints. Local data only: it lives in
+-- the database, never in the repo, and is NOT exposed over MCP.
+CREATE TABLE IF NOT EXISTS ocr_learned (
+  id TEXT PRIMARY KEY,
+  wrong TEXT NOT NULL,
+  right TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  source TEXT NOT NULL,
+  context TEXT,
+  first_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(wrong, right)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ocr_learned_wrong ON ocr_learned(wrong);
+
 -- Dropbox files the user has deleted from the app. Deleting a notebook
 -- removes its dropbox_file_id dedup marker, so without this tombstone the
 -- watcher would treat the source PDF as new and re-ingest it on the next

@@ -83,6 +83,7 @@ function client(): Anthropic {
 export type PageOcr = { pageIndex: number; text: string };
 
 import { splitFlagsBlock, parseFlagLines, type OcrFlag } from "./ocrFlags";
+import { buildOcrHints, isConfirmedTerm } from "./ocrLearning";
 export type { OcrFlag };
 
 /**
@@ -109,6 +110,9 @@ export async function ocrNotebookPdfWithFlags(
   pdfBytes: Uint8Array
 ): Promise<{ pages: PageOcr[]; flags: OcrFlag[] }> {
   const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
+  // What earlier proofreading taught us about this writer (confirmed
+  // vocabulary, past misreadings, frequent names). Advisory and fail-open.
+  const hints = buildOcrHints();
 
   // Stream the response. The SDK rejects a non-streaming request whose
   // max_tokens is large enough that it could exceed the 10-minute timeout;
@@ -142,6 +146,7 @@ export async function ocrNotebookPdfWithFlags(
       "readings. Flag at most 15 spots in total, most doubtful first. Do not",
       "flag clear words, blank pages, or style choices. If nothing is doubtful,",
       "omit the block entirely.",
+      ...(hints ? ["", hints] : []),
     ].join("\n"),
     messages: [
       {
@@ -175,7 +180,15 @@ export async function ocrNotebookPdfWithFlags(
   if (pages.length === 0) {
     throw new Error("Claude returned no transcribable content for this PDF.");
   }
-  return { pages, flags: parseFlagLines(flagsRaw) };
+  // Belt and braces: never re-ask about a spelling the owner already confirmed.
+  const flags = parseFlagLines(flagsRaw).filter((f) => {
+    try {
+      return !isConfirmedTerm(f.phrase);
+    } catch {
+      return true;
+    }
+  });
+  return { pages, flags };
 }
 
 function parsePages(raw: string): PageOcr[] {

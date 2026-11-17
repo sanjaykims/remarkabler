@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { db } from "./db";
 import { MAX_FLAGS_PER_CALL, anchorPhrase, type OcrFlag } from "./ocrFlags";
+import { rankCandidates } from "./ocrLearning";
 
 // Write side of the proofreading queue. Kept apart from lib/ocrReview.ts
 // (which needs lib/notes.ts for corrections) so the ingest paths in
@@ -42,7 +43,7 @@ export function saveOcrFlags(args: {
         pageIndex,
         start,
         f.phrase,
-        JSON.stringify(f.alternatives.slice(0, 3)),
+        JSON.stringify(rankCandidates(f.phrase, f.alternatives)),
         f.reason || null
       );
       saved++;

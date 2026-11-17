@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { correctPageText } from "./notes";
 import { anchorPhrase, contextSnippet, replaceAt } from "./ocrFlags";
+import { recordLearned } from "./ocrLearning";
 
 // Proofreading review queue. The transcription is saved immediately with
 // Claude's best reading; doubtful spots become `ocr_flags` rows the owner
@@ -90,6 +91,21 @@ export function listReviewCards(limit = 5): ReviewCard[] {
   return cards;
 }
 
+/** Best-effort: learning must never block or fail the owner's answer. */
+function learn(wrong: string, right: string, text: string, start: number, len: number) {
+  try {
+    const c = contextSnippet(text, start, len, 40);
+    recordLearned({
+      wrong,
+      right,
+      source: "review",
+      context: `${c.before}[${c.match}]${c.after}`,
+    });
+  } catch (e) {
+    console.warn("[ocrReview] recording what was learned failed:", (e as Error).message);
+  }
+}
+
 export type ResolveAction =
   | { kind: "choose"; index: number }
   | { kind: "custom"; text: string }
@@ -127,6 +143,8 @@ export function resolveFlag(id: string, action: ResolveAction): ResolveResult {
     d.prepare(
       `UPDATE ocr_flags SET status = 'kept', resolved_text = phrase, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`
     ).run(id);
+    // Confirmed as written: known vocabulary, so it stops being flagged.
+    learn(row.phrase, row.phrase, row.ocr_text || "", row.start_offset, row.phrase.length);
     return { ok: true, notebookId: row.notebook_id, changed: false };
   }
 
@@ -165,6 +183,7 @@ export function resolveFlag(id: string, action: ResolveAction): ResolveResult {
   }
 
   const at = anchorPhrase(text, row.phrase, row.start_offset);
+  learn(row.phrase, replacement, text, at === -1 ? row.start_offset : at, row.phrase.length);
   const delta = replacement.length - row.phrase.length;
   d.transaction(() => {
     d.prepare(

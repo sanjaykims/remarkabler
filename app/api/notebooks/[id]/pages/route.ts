@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
 import { notebooksPinDenied } from "@/lib/notebooksPin";
+import { learnFromEdit, pageTextOf } from "@/lib/ocrLearning";
 import { correctPageText } from "@/lib/notes";
 
 export const runtime = "nodejs";
@@ -73,9 +74,18 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   // entry_date, daily summary) in one transaction so search / semantic recall
   // / date tools / entities / day files all reflect the correction, not just
   // the raw text (review #124).
+  const before = pageTextOf(id, pageId);
   const ok = correctPageText(id, pageId, text);
   if (!ok) {
     return NextResponse.json({ error: "Page not found" }, { status: 404 });
+  }
+
+  // Small word fixes in a manual edit are handwriting lessons too. Best-effort:
+  // never let learning turn a saved correction into an error.
+  try {
+    learnFromEdit(before, text);
+  } catch (e) {
+    console.warn("[notebooks/pages] learning from edit failed:", (e as Error).message);
   }
 
   // Push the corrected day file to the Obsidian/Dropbox export (best-effort,
