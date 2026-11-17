@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-17 (Security: Next.js 16.3.2 -> 16.4.6)
+Upgraded Next.js to clear the known advisories (server-actions DoS, SSG/ISR cache poisoning, and the
+image/`use cache` RCE family; the app doesn't use the latter features). `npm audit` no longer flags
+`next`. Tests (779) and build pass. Remaining audit items: `mcp-handler` 1.x -> 2.x (major, needs its own
+pass), and `rmapi-js` via `zod`.
+
 ## 2026-11-17 (Dev tooling: Ponytail)
 Registered the Ponytail plugin (ponytail.dev, source `DietrichGebert/ponytail`) in `.claude/settings.json`
 so Claude Code sessions in this repo write the least code that works (reuse first, small tests for risky
