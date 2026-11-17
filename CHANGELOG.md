@@ -3,6 +3,7 @@
 ## Unreleased - Phase 5: handwriting examples
 
 - Claude now returns a rough `box` for each doubtful word; when you confirm or correct a card, a small crop of that word is saved (`ocr_examples`) and a few are shown to the transcriber as labelled handwriting examples. Needs the Docker image (`docker/cropword`); off elsewhere, never blocks anything.
+- New "Re-check for handwriting pictures" button on /notebooks: re-queues already-proofread notebooks and removes only waiting cards that have no word position (answers and text untouched), so the next pass produces cards that can save crops.
 - Manual edits only become handwriting lessons when the words look alike (`looksLikeMisread`); rewordings are ignored. Card answers always learn.
 
 ## 2026-11-17 (Old-diary proofreading: "All" and "Stop" buttons)

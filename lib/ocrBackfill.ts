@@ -39,6 +39,36 @@ export function backfillCandidates(): Candidate[] {
   return rows.filter((r) => fs.existsSync(pdfPath(r.id)));
 }
 
+/** Proofread notebooks whose stored PDF still exists (could be re-checked). */
+export function recheckableCount(): number {
+  const ids = db()
+    .prepare(`SELECT id FROM notebooks WHERE status = 'done' AND proofread_at IS NOT NULL AND id != 'github-discipline'`)
+    .all() as Array<{ id: string }>;
+  return ids.filter((r) => fs.existsSync(pdfPath(r.id))).length;
+}
+
+/** Queue already-proofread notebooks for another pass so their cards get a word position
+ *  (needed for handwriting pictures). Only deletes still-PENDING cards that have no position;
+ *  answered cards, kept cards and page text are never touched. */
+export function resetForRecheck(): { notebooks: number; cardsRemoved: number } {
+  const d = db();
+  return d.transaction(() => {
+    const ids = d
+      .prepare(`SELECT id FROM notebooks WHERE status = 'done' AND proofread_at IS NOT NULL AND id != 'github-discipline'`)
+      .all()
+      .map((r) => (r as { id: string }).id)
+      .filter((id) => fs.existsSync(pdfPath(id)));
+    let removed = 0;
+    for (const id of ids) {
+      removed += d
+        .prepare(`DELETE FROM ocr_flags WHERE notebook_id = ? AND status = 'pending' AND box IS NULL`)
+        .run(id).changes;
+      d.prepare(`UPDATE notebooks SET proofread_at = NULL WHERE id = ?`).run(id);
+    }
+    return { notebooks: ids.length, cardsRemoved: removed };
+  })();
+}
+
 export function estimateBackfill() {
   const c = backfillCandidates();
   const pages = c.reduce((a, r) => a + r.pages, 0);
@@ -52,6 +82,7 @@ export function estimateBackfill() {
     pages,
     estimatedUsd: Math.round(usd * 100) / 100,
     pendingCards: pendingFlagCount(),
+    recheckable: recheckableCount(),
     next: c[0] ? { id: c[0].id, name: c[0].name, pages: c[0].pages } : null,
   };
 }

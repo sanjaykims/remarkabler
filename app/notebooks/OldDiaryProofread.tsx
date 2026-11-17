@@ -7,6 +7,7 @@ type Estimate = {
   pages: number;
   estimatedUsd: number;
   pendingCards: number;
+  recheckable: number;
   next: { name: string; pages: number } | null;
 };
 
@@ -122,7 +123,28 @@ export default function OldDiaryProofread({
     }
   }
 
-  if (!est || est.notebooks === 0) return null;
+  async function recheck() {
+    if (!confirm("Queue already-checked notebooks for another pass? Waiting cards without a word position are replaced; your answers and text stay.")) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/ocr-review/backfill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recheck: true }),
+      });
+      if (r.status === 403) return onLocked();
+      const d = await r.json().catch(() => ({}));
+      setMsg(r.ok ? `Queued ${d.notebooks} notebooks (${d.cardsRemoved} old waiting cards removed). Now tap Test on 1 notebook.` : "Couldn't queue.");
+    } catch {
+      setMsg("Couldn't reach the server.");
+    } finally {
+      setBusy(false);
+      onDone();
+      void load();
+    }
+  }
+
+  if (!est || (est.notebooks === 0 && est.recheckable === 0)) return null;
   const btn =
     "rounded border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm disabled:opacity-50";
   return (
@@ -145,6 +167,11 @@ export default function OldDiaryProofread({
         <button className={btn} disabled={busy} onClick={runAll}>
           All
         </button>
+        {est.recheckable > 0 && (
+          <button className={btn} disabled={busy} onClick={recheck}>
+            Re-check for handwriting pictures
+          </button>
+        )}
         {busy && (
           <button className={btn} onClick={() => (stopRef.current = true)}>
             Stop

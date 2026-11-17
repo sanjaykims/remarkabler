@@ -90,3 +90,23 @@ describe("old-diary proofreading (Phase 4)", () => {
     expect(proofread).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("re-check for handwriting pictures", () => {
+  it("removes only pending cards without a box and re-queues the notebook", () => {
+    addNotebook("a", "2026-01-01", "hello Elim");
+    const d = dbMod.db();
+    d.prepare(`UPDATE notebooks SET proofread_at = datetime('now') WHERE id = 'a'`).run();
+    const ins = d.prepare(
+      `INSERT INTO ocr_flags(id,notebook_id,page_id,page_index,start_offset,phrase,candidates,status,box) VALUES(?,?,?,?,?,?,?,?,?)`
+    );
+    ins.run("f1", "a", "a:0", 0, 6, "Elim", "[]", "pending", null);
+    ins.run("f2", "a", "a:0", 0, 0, "hello", "[]", "pending", "[1,2,30,40]");
+    ins.run("f3", "a", "a:0", 0, 0, "x", "[]", "resolved", null);
+    expect(B.recheckableCount()).toBe(1);
+    expect(B.resetForRecheck()).toEqual({ notebooks: 1, cardsRemoved: 1 });
+    const left = d.prepare(`SELECT id FROM ocr_flags ORDER BY id`).all();
+    expect(left).toEqual([{ id: "f2" }, { id: "f3" }]);
+    expect(B.backfillCandidates().map((c) => c.id)).toEqual(["a"]);
+    expect(d.prepare(`SELECT ocr_text FROM pages WHERE id='a:0'`).get()).toEqual({ ocr_text: "hello Elim" });
+  });
+});
