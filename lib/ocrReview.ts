@@ -2,6 +2,7 @@ import { db } from "./db";
 import { correctPageText } from "./notes";
 import { anchorPhrase, contextSnippet, replaceAt } from "./ocrFlags";
 import { recordLearned } from "./ocrLearning";
+import { captureExample } from "./handwritingExamples";
 
 // Proofreading review queue. The transcription is saved immediately with
 // Claude's best reading; doubtful spots become `ocr_flags` rows the owner
@@ -106,6 +107,28 @@ function learn(wrong: string, right: string, text: string, start: number, len: n
   }
 }
 
+/** Save a picture of the confirmed handwriting for the transcriber's examples (fire-and-forget). */
+function captureHandwriting(
+  row: { notebook_id: string; page_index: number; box: string | null; phrase: string },
+  confirmed: string
+) {
+  if (!row.box) return;
+  let box: [number, number, number, number] | null = null;
+  try {
+    const b = JSON.parse(row.box);
+    if (Array.isArray(b) && b.length === 4) box = b as [number, number, number, number];
+  } catch {
+    return;
+  }
+  void captureExample({
+    notebookId: row.notebook_id,
+    pageIndex: row.page_index,
+    box,
+    text: confirmed,
+    wrong: row.phrase,
+  }).catch((e) => console.warn("[ocrReview] handwriting capture failed:", (e as Error).message));
+}
+
 export type ResolveAction =
   | { kind: "choose"; index: number }
   | { kind: "custom"; text: string }
@@ -119,7 +142,7 @@ export function resolveFlag(id: string, action: ResolveAction): ResolveResult {
   const d = db();
   const row = d
     .prepare(
-      `SELECT f.id, f.notebook_id, f.page_id, f.start_offset, f.phrase, f.candidates, f.status,
+      `SELECT f.id, f.notebook_id, f.page_id, f.page_index, f.box, f.start_offset, f.phrase, f.candidates, f.status,
               p.ocr_text
          FROM ocr_flags f LEFT JOIN pages p ON p.id = f.page_id
         WHERE f.id = ?`
@@ -129,6 +152,8 @@ export function resolveFlag(id: string, action: ResolveAction): ResolveResult {
         id: string;
         notebook_id: string;
         page_id: string;
+        page_index: number;
+        box: string | null;
         start_offset: number;
         phrase: string;
         candidates: string;
@@ -145,6 +170,7 @@ export function resolveFlag(id: string, action: ResolveAction): ResolveResult {
     ).run(id);
     // Confirmed as written: known vocabulary, so it stops being flagged.
     learn(row.phrase, row.phrase, row.ocr_text || "", row.start_offset, row.phrase.length);
+    captureHandwriting(row, row.phrase);
     return { ok: true, notebookId: row.notebook_id, changed: false };
   }
 
@@ -184,6 +210,7 @@ export function resolveFlag(id: string, action: ResolveAction): ResolveResult {
 
   const at = anchorPhrase(text, row.phrase, row.start_offset);
   learn(row.phrase, replacement, text, at === -1 ? row.start_offset : at, row.phrase.length);
+  captureHandwriting(row, replacement);
   const delta = replacement.length - row.phrase.length;
   d.transaction(() => {
     d.prepare(

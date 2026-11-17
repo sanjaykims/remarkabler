@@ -57,9 +57,33 @@ export function recordLearned(args: {
 }
 
 /** Learn from a manual page edit: each small word substitution is a lesson. */
+function editDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+/** A manual edit is a handwriting misreading only when the two words look alike; a
+ *  rewording ("big" -> "large") is the owner's word choice, not a lesson about the pen. */
+export function looksLikeMisread(wrong: string, right: string): boolean {
+  const a = wrong.toLowerCase().replace(/\s+/g, "");
+  const b = right.toLowerCase().replace(/\s+/g, "");
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return editDistance(a, b) <= Math.max(2, Math.floor(Math.max(a.length, b.length) * 0.4));
+}
+
 export function learnFromEdit(oldText: string, newText: string): number {
   let n = 0;
   for (const c of wordChanges(oldText, newText)) {
+    if (!looksLikeMisread(c.wrong, c.right)) continue;
     recordLearned({ wrong: c.wrong, right: c.right, source: "manual_edit", context: c.context });
     n++;
   }

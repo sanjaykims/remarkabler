@@ -84,6 +84,7 @@ export type PageOcr = { pageIndex: number; text: string };
 
 import { splitFlagsBlock, parseFlagLines, type OcrFlag } from "./ocrFlags";
 import { buildOcrHints, isConfirmedTerm, autoFixPages } from "./ocrLearning";
+import { exampleBlocks } from "./handwritingExamples";
 export type { OcrFlag };
 
 /**
@@ -140,7 +141,9 @@ export async function ocrNotebookPdfWithFlags(
       "transcription. After the LAST page, if (and only if) some words, names",
       "or numbers are genuinely hard to read, add one final block: a line",
       "containing exactly `--- FLAGS ---`, then one JSON object per line:",
-      '  {"page":2,"phrase":"Elim","alternatives":["Elin","Ellen"],"reason":"last letter unclear"}',
+      '  {"page":2,"phrase":"Elim","alternatives":["Elin","Ellen"],"reason":"last letter unclear","box":[120,340,260,380]}',
+      "`box` is optional: your best estimate of where that word sits on the PDF page as",
+      "[left,top,right,bottom] in thousandths of the page width and height (0-1000).",
       "`phrase` is just the ONE doubtful word or number (at most 2 words, never a",
       "sentence), copied EXACTLY as it appears in your transcription of",
       "that page (1-based page number). `alternatives` are 1-3 other plausible",
@@ -157,6 +160,7 @@ export async function ocrNotebookPdfWithFlags(
             type: "document",
             source: { type: "base64", media_type: "application/pdf", data: pdfBase64 },
           },
+          ...exampleBlocks(),
           { type: "text", text: "Transcribe every page." },
         ],
       },
@@ -1407,7 +1411,9 @@ export async function proofreadExistingPdf(
       "Find places where the transcription seems to MISREAD the handwriting: wrong words, wrong names,",
       "wrong numbers. Do not rewrite or repeat the transcription.",
       "Output ONLY a line containing exactly `--- FLAGS ---` followed by one JSON object per line:",
-      '  {"page":2,"phrase":"Elim","alternatives":["Elin","Ellen"],"reason":"last letter looks like n"}',
+      '  {"page":2,"phrase":"Elim","alternatives":["Elin","Ellen"],"reason":"last letter looks like n","box":[120,340,260,380]}',
+      "`box` is optional: your best estimate of where that word sits on the PDF page as",
+      "[left,top,right,bottom] in thousandths of the page width and height (0-1000).",
       "`phrase` is just the ONE doubtful word or number (at most 2 words, never a sentence), copied EXACTLY",
       "from that page of the saved transcription (1-based page number). Flag ONLY when you believe the saved",
       "text is probably WRONG; if your reading agrees with it, do not flag.",
@@ -1428,6 +1434,7 @@ export async function proofreadExistingPdf(
               data: Buffer.from(pdfBytes).toString("base64"),
             },
           },
+          ...exampleBlocks(),
           { type: "text", text: transcript.slice(0, 120_000) },
         ],
       },

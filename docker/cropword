@@ -1,0 +1,52 @@
+#!/opt/renderer/bin/python
+"""cropword PDF PAGE X0 Y0 X1 Y1 OUT.png EXPECT_PAGES
+
+Crop one handwritten word out of a PDF page and save it as a small greyscale
+PNG. PAGE is 1-based; the box is in thousandths of the page width/height
+(Claude's rough estimate, so it is padded generously). EXPECT_PAGES guards the
+page mapping: when it is > 0 and the PDF has a different number of pages
+(a tall reMarkable page was sliced, say) we exit 3 instead of cropping the
+wrong page. Exit codes: 0 ok, 2 usage/bad input, 3 page-count mismatch.
+"""
+import sys
+
+import pypdfium2 as pdfium
+
+MAX_W, MAX_H = 520, 180
+
+
+def main() -> int:
+    if len(sys.argv) != 9:
+        print(__doc__, file=sys.stderr)
+        return 2
+    pdf_path, page_s, x0, y0, x1, y1, out, expect = sys.argv[1:]
+    page_no = int(page_s)
+    x0, y0, x1, y1 = (float(v) / 1000.0 for v in (x0, y0, x1, y1))
+    if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+        return 2
+    pdf = pdfium.PdfDocument(pdf_path)
+    try:
+        if int(expect) > 0 and len(pdf) != int(expect):
+            return 3
+        if not 1 <= page_no <= len(pdf):
+            return 2
+        img = pdf[page_no - 1].render(scale=2.0).to_pil().convert("L")
+    finally:
+        pdf.close()
+    w, h = img.size
+    # Claude's boxes are approximate: pad 4% of the page width, 1.5% of the height.
+    px, py = 0.04, 0.015
+    box = (
+        int(max(0.0, x0 - px) * w),
+        int(max(0.0, y0 - py) * h),
+        int(min(1.0, x1 + px) * w),
+        int(min(1.0, y1 + py) * h),
+    )
+    crop = img.crop(box)
+    crop.thumbnail((MAX_W, MAX_H))
+    crop.save(out, format="PNG", optimize=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -607,10 +607,10 @@
     "semantic_hash": "41fb8dc0e589c08e9e9a66573b75dec1"
   },
   "lib/claude.ts": {
-    "mtime": 1794885113.6229835,
-    "seen": 1794885235.7609174,
-    "ast_hash": "e0286bd1cdc240be71bf0f7b9dbbd2c2",
-    "semantic_hash": "e0286bd1cdc240be71bf0f7b9dbbd2c2"
+    "mtime": 1794886975.2019432,
+    "seen": 1794887137.9826696,
+    "ast_hash": "3495d3ccd2864a35fe166b01900de40f",
+    "semantic_hash": "3495d3ccd2864a35fe166b01900de40f"
   },
   "lib/cleanup.ts": {
     "mtime": 1794400960.7337496,
@@ -637,10 +637,10 @@
     "semantic_hash": "e83ae686d31821f7a48794b1f21631bf"
   },
   "lib/db.ts": {
-    "mtime": 1794885113.6218708,
-    "seen": 1794885235.7609951,
-    "ast_hash": "b5c7e64c8fad9b22a32f726fd8676989",
-    "semantic_hash": "b5c7e64c8fad9b22a32f726fd8676989"
+    "mtime": 1794886928.5234196,
+    "seen": 1794887137.9827363,
+    "ast_hash": "2cc150898e4f1e929dbc0de7de6251c3",
+    "semantic_hash": "2cc150898e4f1e929dbc0de7de6251c3"
   },
   "lib/decisionEntities.ts": {
     "mtime": 1794400960.7337496,
@@ -1483,28 +1483,28 @@
     "semantic_hash": "f5a2b8ff22c9efbc9a5c7cfa30dcd969"
   },
   "lib/ocrFlagStore.ts": {
-    "mtime": 1794882938.563995,
-    "seen": 1794883243.8572931,
-    "ast_hash": "e15dc838c04dbc8829572de31016cf5c",
-    "semantic_hash": "e15dc838c04dbc8829572de31016cf5c"
+    "mtime": 1794886928.5247796,
+    "seen": 1794887137.9832354,
+    "ast_hash": "e416b9ca0865b4d932097d5c0b0ce075",
+    "semantic_hash": "e416b9ca0865b4d932097d5c0b0ce075"
   },
   "lib/ocrFlags.ts": {
-    "mtime": 1794875977.3156765,
-    "seen": 1794876218.84062,
-    "ast_hash": "5c4ca7421dc60cc6a2dff35414584747",
-    "semantic_hash": "5c4ca7421dc60cc6a2dff35414584747"
+    "mtime": 1794886928.5238643,
+    "seen": 1794887137.983237,
+    "ast_hash": "5a8ebe8bd78bc244774193d188068ead",
+    "semantic_hash": "5a8ebe8bd78bc244774193d188068ead"
   },
   "lib/ocrReview.ts": {
-    "mtime": 1794882938.5645201,
-    "seen": 1794883243.8573866,
-    "ast_hash": "7d64665e37fec667990d61604bed0529",
-    "semantic_hash": "7d64665e37fec667990d61604bed0529"
+    "mtime": 1794887049.0269217,
+    "seen": 1794887137.9832404,
+    "ast_hash": "a6a3b551a17e96e0c344b4f143c1b38d",
+    "semantic_hash": "a6a3b551a17e96e0c344b4f143c1b38d"
   },
   "test/ocrFlags.test.ts": {
-    "mtime": 1794876124.2211297,
-    "seen": 1794876218.8418772,
-    "ast_hash": "dd24eb85ae9f6521ecfe639a786915a8",
-    "semantic_hash": "dd24eb85ae9f6521ecfe639a786915a8"
+    "mtime": 1794885747.1540787,
+    "seen": 1794887137.984661,
+    "ast_hash": "a1e7aec7f1321c6862d9db82745c7aaf",
+    "semantic_hash": "a1e7aec7f1321c6862d9db82745c7aaf"
   },
   "test/ocrReviewDb.test.ts": {
     "mtime": 1794876124.2217593,
@@ -1531,10 +1531,10 @@
     "semantic_hash": "36b3359a366da6f1140697abb6dd50f4"
   },
   "lib/ocrLearning.ts": {
-    "mtime": 1794884845.1600847,
-    "seen": 1794884948.8257725,
-    "ast_hash": "684d0c368635fc28f9b067a59baadcda",
-    "semantic_hash": "684d0c368635fc28f9b067a59baadcda"
+    "mtime": 1794887066.5449889,
+    "seen": 1794887137.9832387,
+    "ast_hash": "5552417f6c64aaadf43e5f0adeb0c2da",
+    "semantic_hash": "5552417f6c64aaadf43e5f0adeb0c2da"
   },
   "test/ocrDiff.test.ts": {
     "mtime": 1794883020.313744,
@@ -1579,10 +1579,10 @@
     "semantic_hash": "4ebfcd5466bc39bf81a2c12bc16f8236"
   },
   "app/notebooks/OldDiaryProofread.tsx": {
-    "mtime": 1794885144.5808609,
-    "seen": 1794885235.760395,
-    "ast_hash": "91a098c22bf3a5c58aed8f78a4174331",
-    "semantic_hash": "91a098c22bf3a5c58aed8f78a4174331"
+    "mtime": 1794886305.6694448,
+    "seen": 1794887137.9822435,
+    "ast_hash": "3eea199fe9ac6a0176fd0bd5d2f609df",
+    "semantic_hash": "3eea199fe9ac6a0176fd0bd5d2f609df"
   },
   "lib/ocrBackfill.ts": {
     "mtime": 1794885127.077186,
@@ -1595,5 +1595,23 @@
     "seen": 1794885235.7635853,
     "ast_hash": "349866d0dc3c1cb5eeaaf2d987cf7933",
     "semantic_hash": "349866d0dc3c1cb5eeaaf2d987cf7933"
+  },
+  "docker/cropword": {
+    "mtime": 1794886953.37952,
+    "seen": 1794887137.9824436,
+    "ast_hash": "a043c03b3ab893cf5bfae891456cb778",
+    "semantic_hash": "a043c03b3ab893cf5bfae891456cb778"
+  },
+  "lib/handwritingExamples.ts": {
+    "mtime": 1794886975.1834245,
+    "seen": 1794887137.9830136,
+    "ast_hash": "8c9752bafc3893bda3f499e2a02f9794",
+    "semantic_hash": "8c9752bafc3893bda3f499e2a02f9794"
+  },
+  "test/handwritingExamples.test.ts": {
+    "mtime": 1794887066.5520997,
+    "seen": 1794887137.984408,
+    "ast_hash": "663857412914476b2e3dff7bb35b5edd",
+    "semantic_hash": "663857412914476b2e3dff7bb35b5edd"
   }
 }

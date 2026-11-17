@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased - Phase 5: handwriting examples
+
+- Claude now returns a rough `box` for each doubtful word; when you confirm or correct a card, a small crop of that word is saved (`ocr_examples`) and a few are shown to the transcriber as labelled handwriting examples. Needs the Docker image (`docker/cropword`); off elsewhere, never blocks anything.
+- Manual edits only become handwriting lessons when the words look alike (`looksLikeMisread`); rewordings are ignored. Card answers always learn.
+
 ## 2026-11-17 (Old-diary proofreading: "All" and "Stop" buttons)
 "Proofread older diary" gets an **All** button that keeps going 3 notebooks at a time until none are left,
 and a **Stop** button while it runs. It still pauses by itself when 60 review cards are waiting, and on

@@ -19,7 +19,7 @@ export function saveOcrFlags(args: {
   pageRowId: string;
   pageIndex: number;
   text: string;
-  flags: Array<Pick<OcrFlag, "phrase" | "alternatives" | "reason">>;
+  flags: Array<Pick<OcrFlag, "phrase" | "alternatives" | "reason" | "box">>;
 }): number {
   const { notebookId, pageRowId, pageIndex, text, flags } = args;
   const d = db();
@@ -27,8 +27,8 @@ export function saveOcrFlags(args: {
   d.transaction(() => {
     d.prepare(`DELETE FROM ocr_flags WHERE page_id = ? AND status = 'pending'`).run(pageRowId);
     const ins = d.prepare(
-      `INSERT INTO ocr_flags(id, notebook_id, page_id, page_index, start_offset, phrase, candidates, reason)
-       VALUES(?,?,?,?,?,?,?,?)`
+      `INSERT INTO ocr_flags(id, notebook_id, page_id, page_index, start_offset, phrase, candidates, reason, box)
+       VALUES(?,?,?,?,?,?,?,?,?)`
     );
     const seen = new Set<string>();
     for (const f of flags.slice(0, MAX_PENDING_PER_PAGE)) {
@@ -44,7 +44,8 @@ export function saveOcrFlags(args: {
         start,
         f.phrase,
         JSON.stringify(rankCandidates(f.phrase, f.alternatives)),
-        f.reason || null
+        f.reason || null,
+        f.box ? JSON.stringify(f.box) : null
       );
       saved++;
     }

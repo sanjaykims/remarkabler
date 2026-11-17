@@ -17,6 +17,8 @@ export type OcrFlag = {
   phrase: string;
   alternatives: string[];
   reason: string;
+  /** Rough location on the PDF page: [x0,y0,x1,y1] in thousandths of page width/height. */
+  box?: [number, number, number, number];
 };
 
 export const MAX_FLAGS_PER_CALL = 15;
@@ -44,6 +46,17 @@ function clean(s: unknown, max: number): string {
 }
 
 /** Lenient JSONL parse: bad lines are skipped, never thrown. */
+/** A usable box: 4 numbers in 0..1000, positive size, not the whole page. Else undefined. */
+export function parseBox(v: unknown): [number, number, number, number] | undefined {
+  if (!Array.isArray(v) || v.length !== 4) return undefined;
+  const n = v.map((x) => Math.round(Number(x)));
+  if (n.some((x) => !Number.isFinite(x) || x < 0 || x > 1000)) return undefined;
+  const [x0, y0, x1, y1] = n;
+  if (x1 - x0 < 5 || y1 - y0 < 5) return undefined;
+  if ((x1 - x0) * (y1 - y0) > 600_000) return undefined; // more than ~60% of the page: not one word
+  return [x0, y0, x1, y1];
+}
+
 export function parseFlagLines(flagsRaw: string): OcrFlag[] {
   const out: OcrFlag[] = [];
   for (const line of flagsRaw.split(/\r?\n/)) {
@@ -69,7 +82,7 @@ export function parseFlagLines(flagsRaw: string): OcrFlag[] {
         if (alternatives.length >= 3) break;
       }
       if (!alternatives.length) continue; // nothing to offer = nothing to ask
-      out.push({ page, phrase, alternatives, reason: clean(j.reason, MAX_REASON) });
+      out.push({ page, phrase, alternatives, reason: clean(j.reason, MAX_REASON), box: parseBox(j.box) });
     } catch {
       /* skip malformed line */
     }

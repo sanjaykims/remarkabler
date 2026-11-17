@@ -54,6 +54,13 @@ export function db(): Database.Database {
       // column already exists
     }
   }
+  // Where on the PDF page a proofreading flag sits: JSON [x0,y0,x1,y1] in
+  // thousandths of the page width/height (Claude's rough estimate). NULL = unknown.
+  try {
+    _db.exec(`ALTER TABLE ocr_flags ADD COLUMN box TEXT`);
+  } catch {
+    // column already exists
+  }
   // Lookup index for the watcher's "have I seen this file?" check.
   _db.exec(
     `CREATE INDEX IF NOT EXISTS idx_notebooks_dropbox_file_id
@@ -601,6 +608,21 @@ CREATE TABLE IF NOT EXISTS ocr_learned (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ocr_learned_wrong ON ocr_learned(wrong);
+
+-- Small cropped pictures of the owner's handwriting, each labelled with what
+-- the owner confirmed it says (wrong = what was first read, text = confirmed).
+-- Shown to the transcriber as visual examples. Local data only: never in the
+-- repo, never on MCP. Capped in lib/handwritingExamples.ts.
+CREATE TABLE IF NOT EXISTS ocr_examples (
+  id TEXT PRIMARY KEY,
+  text TEXT NOT NULL,
+  wrong TEXT,
+  notebook_id TEXT,
+  png BLOB NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ocr_examples_text ON ocr_examples(text);
 
 -- Dropbox files the user has deleted from the app. Deleting a notebook
 -- removes its dropbox_file_id dedup marker, so without this tombstone the

@@ -1228,3 +1228,5 @@ lazily by `/domain-modeling` — neither exists yet). See `docs/agents/domain.md
   Claude-powered features (OCR, chat, insights) need `ANTHROPIC_API_KEY` and
   can only be fully tested on the deployed Railway instance — say so honestly
   rather than claiming they were verified locally.
+
+- **Handwriting examples are advisory, fail-open and local-only.** `lib/handwritingExamples.ts` crops a confirmed word (via `docker/cropword`, Docker image only) into `ocr_examples` and feeds up to 8 as labelled images to OCR/proofread prompts. Capture is best-effort from `resolveFlag`, skipped when the PDF page count differs from page rows, and must never fail a card answer or transcription. Crops are diary content: never in the repo or on MCP.
