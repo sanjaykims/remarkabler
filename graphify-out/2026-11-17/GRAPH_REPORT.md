@@ -9,7 +9,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `cab23d2e`
+- Built from commit: `d264b12d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -168,13 +168,13 @@
 - `OPTIONS()` --calls--> `corsHeaders()`  [EXTRACTED]
   app/api/mcp/oauth/register/route.ts → lib/mcpOauth.ts
 - `GET()` --calls--> `isAuthenticated()`  [EXTRACTED]
-  app/api/settings/models/route.ts → lib/auth.ts
-- `POST()` --calls--> `isAuthenticated()`  [EXTRACTED]
-  app/api/settings/models/route.ts → lib/auth.ts
-- `resolve()` --calls--> `getSetting()`  [EXTRACTED]
-  app/api/settings/models/route.ts → lib/db.ts
-- `GET()` --calls--> `isAuthenticated()`  [EXTRACTED]
   app/api/dropbox/callback/route.ts → lib/auth.ts
+- `GET()` --calls--> `isAuthenticated()`  [EXTRACTED]
+  app/api/dropbox/connect/route.ts → lib/auth.ts
+- `POST()` --calls--> `isAuthenticated()`  [EXTRACTED]
+  app/api/dropbox/disconnect/route.ts → lib/auth.ts
+- `POST()` --calls--> `isAuthenticated()`  [EXTRACTED]
+  app/api/dropbox/export/route.ts → lib/auth.ts
 
 ## Import Cycles
 - 2-file cycle: `lib/entityMerge.ts -> lib/mind.ts -> lib/entityMerge.ts`
@@ -705,16 +705,16 @@ Nodes (3): tailwindcss@^3.4.13, tailwindcss, config
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `db()` connect `discipline/route.ts` to `dropbox.ts`, `diaryExportDb.ts`, `owntracks.ts`, `ocrLearning.ts`, `mcp.ts`, `diaryGraph.ts`, `backup.ts`, `app/page.tsx`, `claude.ts`, `remarkableSync.ts`, `auth.ts`, `chatMemory.ts`, `db`, `memory/page.tsx`, `mind.ts`, `notebooks/route.ts`, `notebooks/page.tsx`, `decisionWiki.ts`, `reflectionWiki.ts`, `isAuthenticated`, `getCurrentProfile`, `ref_path`, `entityRelationships.ts`, `entityWiki.ts`, `ForceGraph`, `compilerOptions`, `insights/route.ts`, `entityMerge.ts`, `notebooks/pin/route.ts`, `entityTagging.ts`, `mcpOauth.ts`, `backfill-all/route.ts`, `graphify_gate.py`, `pendingShares.ts`, `maybeCompressChatSessions`, `vaultGraph.ts`, `usage.ts`, `Map3D.tsx`, `manifest.json`, `location.ts`, `next`, `diaryGraph.test.ts`, `mcpOauth.test.ts`, `notebooks/[id]/pdf/route.ts`, `token/route.ts`, `mind/route.ts`, `api/export/route.ts`, `grants/route.ts`, `deploy`, `decrypt-backup.mjs`, `authRoute.test.ts`, `memories/route.ts`, `api/diary/route.ts`, `chatMemoryExtract.test.ts`, `chatMemoryRolling.test.ts`, `entityTagging.test.ts`, `dropboxTombstone.test.ts`, `embeddingMapDiscipline.test.ts`?**
-  _High betweenness centrality (0.204) - this node is a cross-community bridge._
+  _High betweenness centrality (0.207) - this node is a cross-community bridge._
 - **What connects `RFC-8414`, `RFC-9728`, `RFC-9728` to the rest of the system?**
   _6 weakly-connected nodes found - possible missing edges._
 - **Should `dropbox.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.052192982456140354 - nodes in this community are weakly interconnected._
 - **Why does `next` connect `memory/page.tsx` to `dropbox.ts`, `owntracks.ts`, `ocrLearning.ts`, `backup.ts`, `notes.ts`, `claude.ts`, `remarkableSync.ts`, `chatMemory.ts`, `db`, `quality`, `env`, `setSetting`, `notebooks/page.tsx`, `mind/page.tsx`, `embeddings.ts`, `reflectionWiki.ts`, `isAuthenticated`, `getCurrentProfile`, `entityRelationships.ts`, `devDependencies`, `entityWiki.ts`, `ForceGraph`, `compilerOptions`, `entityTagging.ts`, `db.ts`, `mcpOauth.ts`, `maybeCompressChatSessions`, `vaultGraph.ts`, `authorize/route.ts`, `usage.ts`, `Map3D.tsx`, `usage/page.tsx`, `manifest.json`, `location.ts`, `AutoLock`, `diaryGraph.test.ts`, `mcpOauth.test.ts`, `mind/route.ts`, `api/export/route.ts`, `grants/route.ts`, `decrypt-backup.mjs`, `authRoute.test.ts`, `pagesForEntity.test.ts`, `scripts`, `api/diary/route.ts`, `chatMemoryExtract.test.ts`, `chatMemoryRecall.test.ts`, `chatMemoryRolling.test.ts`, `entityTagging.test.ts`, `mind.test.ts`, `embeddingMapDiscipline.test.ts`, `entityWikiExclude.test.ts`, `ocrLearningDb.test.ts`?**
-  _High betweenness centrality (0.108) - this node is a cross-community bridge._
+  _High betweenness centrality (0.104) - this node is a cross-community bridge._
 - **Should `diaryExportDb.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.046171829339567504 - nodes in this community are weakly interconnected._
 - **Why does `isAuthenticated()` connect `notebooks/page.tsx` to `dropbox.ts`, `owntracks.ts`, `ocrLearning.ts`, `backup.ts`, `claude.ts`, `remarkableSync.ts`, `chatMemory.ts`, `memory/page.tsx`, `discipline/route.ts`, `isAuthenticated`, `getCurrentProfile`, `entityRelationships.ts`, `devDependencies`, `vitest`, `entityWiki.ts`, `ForceGraph`, `compilerOptions`, `entityTagging.ts`, `mcpOauth.ts`, `maybeCompressChatSessions`, `vaultGraph.ts`, `usage.ts`, `Map3D.tsx`, `usage/page.tsx`, `location.ts`, `AutoLock`, `diaryGraph.test.ts`, `mcpOauth.test.ts`, `mind/route.ts`, `grants/route.ts`, `deploy`, `decrypt-backup.mjs`, `authRoute.test.ts`, `pagesForEntity.test.ts`, `api/diary/route.ts`, `chatMemoryExtract.test.ts`, `chatMemoryRecall.test.ts`, `chatMemoryRolling.test.ts`, `entityTagging.test.ts`, `mind.test.ts`, `embeddingMapDiscipline.test.ts`, `entityWikiExclude.test.ts`, `ocrLearningDb.test.ts`?**
-  _High betweenness centrality (0.068) - this node is a cross-community bridge._
+  _High betweenness centrality (0.059) - this node is a cross-community bridge._
 - **Should `remarkableCloud.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.07003367003367003 - nodes in this community are weakly interconnected._

@@ -118,7 +118,9 @@ export async function ocrNotebookPdfWithFlags(
   // Stream the response. The SDK rejects a non-streaming request whose
   // max_tokens is large enough that it could exceed the 10-minute timeout;
   // streaming also keeps the connection alive for a long transcription.
-  const stream = client().messages.stream({
+  const examples = exampleBlocks();
+  const run = (ex: typeof examples) =>
+    client().messages.stream({
     model: modelMain(),
     max_tokens: 32000,
     system: [
@@ -160,13 +162,22 @@ export async function ocrNotebookPdfWithFlags(
             type: "document",
             source: { type: "base64", media_type: "application/pdf", data: pdfBase64 },
           },
-          ...exampleBlocks(),
+          ...ex,
           { type: "text", text: "Transcribe every page." },
         ],
       },
     ],
-  });
-  const resp = await stream.finalMessage();
+  }).finalMessage();
+  // Handwriting examples are advisory: if the request fails with them attached (too many
+  // images, say), transcribe without them rather than lose the notebook.
+  let resp: Awaited<ReturnType<typeof run>>;
+  try {
+    resp = await run(examples);
+  } catch (e) {
+    if (!examples.length) throw e;
+    console.warn("[claude] OCR with handwriting examples failed, retrying without:", (e as Error).message);
+    resp = await run([]);
+  }
   recordUsage("ocr", modelMain(), resp.usage);
 
   if (resp.stop_reason === "max_tokens") {
@@ -1402,7 +1413,9 @@ export async function proofreadExistingPdf(
   const transcript = pages
     .map((p) => `--- PAGE ${p.pageIndex + 1} ---\n${p.text}`)
     .join("\n\n");
-  const resp = await client().messages.create({
+  const examples = exampleBlocks();
+  const run = (ex: typeof examples) =>
+    client().messages.create({
     model: modelMain(),
     max_tokens: 4000,
     system: [
@@ -1434,12 +1447,20 @@ export async function proofreadExistingPdf(
               data: Buffer.from(pdfBytes).toString("base64"),
             },
           },
-          ...exampleBlocks(),
+          ...ex,
           { type: "text", text: transcript.slice(0, 120_000) },
         ],
       },
     ],
   });
+  let resp: Awaited<ReturnType<typeof run>>;
+  try {
+    resp = await run(examples);
+  } catch (e) {
+    if (!examples.length) throw e;
+    console.warn("[claude] proofread with handwriting examples failed, retrying without:", (e as Error).message);
+    resp = await run([]);
+  }
   recordUsage("ocr_proofread", modelMain(), resp.usage);
   const block = resp.content.find((b) => b.type === "text");
   const raw = block && block.type === "text" ? block.text : "";

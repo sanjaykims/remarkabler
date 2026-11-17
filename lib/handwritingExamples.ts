@@ -18,9 +18,10 @@ const FILES_DIR = path.join(DATA_DIR, "files");
 const PYTHON = process.env.RENDERER_PYTHON || "/opt/renderer/bin/python";
 const CROP = process.env.CROPWORD_BIN || "/usr/local/bin/cropword";
 
-export const MAX_EXAMPLES_TOTAL = 150;
-export const MAX_PER_TEXT = 2;
-export const PROMPT_EXAMPLES = 8;
+// Storage is unlimited (the owner asked for no cap). Only the number sent with ONE request is
+// bounded, because the API limits images per request and a failed request would cost a transcription.
+export const MAX_PER_TEXT = 5;
+export const PROMPT_EXAMPLES = 60;
 const MAX_PNG_BYTES = 40_000;
 const MAX_WIDE_PNG_BYTES = 400_000;
 const MAX_TEXT = 40;
@@ -116,12 +117,6 @@ export async function captureExample(a: CaptureArgs): Promise<boolean> {
     db()
       .prepare(`INSERT INTO ocr_examples(id, text, wrong, notebook_id, png) VALUES(?,?,?,?,?)`)
       .run(crypto.randomUUID(), text, a.wrong && a.wrong !== text ? a.wrong : null, a.notebookId, png);
-    db()
-      .prepare(
-        `DELETE FROM ocr_examples WHERE id IN (
-           SELECT id FROM ocr_examples ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?)`
-      )
-      .run(MAX_EXAMPLES_TOTAL);
     return true;
   } catch (e) {
     console.warn("[handwritingExamples] capture failed:", (e as Error).message);
@@ -137,7 +132,7 @@ export function pickExamples(limit = PROMPT_EXAMPLES): Example[] {
     const rows = db()
       .prepare(
         `SELECT text, png, (wrong IS NOT NULL) AS hard FROM ocr_examples
-          ORDER BY hard DESC, created_at DESC, rowid DESC LIMIT 100`
+          ORDER BY hard DESC, created_at DESC, rowid DESC LIMIT 5000`
       )
       .all() as Array<{ text: string; png: Buffer }>;
     const seen = new Set<string>();

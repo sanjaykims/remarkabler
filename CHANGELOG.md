@@ -10,6 +10,7 @@
 - Card pictures are taller (about 4-5 lines around the guess) with a soft yellow marker instead of a tight red box, because Claude's position guess can be a line off; the card says so.
 - Handwriting pictures no longer trust Claude's rough box: the word is now located from the page's handwritten LINE structure (`docker/handwriting_locate.py`: ink bands + the transcript's line number/column; numpy added to the image). Claude's box is only the fallback, so older cards without a box get pictures too. Cards from reMarkable-sync notebooks get no picture (their flag page numbers don't map onto the merged PDF).
 - Card pictures are no longer cached by the browser (`no-store` + a version on the image URL): phones kept showing the old, wrongly placed picture for an hour after a fix.
+- Handwriting pictures: no storage cap any more (up to 5 per word); up to 60 are sent with each transcription (was 8). If a request fails with the pictures attached it is retried once without them, so examples can never cost a transcription.
 - Manual edits only become handwriting lessons when the words look alike (`looksLikeMisread`); rewordings are ignored. Card answers always learn.
 
 ## 2026-11-17 (Old-diary proofreading: "All" and "Stop" buttons)

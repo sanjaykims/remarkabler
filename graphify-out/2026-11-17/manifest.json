@@ -607,10 +607,10 @@
     "semantic_hash": "41fb8dc0e589c08e9e9a66573b75dec1"
   },
   "lib/claude.ts": {
-    "mtime": 1794889379.9436135,
-    "seen": 1794889674.2083232,
-    "ast_hash": "fed9ca76c684aae251151ec086e49414",
-    "semantic_hash": "fed9ca76c684aae251151ec086e49414"
+    "mtime": 1794892206.0773206,
+    "seen": 1794892261.51915,
+    "ast_hash": "44cbc5873b93ed4f7d33f2f45599699c",
+    "semantic_hash": "44cbc5873b93ed4f7d33f2f45599699c"
   },
   "lib/cleanup.ts": {
     "mtime": 1794400960.7337496,
@@ -1603,10 +1603,10 @@
     "semantic_hash": "e75aa3987fe43351b8f8ac78c95b603b"
   },
   "lib/handwritingExamples.ts": {
-    "mtime": 1794891509.252114,
-    "seen": 1794891559.4369295,
-    "ast_hash": "0932d0f9e30a1d93cdf73ac4be6e48e3",
-    "semantic_hash": "0932d0f9e30a1d93cdf73ac4be6e48e3"
+    "mtime": 1794892206.0766094,
+    "seen": 1794892261.5195332,
+    "ast_hash": "1e61ae22553180cd5db2b9fa3068ae51",
+    "semantic_hash": "1e61ae22553180cd5db2b9fa3068ae51"
   },
   "test/handwritingExamples.test.ts": {
     "mtime": 1794887066.5520997,
