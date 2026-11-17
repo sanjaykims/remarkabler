@@ -33,7 +33,7 @@ function recentInsightsBlock(maxChars = 2000): string {
 // the Railway env var, which overrides the built-in default. Building the model
 // dynamically means flipping a model in the UI takes effect immediately, with
 // no restart, and the env var keeps working when nothing's been set in-app.
-function modelMain(): string {
+export function modelMain(): string {
   return (
     getSetting("model_main") ||
     process.env.CLAUDE_MODEL ||
@@ -1384,6 +1384,65 @@ export async function compareTranscriptions(
  * (e.g. which letters get confused). Short, advisory, written for the next OCR
  * prompt. Cheap: chat-model, tiny input.
  */
+/**
+ * Proofread an EXISTING transcription against its PDF: Claude looks at the
+ * handwriting and flags words in the saved text that look wrong. It never
+ * rewrites anything; flags only become cards the owner answers.
+ */
+export async function proofreadExistingPdf(
+  pdfBytes: Uint8Array,
+  pages: Array<{ pageIndex: number; text: string }>
+): Promise<OcrFlag[]> {
+  const hints = buildOcrHints();
+  const transcript = pages
+    .map((p) => `--- PAGE ${p.pageIndex + 1} ---\n${p.text}`)
+    .join("\n\n");
+  const resp = await client().messages.create({
+    model: modelMain(),
+    max_tokens: 4000,
+    system: [
+      "You proofread an existing transcription of a handwritten reMarkable notebook against the PDF.",
+      "The user message holds the saved transcription, one `--- PAGE n ---` section per PDF page.",
+      "Find places where the transcription seems to MISREAD the handwriting: wrong words, wrong names,",
+      "wrong numbers. Do not rewrite or repeat the transcription.",
+      "Output ONLY a line containing exactly `--- FLAGS ---` followed by one JSON object per line:",
+      '  {"page":2,"phrase":"Elim","alternatives":["Elin","Ellen"],"reason":"last letter looks like n"}',
+      "`phrase` must be copied EXACTLY from that page of the saved transcription (1-based page number).",
+      "`alternatives` are 1-3 readings you believe the handwriting actually says. Flag at most 15 spots,",
+      "most doubtful first. Do not flag style, spelling choices, or words that look right. If you find",
+      "nothing, output only `--- FLAGS ---`.",
+      ...(hints ? ["", hints] : []),
+    ].join("\n"),
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: Buffer.from(pdfBytes).toString("base64"),
+            },
+          },
+          { type: "text", text: transcript.slice(0, 120_000) },
+        ],
+      },
+    ],
+  });
+  recordUsage("ocr_proofread", modelMain(), resp.usage);
+  const block = resp.content.find((b) => b.type === "text");
+  const raw = block && block.type === "text" ? block.text : "";
+  const { flagsRaw } = splitFlagsBlock(raw);
+  return parseFlagLines(flagsRaw).filter((f) => {
+    try {
+      return !isConfirmedTerm(f.phrase);
+    } catch {
+      return true;
+    }
+  });
+}
+
 export async function composeHandwritingNotes(
   pairs: Array<{ wrong: string; right: string; count: number }>
 ): Promise<string> {

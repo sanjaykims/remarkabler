@@ -806,6 +806,10 @@ features need the deployed instance to fully verify.
   (`autoFixPages`) only applies a fix confirmed 3+ times, whole word, 4+ letters, and must stay
   fail-open (error = text untouched); it must never apply when the spelling is a confirmed term or the
   owner reversed the fix (the owner's own edits always win). `handwritingNotes.ts` is best-effort too.
+- **The old-diary proofreading pass only ever ADDS flags.** `lib/ocrBackfill.ts` must never write
+  `pages.ocr_text`; text changes only through the owner's tap (`resolveFlag` -> `correctPageText`). It
+  stays behind the app lock AND the Notebooks PIN (a route test enforces it), pauses at `PENDING_CAP`
+  pending cards, and a failed notebook keeps `proofread_at` NULL so it can be retried.
 - **Graphify-first is enforced by hooks.** `.claude/hooks/graphify_gate.py` (PreToolUse on edits)
   blocks code edits until `graphify query|explain|path` ran in the session within 45 min;
   `graphify_mark.py` (PostToolUse on Bash) records it. Registered in `.claude/settings.json`; they

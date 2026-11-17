@@ -9,6 +9,7 @@ import { setPickingFile } from "../lockState";
 import { track } from "../analytics";
 import PinGate from "../map/PinGate";
 import OcrReview from "./OcrReview";
+import OldDiaryProofread from "./OldDiaryProofread";
 
 type Notebook = {
   id: string;
@@ -131,6 +132,7 @@ export default function NotebooksPage() {
 }
 
 function NotebooksContent({ onLocked }: { onLocked: () => void }) {
+  const [reviewKey, setReviewKey] = useState(0);
   // Any 403 from a Notebooks route means the PIN unlock expired or was
   // revoked: drop back to the PIN screen instead of showing a broken list.
   // (Shadows the global fetch inside this component on purpose.)
@@ -414,7 +416,8 @@ function NotebooksContent({ onLocked }: { onLocked: () => void }) {
         </h1>
       </section>
 
-      <OcrReview onLocked={onLocked} />
+      <OcrReview key={reviewKey} onLocked={onLocked} />
+      <OldDiaryProofread onLocked={onLocked} onDone={() => setReviewKey((k) => k + 1)} />
 
       <form
         onSubmit={upload}

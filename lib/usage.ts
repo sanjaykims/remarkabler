@@ -38,7 +38,7 @@ const FALLBACK: Prices = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.
 
 // Match an exact model id, or a dated/variant suffix (e.g.
 // "claude-haiku-4-5-20251001" → "claude-haiku-4-5"), else Opus fallback.
-function priceFor(model: string): Prices {
+export function priceFor(model: string): Prices {
   if (PRICES[model]) return PRICES[model];
   const key = Object.keys(PRICES).find((k) => model.startsWith(k));
   return key ? PRICES[key] : FALLBACK;

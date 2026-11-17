@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-17 (Transcription proofreading, Phase 4: proofread the older diary)
+New "Proofread older diary" section on Notebooks: shows how many older notebooks have not been
+proofread, a cost estimate, and buttons "Test on 1 notebook" / "Do next 3" (newest first). Claude looks at
+the stored PDF next to the saved transcription and flags words that look misread; they appear as the same
+"Needs your eye" cards. It NEVER edits text (only your tap does), so hand-corrected pages are safe: a
+flag whose phrase is no longer in the text is dropped. Pauses itself when 60 cards are already waiting;
+a failed notebook stays retryable (`notebooks.proofread_at`). New: `lib/ocrBackfill.ts`,
+`proofreadExistingPdf` in `lib/claude.ts`, `app/api/ocr-review/backfill`, `OldDiaryProofread.tsx`.
+Limits: flags map PDF page n to page row n-1, so reMarkable notebooks with tablet-deleted pages may lose
+some flags (dropped, never misapplied); max 15 flags per notebook.
+
 ## 2026-11-17 (Transcription proofreading, Phase 3: auto-fix and handwriting notes)
 A fix you have confirmed 3 or more times is now applied automatically to new transcriptions (whole word,
 case-sensitive, 4+ letters; never when the spelling is a confirmed term, or when you ever changed the fix

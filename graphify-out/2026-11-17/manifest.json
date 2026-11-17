@@ -469,10 +469,10 @@
     "semantic_hash": "fc7ee5d308bd45c4c2237e904b583bd3"
   },
   "app/notebooks/page.tsx": {
-    "mtime": 1794876099.101925,
-    "seen": 1794876218.8397758,
-    "ast_hash": "4fb2dbd4a97e2001937f98ca83953f22",
-    "semantic_hash": "4fb2dbd4a97e2001937f98ca83953f22"
+    "mtime": 1794885144.5975668,
+    "seen": 1794885235.760398,
+    "ast_hash": "8fe42c27e1e1d10fcc96459bf63bc0a9",
+    "semantic_hash": "8fe42c27e1e1d10fcc96459bf63bc0a9"
   },
   "app/page.tsx": {
     "mtime": 1794561904.4989429,
@@ -607,10 +607,10 @@
     "semantic_hash": "41fb8dc0e589c08e9e9a66573b75dec1"
   },
   "lib/claude.ts": {
-    "mtime": 1794884845.1607313,
-    "seen": 1794884948.8246915,
-    "ast_hash": "98b32bcb7f284383fd5d7e4f6b6841b9",
-    "semantic_hash": "98b32bcb7f284383fd5d7e4f6b6841b9"
+    "mtime": 1794885113.6229835,
+    "seen": 1794885235.7609174,
+    "ast_hash": "e0286bd1cdc240be71bf0f7b9dbbd2c2",
+    "semantic_hash": "e0286bd1cdc240be71bf0f7b9dbbd2c2"
   },
   "lib/cleanup.ts": {
     "mtime": 1794400960.7337496,
@@ -637,10 +637,10 @@
     "semantic_hash": "e83ae686d31821f7a48794b1f21631bf"
   },
   "lib/db.ts": {
-    "mtime": 1794882912.773571,
-    "seen": 1794883243.855882,
-    "ast_hash": "0f117a9196b193a13898c8fe4699d0db",
-    "semantic_hash": "0f117a9196b193a13898c8fe4699d0db"
+    "mtime": 1794885113.6218708,
+    "seen": 1794885235.7609951,
+    "ast_hash": "b5c7e64c8fad9b22a32f726fd8676989",
+    "semantic_hash": "b5c7e64c8fad9b22a32f726fd8676989"
   },
   "lib/decisionEntities.ts": {
     "mtime": 1794400960.7337496,
@@ -859,10 +859,10 @@
     "semantic_hash": "58ba2ba29da4f38c3ade83b8b61dda0d"
   },
   "lib/usage.ts": {
-    "mtime": 1794561904.503682,
-    "seen": 1794875063.5652134,
-    "ast_hash": "6406fa6778c10698f3fef5825f267109",
-    "semantic_hash": "6406fa6778c10698f3fef5825f267109"
+    "mtime": 1794885113.6232936,
+    "seen": 1794885235.7620406,
+    "ast_hash": "d815993050dec84c3e852a4b9ec94fd4",
+    "semantic_hash": "d815993050dec84c3e852a4b9ec94fd4"
   },
   "lib/vaultGraph.ts": {
     "mtime": 1794561904.503682,
@@ -1465,10 +1465,10 @@
     "semantic_hash": "ece9bb329a54f1ca8b86157a1cde5869"
   },
   "test/notebooksPin.test.ts": {
-    "mtime": 1794876124.237348,
-    "seen": 1794876218.841876,
-    "ast_hash": "6348fabef99bfb5604ae9c8f711d5294",
-    "semantic_hash": "6348fabef99bfb5604ae9c8f711d5294"
+    "mtime": 1794885113.629223,
+    "seen": 1794885235.763582,
+    "ast_hash": "eea5c558f8c3bdd1818ffd72c58cc3aa",
+    "semantic_hash": "eea5c558f8c3bdd1818ffd72c58cc3aa"
   },
   "app/api/ocr-review/route.ts": {
     "mtime": 1794884856.2778096,
@@ -1571,5 +1571,29 @@
     "seen": 1794884948.8285966,
     "ast_hash": "8184a4bc4d549d7e788c327dc8076c0d",
     "semantic_hash": "8184a4bc4d549d7e788c327dc8076c0d"
+  },
+  "app/api/ocr-review/backfill/route.ts": {
+    "mtime": 1794885127.0754905,
+    "seen": 1794885235.7594779,
+    "ast_hash": "4ebfcd5466bc39bf81a2c12bc16f8236",
+    "semantic_hash": "4ebfcd5466bc39bf81a2c12bc16f8236"
+  },
+  "app/notebooks/OldDiaryProofread.tsx": {
+    "mtime": 1794885144.5808609,
+    "seen": 1794885235.760395,
+    "ast_hash": "91a098c22bf3a5c58aed8f78a4174331",
+    "semantic_hash": "91a098c22bf3a5c58aed8f78a4174331"
+  },
+  "lib/ocrBackfill.ts": {
+    "mtime": 1794885127.077186,
+    "seen": 1794885235.7616322,
+    "ast_hash": "45347bd11563ab7857b5518d3fda8019",
+    "semantic_hash": "45347bd11563ab7857b5518d3fda8019"
+  },
+  "test/ocrBackfill.test.ts": {
+    "mtime": 1794885159.6814344,
+    "seen": 1794885235.7635853,
+    "ast_hash": "349866d0dc3c1cb5eeaaf2d987cf7933",
+    "semantic_hash": "349866d0dc3c1cb5eeaaf2d987cf7933"
   }
 }

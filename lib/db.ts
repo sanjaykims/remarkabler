@@ -45,6 +45,8 @@ export function db(): Database.Database {
     // whose job died without writing a terminal status holds an OCR
     // concurrency slot until the next restart — two such rows wedge all OCR.
     "processing_started_at TEXT",
+    // When the old-diary proofreading pass (lib/ocrBackfill.ts) last finished for this notebook.
+    "proofread_at TEXT",
   ]) {
     try {
       _db.exec(`ALTER TABLE notebooks ADD COLUMN ${col}`);
