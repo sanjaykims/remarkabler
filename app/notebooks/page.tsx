@@ -3,11 +3,12 @@
 import { Eyebrow } from "@/components/Eyebrow";
 import { Button } from "@/components/Button";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
 import { setPickingFile } from "../lockState";
 import { track } from "../analytics";
 import PinGate from "../map/PinGate";
+import OcrReview from "./OcrReview";
 
 type Notebook = {
   id: string;
@@ -58,6 +59,10 @@ const HIDDEN_RELOCK_MS = 60_000;
 export default function NotebooksPage() {
   const [gate, setGate] = useState<Gate | null>(null);
   const [gateError, setGateError] = useState<string | null>(null);
+  const relock = useCallback(
+    () => setGate((g) => (g ? { ...g, unlocked: false } : g)),
+    []
+  );
 
   useEffect(() => {
     fetch(PIN_ENDPOINT)
@@ -121,9 +126,7 @@ export default function NotebooksPage() {
     );
   }
   return (
-    <NotebooksContent
-      onLocked={() => setGate((g) => (g ? { ...g, unlocked: false } : g))}
-    />
+    <NotebooksContent onLocked={relock} />
   );
 }
 
@@ -410,6 +413,8 @@ function NotebooksContent({ onLocked }: { onLocked: () => void }) {
           Notebooks
         </h1>
       </section>
+
+      <OcrReview onLocked={onLocked} />
 
       <form
         onSubmit={upload}

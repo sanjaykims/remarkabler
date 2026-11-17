@@ -82,6 +82,9 @@ function client(): Anthropic {
 
 export type PageOcr = { pageIndex: number; text: string };
 
+import { splitFlagsBlock, parseFlagLines, type OcrFlag } from "./ocrFlags";
+export type { OcrFlag };
+
 /**
  * Transcribe an entire notebook PDF in one Claude call. Claude ingests the
  * PDF directly as a `document` block.
@@ -94,6 +97,17 @@ export type PageOcr = { pageIndex: number; text: string };
  * nothing.
  */
 export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
+  return (await ocrNotebookPdfWithFlags(pdfBytes)).pages;
+}
+
+/**
+ * Same transcription, plus the spots Claude was genuinely unsure about
+ * ("proofreading flags", see lib/ocrFlags.ts). The transcript always carries
+ * Claude's best guess; flags only ask the owner to confirm it later.
+ */
+export async function ocrNotebookPdfWithFlags(
+  pdfBytes: Uint8Array
+): Promise<{ pages: PageOcr[]; flags: OcrFlag[] }> {
   const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
 
   // Stream the response. The SDK rejects a non-streaming request whose
@@ -117,6 +131,17 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
       "Describe diagrams in brackets, e.g. [diagram: timeline of project].",
       "If a page has no writing at all, output exactly `(blank)` for it.",
       "Do not add commentary, summaries, or markdown code fences.",
+      "",
+      "PROOFREADING FLAGS. Always write your single best reading in the",
+      "transcription. After the LAST page, if (and only if) some words, names",
+      "or numbers are genuinely hard to read, add one final block: a line",
+      "containing exactly `--- FLAGS ---`, then one JSON object per line:",
+      '  {"page":2,"phrase":"Elim","alternatives":["Elin","Ellen"],"reason":"last letter unclear"}',
+      "`phrase` must be copied EXACTLY as it appears in your transcription of",
+      "that page (1-based page number). `alternatives` are 1-3 other plausible",
+      "readings. Flag at most 15 spots in total, most doubtful first. Do not",
+      "flag clear words, blank pages, or style choices. If nothing is doubtful,",
+      "omit the block entirely.",
     ].join("\n"),
     messages: [
       {
@@ -141,13 +166,16 @@ export async function ocrNotebookPdf(pdfBytes: Uint8Array): Promise<PageOcr[]> {
   }
 
   const block = resp.content.find((b) => b.type === "text");
-  const raw = block && block.type === "text" ? block.text : "";
-  const pages = parsePages(raw);
+  const rawAll = block && block.type === "text" ? block.text : "";
+  // Peel the flags block off BEFORE page parsing so it can never leak into the
+  // last page's text.
+  const { body, flagsRaw } = splitFlagsBlock(rawAll);
+  const pages = parsePages(body);
 
   if (pages.length === 0) {
     throw new Error("Claude returned no transcribable content for this PDF.");
   }
-  return pages;
+  return { pages, flags: parseFlagLines(flagsRaw) };
 }
 
 function parsePages(raw: string): PageOcr[] {

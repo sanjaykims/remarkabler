@@ -554,6 +554,31 @@ CREATE TABLE IF NOT EXISTS share_rate_events (
 CREATE INDEX IF NOT EXISTS idx_share_rate_source_created
   ON share_rate_events(source_hash, created_at);
 
+-- Proofreading flags: spots Claude was unsure about while transcribing, waiting
+-- for the owner to confirm (see lib/ocrFlags.ts / lib/ocrReview.ts). The page
+-- text is already saved with Claude's best guess; a flag only asks to confirm
+-- it. page_id is deliberately NOT a foreign key (pages are rebuilt on re-OCR);
+-- the notebook cascade cleans up on delete. status: pending | resolved | kept |
+-- stale (the page text changed underneath the flag).
+CREATE TABLE IF NOT EXISTS ocr_flags (
+  id TEXT PRIMARY KEY,
+  notebook_id TEXT NOT NULL,
+  page_id TEXT NOT NULL,
+  page_index INTEGER NOT NULL,
+  start_offset INTEGER NOT NULL,
+  phrase TEXT NOT NULL,
+  candidates TEXT NOT NULL,
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  resolved_text TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  resolved_at TEXT,
+  FOREIGN KEY (notebook_id) REFERENCES notebooks(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ocr_flags_status ON ocr_flags(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_ocr_flags_page ON ocr_flags(page_id, status);
+
 -- Dropbox files the user has deleted from the app. Deleting a notebook
 -- removes its dropbox_file_id dedup marker, so without this tombstone the
 -- watcher would treat the source PDF as new and re-ingest it on the next

@@ -3,7 +3,7 @@ import fs from "fs";
 import { randomUUID } from "crypto";
 import { db, getSetting, setSetting } from "./db";
 import { buildInsightExtraContext } from "./insightSources";
-import { ocrNotebookPdf, buildSelfModel, updateSelfModel, generateInsights, generateInsightTitle, summarizeDay } from "./claude";
+import { ocrNotebookPdfWithFlags, buildSelfModel, updateSelfModel, generateInsights, generateInsightTitle, summarizeDay } from "./claude";
 import { embedBatch, embedBatchOrThrow, embeddingsEnabled, encodeEmbedding } from "./embeddings";
 import { getCurrentProfile, hasProfile, saveProfile } from "./profile";
 import { owntracksRouteContext } from "./owntracks";
@@ -14,6 +14,7 @@ import {
   fetchRepoTextFiles,
 } from "./github";
 import { maybeCleanupOrphanAttachments } from "./cleanup";
+import { clearPendingFlagsForNotebook, saveOcrFlags } from "./ocrFlagStore";
 
 const FILES_DIR = path.join(
   process.env.DATA_DIR || path.join(process.cwd(), "data"),
@@ -203,7 +204,7 @@ async function processNotebook(id: string): Promise<void> {
 
     const pdfPath = path.join(FILES_DIR, id, "notebook.pdf");
     const pdfBytes = fs.readFileSync(pdfPath);
-    const pages = await ocrNotebookPdf(pdfBytes);
+    const { pages, flags: ocrFlags } = await ocrNotebookPdfWithFlags(pdfBytes);
 
     const insertPage = db().prepare(
       `INSERT INTO pages(id,notebook_id,page_index,ocr_text) VALUES(?,?,?,?)`
@@ -231,6 +232,26 @@ async function processNotebook(id: string): Promise<void> {
         .prepare(`UPDATE notebooks SET status='done', error=NULL WHERE id = ?`)
         .run(id);
     })();
+
+    // Proofreading flags: spots Claude was unsure about. Best-effort — a flag
+    // problem must never fail an already-saved transcription.
+    try {
+      clearPendingFlagsForNotebook(id);
+      for (const p of pages) {
+        const pf = ocrFlags.filter((f) => f.page === p.pageIndex + 1);
+        if (pf.length && p.text) {
+          saveOcrFlags({
+            notebookId: id,
+            pageRowId: `${id}:${p.pageIndex}`,
+            pageIndex: p.pageIndex,
+            text: p.text,
+            flags: pf,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[notes] saving proofreading flags failed:", (e as Error).message);
+    }
 
     // Embed each page semantically (Voyage). Failures are silent — search
     // falls back to FTS-only for pages without an embedding.

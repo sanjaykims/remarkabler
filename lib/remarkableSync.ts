@@ -14,7 +14,9 @@ import {
   lockRemarkableImport,
   unlockRemarkableImport,
 } from "./remarkableImport";
-import { ocrNotebookPdf, updateSelfModel } from "./claude";
+import { ocrNotebookPdfWithFlags, updateSelfModel } from "./claude";
+import { saveOcrFlags } from "./ocrFlagStore";
+import type { OcrFlag } from "./ocrFlags";
 import { getCurrentProfile, saveProfile } from "./profile";
 import { embedBatch, embeddingsEnabled, encodeEmbedding } from "./embeddings";
 import { extractEntryDate, reparseAllEntryDates } from "./notes";
@@ -674,7 +676,7 @@ async function incrementalSyncNotebook(
 
     // ── Phase 1: all network work, no DB writes ──
     const hashById = new Map(incoming.map((p) => [p.pageId, p.hash]));
-    const results: Array<{ pageId: string; pageRowId: string; text: string }> = [];
+    const results: Array<{ pageId: string; pageRowId: string; text: string; flags: OcrFlag[] }> = [];
     const failed: string[] = [];
     for (const pageId of batch) {
       const rmBytes = bytesById.get(pageId);
@@ -682,7 +684,9 @@ async function incrementalSyncNotebook(
       try {
         // One tablet page → its slices PDF → one OCR call → joined text.
         const render = await renderNotebookToPdf([{ pageId, rmBytes }]);
-        const ocrPages = await ocrNotebookPdf(Buffer.from(render.pdf));
+        const { pages: ocrPages, flags: ocrFlags } = await ocrNotebookPdfWithFlags(
+          Buffer.from(render.pdf)
+        );
         const text = ocrPages
           .map((p) => p.text)
           .filter(Boolean)
@@ -720,7 +724,7 @@ async function incrementalSyncNotebook(
             `[remarkableSync] page ${pageId} of "${nbName}" confirmed blank across sweeps — accepting the erase`
           );
         }
-        results.push({ pageId, pageRowId: `${row.id}:rm:${pageId}`, text });
+        results.push({ pageId, pageRowId: `${row.id}:rm:${pageId}`, text, flags: ocrFlags });
       } catch (e) {
         failed.push(pageId);
         console.warn(
@@ -824,6 +828,24 @@ async function incrementalSyncNotebook(
         if (r.text) insFts.run(r.text, nbName, r.pageRowId, row.id);
       }
     })();
+
+    // Proofreading flags for the pages just saved (best-effort; the text is
+    // already committed). saveOcrFlags supersedes older pending flags per page.
+    try {
+      for (const r of results) {
+        if (r.text) {
+          saveOcrFlags({
+            notebookId: row.id,
+            pageRowId: r.pageRowId,
+            pageIndex: 0,
+            text: r.text,
+            flags: r.flags,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[remarkableSync] saving proofreading flags failed:", (e as Error).message);
+    }
 
     const newTexts = results
       .filter((r) => r.text)

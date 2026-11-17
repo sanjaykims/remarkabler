@@ -74,6 +74,7 @@ describe("every Notebooks-tab data route is PIN-gated", () => {
     "app/api/notebooks/[id]/pdf/route.ts",
     "app/api/shares/route.ts",
     "app/api/shares/[id]/pdf/route.ts",
+    "app/api/ocr-review/route.ts",
   ];
   for (const r of routes) {
     it(`${r} calls notebooksPinDenied in every handler`, () => {

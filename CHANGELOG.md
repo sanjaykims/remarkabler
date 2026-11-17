@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-11-17 (Transcription proofreading, Phase 1: "Needs your eye")
+
+While transcribing, Claude now also flags words/names/numbers it is genuinely unsure about, with 1-3
+alternative readings. The page is saved immediately with Claude's best guess (search, day files and
+Insights are not held up); the flags wait as cards in a new **Needs your eye (n)** section at the top
+of the Notebooks tab. Tap an option, "Keep as written", or "Type it myself": the page text is fixed
+through the same `correctPageText` path a manual edit uses (search index, embedding, analysis, dates,
+day summary) and the Dropbox/Obsidian day file is re-exported. Covers both paths: uploads/Dropbox
+(`processNotebook`) and the reMarkable sync (`incrementalSyncNotebook`). Flags ride in a trailing
+`--- FLAGS ---` JSON-lines block, peeled off before page parsing, so a bad flag line can never damage
+the transcript (the delimiter format stays). New: `lib/ocrFlags.ts` (pure parse/anchor/replace),
+`lib/ocrFlagStore.ts` (write side, cycle-free), `lib/ocrReview.ts` (cards + resolve),
+`app/api/ocr-review` (app lock + Notebooks PIN), `app/notebooks/OcrReview.tsx`, table `ocr_flags`.
+Re-transcribing a page supersedes its pending flags; a flag whose text changed underneath goes stale.
+Phase 2 will learn from these answers (glossary, handwriting examples). Tests: `test/ocrFlags.test.ts`,
+`test/ocrReviewDb.test.ts`, route-guard coverage.
+
 ## 2026-11-17 (Notebooks tab: its own 4-digit PIN)
 
 The Notebooks tab now has a second lock on top of the app lock: a 4-digit Notebooks PIN, separate

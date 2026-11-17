@@ -785,6 +785,16 @@ features need the deployed instance to fully verify.
   catches whatever the inline trigger missed. Do NOT revert the POST
   filter to "all rows" — that would double-count cleared messages
   (once as raw history, once as recalled memory).
+- **Proofreading flags never block or damage a transcription.** `ocrNotebookPdfWithFlags`
+  (`lib/claude.ts`) returns Claude's best-guess transcript PLUS flags from a trailing
+  `--- FLAGS ---` JSONL block, which `splitFlagsBlock` peels off BEFORE `parsePages` (so it can
+  never leak into the last page; the delimiter format stays, do not move OCR to JSON). Saving
+  flags is best-effort in `try/catch` AFTER the page text commits, in both `processNotebook` and
+  `incrementalSyncNotebook`. Writes live in `lib/ocrFlagStore.ts`, deliberately apart from
+  `lib/ocrReview.ts` (which imports `lib/notes.ts` for `correctPageText`) to avoid an import
+  cycle. Applying a choice must go through `correctPageText` (never a raw UPDATE) so FTS,
+  embedding, analysis, dates and summaries follow; `/api/ocr-review` stays behind the app lock
+  AND the Notebooks PIN (cards quote diary text) and is NOT exposed on MCP.
 - **Rolling memory must stay OUTSIDE the raw-history window.** As an active
   conversation grows, `maybeRollConversationMemory` (fired un-awaited from the
   chat POST) compresses its older turns into `chat_memories` *before* a Clear,
