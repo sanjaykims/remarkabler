@@ -2836,7 +2836,7 @@
       "source": "GET()",
       "target": "isAuthenticated()",
       "source_files": [
-        "app/api/export/diary/route.ts",
+        "app/api/dropbox/callback/route.ts",
         "lib/auth.ts"
       ],
       "confidence": "EXTRACTED",
@@ -2845,10 +2845,10 @@
     },
     {
       "source": "GET()",
-      "target": "renderDiaryMarkdown()",
+      "target": "isAuthenticated()",
       "source_files": [
-        "app/api/export/diary/route.ts",
-        "lib/diaryExportDb.ts"
+        "app/api/dropbox/connect/route.ts",
+        "lib/auth.ts"
       ],
       "confidence": "EXTRACTED",
       "relation": "calls",
@@ -2858,7 +2858,7 @@
       "source": "POST()",
       "target": "isAuthenticated()",
       "source_files": [
-        "app/api/remarkable/compare/route.ts",
+        "app/api/dropbox/disconnect/route.ts",
         "lib/auth.ts"
       ],
       "confidence": "EXTRACTED",
@@ -2866,11 +2866,11 @@
       "why": "connects across different repos/directories; bridges separate communities"
     },
     {
-      "source": "postMergeDropbox()",
-      "target": "entityStubRelPathForName()",
+      "source": "POST()",
+      "target": "isAuthenticated()",
       "source_files": [
-        "app/api/mind/merge-entities/route.ts",
-        "lib/diaryExportDb.ts"
+        "app/api/dropbox/export/route.ts",
+        "lib/auth.ts"
       ],
       "confidence": "EXTRACTED",
       "relation": "calls",

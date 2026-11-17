@@ -51,6 +51,6 @@ export async function GET(req: NextRequest) {
   );
   if (!png) return NextResponse.json({ error: "No picture" }, { status: 404 });
   return new NextResponse(new Uint8Array(png), {
-    headers: { "Content-Type": "image/png", "Cache-Control": "private, max-age=3600" },
+    headers: { "Content-Type": "image/png", "Cache-Control": "no-store" },
   });
 }
