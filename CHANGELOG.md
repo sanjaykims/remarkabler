@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-17 (Proofreading: fewer noisy cards)
+First live test of the old-diary pass showed noise: whole-sentence cards, a card whose own reason said "no
+strong flag", and duplicate-looking options. The flag parser now drops phrases longer than 2 words / 30
+chars, flags Claude itself dismisses, flags with no distinct alternative, and de-duplicates alternatives
+ignoring case/spaces; both prompts now ask for ONE doubtful word and to flag only when the saved text is
+probably wrong. Test: `test/ocrFlags.test.ts` (noise filter).
+
 ## 2026-11-17 (Transcription proofreading, Phase 4: proofread the older diary)
 New "Proofread older diary" section on Notebooks: shows how many older notebooks have not been
 proofread, a cost estimate, and buttons "Test on 1 notebook" / "Do next 3" (newest first). Claude looks at

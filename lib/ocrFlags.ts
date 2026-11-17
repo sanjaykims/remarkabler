@@ -21,6 +21,12 @@ export type OcrFlag = {
 
 export const MAX_FLAGS_PER_CALL = 15;
 const MAX_PHRASE = 120;
+// A card should ask about ONE doubtful word/number, not a whole sentence.
+const MAX_FLAG_WORDS = 2;
+const MAX_FLAG_CHARS = 30;
+// Claude sometimes writes a "flag" whose own reason says it is fine; those are noise.
+const SELF_DISMISSED = /no strong flag|not a strong flag|appears? consistent|looks? correct|seems? correct/i;
+const squash = (s: string) => s.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
 const MAX_ALT = 120;
 const MAX_REASON = 160;
 
@@ -48,13 +54,21 @@ export function parseFlagLines(flagsRaw: string): OcrFlag[] {
       const page = Math.trunc(Number(j.page));
       const phrase = clean(j.phrase, MAX_PHRASE);
       if (!Number.isFinite(page) || page < 1 || !phrase) continue;
+      if (phrase.length > MAX_FLAG_CHARS || phrase.split(/\s+/).length > MAX_FLAG_WORDS) continue;
+      if (SELF_DISMISSED.test(String(j.reason ?? ""))) continue;
       const alts = Array.isArray(j.alternatives) ? j.alternatives : [];
       const alternatives: string[] = [];
       for (const a of alts) {
         const c = clean(a, MAX_ALT);
-        if (c && c !== phrase && !alternatives.includes(c)) alternatives.push(c);
+        if (
+          c &&
+          squash(c) !== squash(phrase) &&
+          !alternatives.some((x) => squash(x) === squash(c))
+        )
+          alternatives.push(c);
         if (alternatives.length >= 3) break;
       }
+      if (!alternatives.length) continue; // nothing to offer = nothing to ask
       out.push({ page, phrase, alternatives, reason: clean(j.reason, MAX_REASON) });
     } catch {
       /* skip malformed line */

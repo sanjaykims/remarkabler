@@ -38,7 +38,7 @@ describe("parseFlagLines", () => {
     expect(f[1]).toMatchObject({ page: 1, phrase: "Taylr", alternatives: ["Taylor"] });
   });
   it("caps the number of flags", () => {
-    const lines = Array.from({ length: 40 }, (_, i) => `{"page":1,"phrase":"w${i}"}`).join("\n");
+    const lines = Array.from({ length: 40 }, (_, i) => `{"page":1,"phrase":"w${i}","alternatives":["x${i}"]}`).join("\n");
     expect(parseFlagLines(lines)).toHaveLength(15);
   });
 });
@@ -62,5 +62,20 @@ describe("anchor / replace / snippet", () => {
     expect(c.match).toBe("Elim");
     expect(c.before).toContain("⏎");
     expect(c.after).toContain("was");
+  });
+});
+
+describe("parseFlagLines noise filter", () => {
+  const line = (o: object) => JSON.stringify(o);
+  it("drops sentence-long phrases, self-dismissed flags and flags with no real alternative", () => {
+    const raw = [
+      line({ page: 1, phrase: "Elin, you are awesome!", alternatives: ["Ellin"], reason: "x" }),
+      line({ page: 1, phrase: "Elin", alternatives: ["Ellin"], reason: "consistent, so no strong flag" }),
+      line({ page: 1, phrase: "IOX", alternatives: ["iox", "I O X"], reason: "same" }),
+      line({ page: 1, phrase: "Elim", alternatives: ["Elin", "ELIN", "e lin"], reason: "m vs n" }),
+    ].join("\n");
+    const f = parseFlagLines(raw);
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ phrase: "Elim", alternatives: ["Elin"] });
   });
 });
