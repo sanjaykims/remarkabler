@@ -433,10 +433,10 @@
     "semantic_hash": "721ab032b6aa89731e8e7ca528a8fc67"
   },
   "app/insights/page.tsx": {
-    "mtime": 1794561904.4965875,
-    "seen": 1794875063.5634556,
-    "ast_hash": "b2135379f3691e007108d77f4a9d7c4b",
-    "semantic_hash": "b2135379f3691e007108d77f4a9d7c4b"
+    "mtime": 1794893469.7194674,
+    "seen": 1794893588.5880384,
+    "ast_hash": "276c6f6d475d639b42e503054f9ce43d",
+    "semantic_hash": "276c6f6d475d639b42e503054f9ce43d"
   },
   "app/layout.tsx": {
     "mtime": 1794561904.4965875,
@@ -607,10 +607,10 @@
     "semantic_hash": "41fb8dc0e589c08e9e9a66573b75dec1"
   },
   "lib/claude.ts": {
-    "mtime": 1794892507.9075563,
-    "seen": 1794892588.8483865,
-    "ast_hash": "96a5d375906c7b0bd0a8abf7dc646a74",
-    "semantic_hash": "96a5d375906c7b0bd0a8abf7dc646a74"
+    "mtime": 1794893469.6967692,
+    "seen": 1794893588.5887413,
+    "ast_hash": "c1a5de3a7d9511812eef969d060cd084",
+    "semantic_hash": "c1a5de3a7d9511812eef969d060cd084"
   },
   "lib/cleanup.ts": {
     "mtime": 1794400960.7337496,
@@ -637,10 +637,10 @@
     "semantic_hash": "e83ae686d31821f7a48794b1f21631bf"
   },
   "lib/db.ts": {
-    "mtime": 1794887777.5024395,
-    "seen": 1794887858.8945866,
-    "ast_hash": "857ec372e656f1880c34f7311114bb29",
-    "semantic_hash": "857ec372e656f1880c34f7311114bb29"
+    "mtime": 1794893469.69593,
+    "seen": 1794893588.5888085,
+    "ast_hash": "390bdfa90fcd895745c0fb20f50de75e",
+    "semantic_hash": "390bdfa90fcd895745c0fb20f50de75e"
   },
   "lib/decisionEntities.ts": {
     "mtime": 1794400960.7337496,
@@ -787,10 +787,10 @@
     "semantic_hash": "9ac49c7e78c19e440cae1b7b42a1d570"
   },
   "lib/notes.ts": {
-    "mtime": 1794888705.0437844,
-    "seen": 1794888766.581212,
-    "ast_hash": "f5ce66deff22229fe73962c6564e3c3f",
-    "semantic_hash": "f5ce66deff22229fe73962c6564e3c3f"
+    "mtime": 1794893469.6979136,
+    "seen": 1794893588.5892735,
+    "ast_hash": "ee3b581dffd96f20d8ea94c0b9e76f70",
+    "semantic_hash": "ee3b581dffd96f20d8ea94c0b9e76f70"
   },
   "lib/owntracks.ts": {
     "mtime": 1794561904.503682,
@@ -1667,5 +1667,29 @@
     "seen": 1794892588.8503294,
     "ast_hash": "6253b58ce23f2f87d31e06e5bd4db2a9",
     "semantic_hash": "6253b58ce23f2f87d31e06e5bd4db2a9"
+  },
+  "app/api/writing-coach/route.ts": {
+    "mtime": 1794893469.7033727,
+    "seen": 1794893588.5879788,
+    "ast_hash": "6f0f45e37dbe7fcf5de578e46283c7a8",
+    "semantic_hash": "6f0f45e37dbe7fcf5de578e46283c7a8"
+  },
+  "app/insights/WritingCoach.tsx": {
+    "mtime": 1794893469.7076957,
+    "seen": 1794893588.5880368,
+    "ast_hash": "26d4efde11762e4c787365704cb3a8a0",
+    "semantic_hash": "26d4efde11762e4c787365704cb3a8a0"
+  },
+  "lib/writingCoach.ts": {
+    "mtime": 1794893469.6993725,
+    "seen": 1794893588.5896733,
+    "ast_hash": "7bb920294f1129a1a75d2080171935b0",
+    "semantic_hash": "7bb920294f1129a1a75d2080171935b0"
+  },
+  "test/writingCoach.test.ts": {
+    "mtime": 1794893550.737037,
+    "seen": 1794893588.5912733,
+    "ast_hash": "52cefa94ad92220f2ca52e6025e160d3",
+    "semantic_hash": "52cefa94ad92220f2ca52e6025e160d3"
   }
 }

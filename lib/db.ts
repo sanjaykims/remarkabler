@@ -625,6 +625,23 @@ CREATE TABLE IF NOT EXISTS ocr_text_backup (
   saved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Writing coach (lib/writingCoach.ts): feedback on the owner's diary as personal-essay
+-- writing, generated automatically once a batch of recent pages has no cards waiting.
+-- writing_coach_pages marks which pages a session already covered. Local data only.
+CREATE TABLE IF NOT EXISTS writing_coach (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  feedback TEXT NOT NULL,
+  exercise TEXT,
+  pages INTEGER NOT NULL DEFAULT 0,
+  first_date TEXT,
+  last_date TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS writing_coach_pages (
+  page_id TEXT PRIMARY KEY,
+  session_id INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ocr_examples (
   id TEXT PRIMARY KEY,
   text TEXT NOT NULL,

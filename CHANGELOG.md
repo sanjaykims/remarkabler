@@ -13,6 +13,7 @@
 - Handwriting pictures: no storage cap any more (up to 5 per word); up to 60 are sent with each transcription (was 8). If a request fails with the pictures attached it is retried once without them, so examples can never cost a transcription.
 - Second look: after the first transcription, each doubtful word that has saved pictures of a candidate is re-read by Claude next to those pictures (`secondLook` in `lib/claude.ts`, pure logic in `lib/secondLook.ts`). Confident "as first read" drops the card; a confident different reading fixes the text (only when the word occurs once on the page) and keeps a card offering the first reading. Fail-open.
 - Whole-page examples: up to 2 pages whose cards you all answered are sent as page image + checked transcription with every transcription (`pageExampleBlocks`, `cropword ... page`).
+- Writing coach: after recent diary pages (last 14 days) are transcribed and none of their cards are waiting, Claude reads them as personal essays and writes craft feedback (what works, three rewrites of your own sentences, a paragraph note, a check on the last exercise, one new exercise). Automatic from the maintenance sweep; shown in a new "Writing coach" section on /insights (`lib/writingCoach.ts`, `coachWriting`, tables `writing_coach` + `writing_coach_pages`, `GET /api/writing-coach`). Not on MCP.
 - Manual edits only become handwriting lessons when the words look alike (`looksLikeMisread`); rewordings are ignored. Card answers always learn.
 
 ## 2026-11-17 (Old-diary proofreading: "All" and "Stop" buttons)

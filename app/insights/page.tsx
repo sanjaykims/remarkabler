@@ -6,6 +6,7 @@ import { Button } from "@/components/Button";
 import { useEffect, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
 import { track } from "../analytics";
+import WritingCoach from "./WritingCoach";
 
 type Insight = {
   id: number;
@@ -226,6 +227,7 @@ export default function InsightsPage() {
           ))}
         </div>
       )}
+      <WritingCoach />
     </div>
   );
 }

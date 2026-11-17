@@ -1420,6 +1420,11 @@ export function runMaintenanceSweep(): void {
     .then((m) => m.maybeContinueRetranscribe())
     .catch((e) => console.warn("[notes] retranscribe continue failed:", (e as Error).message));
 
+  // Writing coach: feedback on fresh diary pages once none of their cards are waiting.
+  void import("./writingCoach")
+    .then((m) => m.maybeCoachWriting())
+    .catch((e) => console.warn("[notes] writing coach failed:", (e as Error).message));
+
   // The relationship-export race fix shipped after some relationship rows had
   // already been written. Run this before the coarse maintenance throttle so a
   // fresh deploy reconciles the vault immediately on boot.

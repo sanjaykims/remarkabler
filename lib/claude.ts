@@ -1986,3 +1986,43 @@ function salvageItems(text: string): unknown[] {
   }
   return out;
 }
+
+/**
+ * Writing coach: craft feedback on recent diary entries read as personal essays.
+ * Returns plain text; the caller splits off the final "EXERCISE:" line.
+ */
+export async function coachWriting(args: {
+  entries: string;
+  lastExercise?: string | null;
+}): Promise<string> {
+  const model = modelMain();
+  const resp = await client().messages.create({
+    model,
+    max_tokens: 1800,
+    system: [
+      "You are a writing coach for one person who keeps a handwritten diary and treats it as personal-essay writing.",
+      "Coach the CRAFT only: sentence structure, rhythm, word choice, paragraphing, openings and endings, how an entry is organised and how clearly it lands.",
+      "Never comment on the events, decisions, people or feelings themselves, and give no life advice.",
+      "Be honest and specific, not flattering. Praise only what is actually good, and say plainly what is weak.",
+      "The text was transcribed from handwriting by software: a strange word, a broken line or a spelling slip may be a transcription error. Do not treat those as writing mistakes, and do not coach spelling or handwriting.",
+      "The diary mixes Korean and English. Write your feedback in the main language of the entries, and coach each sentence in the language it was written in.",
+      "Plain text only: no markdown symbols, no tables. Use these section labels, each on its own line, in this order:",
+      "WHAT WORKS: one or two things, each with a short quotation from the entries.",
+      "THREE REWRITES: three of the writer's own sentences. For each: the original, a rewritten version, and one sentence on why it is stronger. Keep the writer's voice and meaning.",
+      "PARAGRAPHS: one observation about how the entries are organised, with one concrete change to try.",
+      "LAST EXERCISE: only if a previous exercise is given below, say honestly whether these entries show it being applied, with a quotation; otherwise omit this section.",
+      "Then finish with exactly one final line starting with `EXERCISE:` giving ONE small, concrete thing to try in the next entry.",
+    ].join("\n"),
+    messages: [
+      {
+        role: "user",
+        content:
+          (args.lastExercise ? `Previous exercise you set: ${args.lastExercise}\n\n` : "") +
+          `Recent diary entries, oldest first:\n\n${args.entries}`,
+      },
+    ],
+  });
+  recordUsage("writing_coach", model, resp.usage);
+  const block = resp.content.find((b) => b.type === "text");
+  return block && block.type === "text" ? block.text.trim() : "";
+}
