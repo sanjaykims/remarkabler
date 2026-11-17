@@ -202,6 +202,8 @@ async function processNotebook(id: string): Promise<void> {
       .get(id) as { name: string } | undefined;
     if (!row) return;
 
+    const redo =
+      (db().prepare(`SELECT retranscribe AS r FROM notebooks WHERE id = ?`).get(id) as { r: number } | undefined)?.r === 1;
     const pdfPath = path.join(FILES_DIR, id, "notebook.pdf");
     const pdfBytes = fs.readFileSync(pdfPath);
     const { pages, flags: ocrFlags } = await ocrNotebookPdfWithFlags(pdfBytes);
@@ -218,6 +220,15 @@ async function processNotebook(id: string): Promise<void> {
     db().transaction(() => {
       // A process can stop after OCR but before the final status update. Clear
       // any partial prior write so the durable queue can retry idempotently.
+      if (redo) {
+        // Keep the previous text (first copy wins) so a re-transcription can be undone.
+        db()
+          .prepare(
+            `INSERT OR IGNORE INTO ocr_text_backup(page_id, notebook_id, ocr_text)
+             SELECT id, notebook_id, ocr_text FROM pages WHERE notebook_id = ?`
+          )
+          .run(id);
+      }
       db().prepare(`DELETE FROM pages_fts WHERE notebook_id = ?`).run(id);
       db().prepare(`DELETE FROM pages WHERE notebook_id = ?`).run(id);
       for (const p of pages) {
@@ -229,7 +240,11 @@ async function processNotebook(id: string): Promise<void> {
         }
       }
       db()
-        .prepare(`UPDATE notebooks SET status='done', error=NULL WHERE id = ?`)
+        .prepare(
+          `UPDATE notebooks SET status='done', error=NULL, retranscribe = 0,
+                  retranscribed_at = CASE WHEN retranscribe = 1 THEN datetime('now') ELSE retranscribed_at END
+            WHERE id = ?`
+        )
         .run(id);
     })();
 
@@ -273,7 +288,11 @@ async function processNotebook(id: string): Promise<void> {
     // Fold this notebook into the evolving profile of the person. Best-effort
     // and already in the background, so a failure never affects the upload.
     try {
-      const entryText = pages
+      // A re-transcription replaces text that is already part of the profile; folding it
+      // in again would double-count it (and cost an Opus call per notebook).
+      const entryText = redo
+        ? ""
+        : pages
         .map((p) => p.text)
         .filter(Boolean)
         .join("\n\n");
@@ -317,6 +336,15 @@ async function processNotebook(id: string): Promise<void> {
   } catch (err) {
     console.error("[notes] processNotebook failed:", (err as Error).message);
     try {
+      // A failed re-transcription happens before the old pages are touched, so the
+      // notebook goes back to 'done' with its old text instead of showing an error.
+      const wasRedo = db().prepare(`SELECT retranscribe AS r FROM notebooks WHERE id = ?`).get(id) as { r: number } | undefined;
+      if (wasRedo?.r === 1) {
+        db()
+          .prepare(`UPDATE notebooks SET status='done', error=NULL, retranscribe = 0 WHERE id = ?`)
+          .run(id);
+        return;
+      }
       db()
         .prepare(`UPDATE notebooks SET status='error', error=? WHERE id = ?`)
         .run((err as Error).message, id);

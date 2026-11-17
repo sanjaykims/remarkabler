@@ -10,6 +10,7 @@ import { track } from "../analytics";
 import PinGate from "../map/PinGate";
 import OcrReview from "./OcrReview";
 import OldDiaryProofread from "./OldDiaryProofread";
+import RetranscribeAll from "./RetranscribeAll";
 
 type Notebook = {
   id: string;
@@ -418,6 +419,7 @@ function NotebooksContent({ onLocked }: { onLocked: () => void }) {
 
       <OcrReview key={reviewKey} onLocked={onLocked} />
       <OldDiaryProofread onLocked={onLocked} onDone={() => setReviewKey((k) => k + 1)} />
+      <RetranscribeAll onLocked={onLocked} onDone={() => setReviewKey((k) => k + 1)} />
 
       <form
         onSubmit={upload}

@@ -47,6 +47,9 @@ export function db(): Database.Database {
     "processing_started_at TEXT",
     // When the old-diary proofreading pass (lib/ocrBackfill.ts) last finished for this notebook.
     "proofread_at TEXT",
+    // Whole-notebook re-transcription (lib/retranscribe.ts): 1 while queued/running, and when it last finished.
+    "retranscribe INTEGER NOT NULL DEFAULT 0",
+    "retranscribed_at TEXT",
   ]) {
     try {
       _db.exec(`ALTER TABLE notebooks ADD COLUMN ${col}`);
@@ -613,6 +616,15 @@ CREATE INDEX IF NOT EXISTS idx_ocr_learned_wrong ON ocr_learned(wrong);
 -- the owner confirmed it says (wrong = what was first read, text = confirmed).
 -- Shown to the transcriber as visual examples. Local data only: never in the
 -- repo, never on MCP. Capped in lib/handwritingExamples.ts.
+-- The page text as it was before a whole-notebook re-transcription replaced it
+-- (first copy wins), so a bad re-run can be undone. Local data only.
+CREATE TABLE IF NOT EXISTS ocr_text_backup (
+  page_id TEXT PRIMARY KEY,
+  notebook_id TEXT NOT NULL,
+  ocr_text TEXT,
+  saved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS ocr_examples (
   id TEXT PRIMARY KEY,
   text TEXT NOT NULL,
