@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-17 (Audit follow-up: dependencies and Memory page split)
+`npm audit fix` applied the non-breaking transitive updates (critical advisories remain only in
+PostHog's DOMPurify and an Express-side `proxy-addr`, neither on a diary path). Moved two self-contained
+sections out of the 2,372-line `app/memory/page.tsx` into `app/memory/ChatMemorySection.tsx` and
+`app/memory/OwnTracksDiagnoseButton.tsx` (no behavior change; typecheck, lint, tests, build pass).
+Deferred on purpose: `mcp-handler` 2.x (needs a new SDK + route rewrite, `mcp-handler` 1.x pins the SDK
+exactly) and `rmapi-js` 10 -> 14 (unofficial reMarkable protocol; cannot be verified without a live
+account; the zod issue only affects responses from reMarkable's own cloud).
+
 ## 2026-11-17 (Tests: PIN gate)
 Added `test/pinGate.test.ts`: direct tests for the shared PIN gate (4-digit validation, escalating
 lockout, a lockout blocking even the correct PIN, PIN change invalidating old unlock tokens, tokens never
