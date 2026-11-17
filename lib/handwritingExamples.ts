@@ -37,14 +37,26 @@ export type Box = [number, number, number, number];
 
 /** Crop one word out of a notebook's stored PDF as a small PNG. Resolves null (never throws)
  *  when the renderer, the PDF, the box or the page mapping isn't usable. */
+export type Locate = { text: string; offset: number; len: number };
+
+/** UTF-16 index/length (JS) -> code-point index/length (what the Python locator counts). */
+function toCodePoints(l: Locate): Locate {
+  const offset = [...l.text.slice(0, l.offset)].length;
+  const len = [...l.text.slice(l.offset, l.offset + l.len)].length || 1;
+  return { text: l.text, offset, len };
+}
+
 export async function cropPng(
   notebookId: string,
   pageIndex: number,
   box: Box | null | undefined,
-  wide = false
+  wide = false,
+  locate?: Locate
 ): Promise<Buffer | null> {
   try {
-    if (!box || !examplesAvailable()) return null;
+    // Where the word is: located from the handwriting's line structure when the page
+    // transcript is given (accurate), Claude's rough box only as the fallback.
+    if ((!box && !locate) || !examplesAvailable()) return null;
     const pdf = path.join(FILES_DIR, notebookId, "notebook.pdf");
     if (!fs.existsSync(pdf)) return null;
     // The crop only lands on the right page when the PDF has one page per page row
@@ -55,14 +67,21 @@ export async function cropPng(
     const tmpDir = path.join(DATA_DIR, "tmp");
     fs.mkdirSync(tmpDir, { recursive: true });
     const out = path.join(tmpDir, `crop-${crypto.randomUUID()}.png`);
+    const textFile = path.join(tmpDir, `crop-${crypto.randomUUID()}.txt`);
     try {
-      await execFileAsync(PYTHON, [CROP, pdf, String(pageIndex + 1), ...box.map(String), out, String(rows), ...(wide ? ["wide"] : [])], {
-        timeout: 30_000,
-      });
+      const args = [CROP, pdf, String(pageIndex + 1), ...(box ?? [0, 0, 1, 1]).map(String), out, String(rows)];
+      if (wide) args.push("wide");
+      if (locate) {
+        const cp = toCodePoints(locate);
+        fs.writeFileSync(textFile, cp.text, { encoding: "utf8", mode: 0o600 });
+        args.push("--text", textFile, "--offset", String(cp.offset), "--len", String(cp.len));
+      }
+      await execFileAsync(PYTHON, args, { timeout: 30_000 });
       const png = fs.readFileSync(out);
       return png.length === 0 || png.length > (wide ? MAX_WIDE_PNG_BYTES : MAX_PNG_BYTES) ? null : png;
     } finally {
       fs.rmSync(out, { force: true });
+      fs.rmSync(textFile, { force: true });
     }
   } catch (e) {
     console.warn("[handwritingExamples] crop failed:", (e as Error).message);
@@ -75,6 +94,8 @@ export type CaptureArgs = {
   /** 0-based page row index; the PDF page is pageIndex + 1 */
   pageIndex: number;
   box: Box | null | undefined;
+  /** the page transcript and the word's place in it, for locating it from the line structure */
+  locate?: Locate;
   /** what the owner confirmed the handwriting says */
   text: string;
   /** what it was first read as (same as text when simply confirmed) */
@@ -85,12 +106,12 @@ export type CaptureArgs = {
 export async function captureExample(a: CaptureArgs): Promise<boolean> {
   try {
     const text = a.text.replace(/\s+/g, " ").trim();
-    if (!a.box || !text || text.length > MAX_TEXT) return false;
+    if ((!a.box && !a.locate) || !text || text.length > MAX_TEXT) return false;
     const have = db()
       .prepare(`SELECT COUNT(*) AS n FROM ocr_examples WHERE text = ?`)
       .get(text) as { n: number };
     if (have.n >= MAX_PER_TEXT) return false;
-    const png = await cropPng(a.notebookId, a.pageIndex, a.box);
+    const png = await cropPng(a.notebookId, a.pageIndex, a.box, false, a.locate);
     if (!png) return false;
     db()
       .prepare(`INSERT INTO ocr_examples(id, text, wrong, notebook_id, png) VALUES(?,?,?,?,?)`)

@@ -89,7 +89,7 @@ RUN groupadd --gid 10001 remarkabler \
 RUN python3 -m venv /opt/renderer \
     && /opt/renderer/bin/pip install --no-cache-dir \
        "rmc==0.3.0" "cairosvg==2.9.0" "svglib" "reportlab" "pypdf" \
-       "pypdfium2==5.13.0" "pillow" \
+       "pypdfium2==5.13.0" "pillow" "numpy" \
     && /opt/renderer/bin/pip install --no-cache-dir "rmscene==0.8.0" \
     && /opt/renderer/bin/python -c "import rmc, rmscene; import importlib.metadata as im; v = im.version('rmscene'); assert v == '0.8.0', v"
 COPY docker/patch_rm_palette.py /tmp/patch_rm_palette.py
@@ -99,8 +99,9 @@ RUN chmod +x /usr/local/bin/rm2pdf
 # Crops one handwritten word out of a stored PDF page (handwriting examples
 # for the transcriber; lib/handwritingExamples.ts). Uses the same venv.
 COPY docker/cropword /usr/local/bin/cropword
+COPY docker/handwriting_locate.py /usr/local/bin/handwriting_locate.py
 RUN chmod +x /usr/local/bin/cropword \
-    && /opt/renderer/bin/python -c "import pypdfium2, PIL"
+    && /opt/renderer/bin/python -c "import sys; sys.path.insert(0, '/usr/local/bin'); import pypdfium2, PIL, numpy, handwriting_locate"
 
 # App artifacts from the builder (node_modules already pruned to prod deps;
 # includes the compiled better-sqlite3 binding).

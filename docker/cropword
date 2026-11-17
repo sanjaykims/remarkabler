@@ -1,5 +1,5 @@
 #!/opt/renderer/bin/python
-"""cropword PDF PAGE X0 Y0 X1 Y1 OUT.png EXPECT_PAGES [wide]
+"""cropword PDF PAGE X0 Y0 X1 Y1 OUT.png EXPECT_PAGES [wide] [--text FILE --offset N --len M]
 
 Crop one handwritten word out of a PDF page and save it as a small greyscale
 PNG. PAGE is 1-based; the box is in thousandths of the page width/height
@@ -8,7 +8,11 @@ page mapping: when it is > 0 and the PDF has a different number of pages
 (a tall reMarkable page was sliced, say) we exit 3 instead of cropping the
 wrong page. With the optional 10th argument `wide` the output is the whole line
 (full page width, a little above and below) with the word's box outlined in red,
-so the owner sees the surrounding words. Exit codes: 0 ok, 2 usage/bad input, 3 page-count mismatch.
+so the owner sees the surrounding words. With --text/--offset/--len (the page transcript and where the word sits in it) the word is
+located from the handwritten line structure (docker/handwriting_locate.py), which is far
+more accurate than Claude's rough box; Claude's box is only the fallback (a box of
+0 0 1 1 means "none"). Exit codes: 0 ok, 2 usage/bad input, 3 page-count mismatch,
+4 no usable position.
 """
 import sys
 
@@ -18,14 +22,29 @@ MAX_W, MAX_H = 520, 180
 
 
 def main() -> int:
-    wide = len(sys.argv) == 10 and sys.argv[9] == "wide"
-    if len(sys.argv) not in (9, 10) or (len(sys.argv) == 10 and not wide):
+    argv = sys.argv[1:]
+    opts = {}
+    wide = False
+    pos = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "wide":
+            wide = True
+        elif a in ("--text", "--offset", "--len") and i + 1 < len(argv):
+            opts[a] = argv[i + 1]
+            i += 1
+        else:
+            pos.append(a)
+        i += 1
+    if len(pos) != 8:
         print(__doc__, file=sys.stderr)
         return 2
-    pdf_path, page_s, x0, y0, x1, y1, out, expect = sys.argv[1:9]
+    pdf_path, page_s, x0, y0, x1, y1, out, expect = pos
     page_no = int(page_s)
+    none_box = (float(x0), float(y0), float(x1), float(y1)) == (0.0, 0.0, 1.0, 1.0)
     x0, y0, x1, y1 = (float(v) / 1000.0 for v in (x0, y0, x1, y1))
-    if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+    if not none_box and "--text" not in opts and not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
         return 2
     pdf = pdfium.PdfDocument(pdf_path)
     try:
@@ -37,6 +56,29 @@ def main() -> int:
     finally:
         pdf.close()
     w, h = img.size
+    # Prefer locating the word from the line structure of the handwriting.
+    if "--text" in opts and "--offset" in opts and "--len" in opts:
+        try:
+            import numpy as np
+
+            from handwriting_locate import locate_word_ex
+
+            with open(opts["--text"], encoding="utf-8", newline="") as fh:
+                text = fh.read()
+            (lx0, ly0, lx1, ly1), conf, _info = locate_word_ex(
+                np.asarray(img), text, int(opts["--offset"]), int(opts["--len"])
+            )
+            if conf >= 0.5 or (none_box and wide):
+                x0, y0, x1, y1 = lx0 / 1000.0, ly0 / 1000.0, lx1 / 1000.0, ly1 / 1000.0
+                none_box = False
+            elif not wide:
+                return 4  # training crops are only made from a confident location
+        except Exception as e:  # fall back to Claude's box (cards only)
+            print("locate failed:", e, file=sys.stderr)
+            if not wide:
+                return 4
+    if none_box or not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+        return 4
     # Claude's boxes are approximate: pad 4% of the page width, 1.5% of the height.
     px, py = 0.04, 0.015
     if wide:

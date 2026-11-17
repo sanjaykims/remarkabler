@@ -1495,10 +1495,10 @@
     "semantic_hash": "5a8ebe8bd78bc244774193d188068ead"
   },
   "lib/ocrReview.ts": {
-    "mtime": 1794889060.4093504,
-    "seen": 1794889130.4314167,
-    "ast_hash": "215b212c18dc7196ade033c55d2dbba7",
-    "semantic_hash": "215b212c18dc7196ade033c55d2dbba7"
+    "mtime": 1794891509.252533,
+    "seen": 1794891559.4372103,
+    "ast_hash": "9b2f36464f0a3b1840e71e2ee08fcf6c",
+    "semantic_hash": "9b2f36464f0a3b1840e71e2ee08fcf6c"
   },
   "test/ocrFlags.test.ts": {
     "mtime": 1794885747.1540787,
@@ -1597,16 +1597,16 @@
     "semantic_hash": "abe8915aa048055f1ea7b836f2aec4b2"
   },
   "docker/cropword": {
-    "mtime": 1794890617.1491663,
-    "seen": 1794890672.5310588,
-    "ast_hash": "f44e44cd9c6736cf0c449cd330a146ac",
-    "semantic_hash": "f44e44cd9c6736cf0c449cd330a146ac"
+    "mtime": 1794891509.2517848,
+    "seen": 1794891559.4363248,
+    "ast_hash": "e75aa3987fe43351b8f8ac78c95b603b",
+    "semantic_hash": "e75aa3987fe43351b8f8ac78c95b603b"
   },
   "lib/handwritingExamples.ts": {
-    "mtime": 1794889595.438673,
-    "seen": 1794889674.2086995,
-    "ast_hash": "bc9bbdba2a6b2e08d3dd6453ae700cb2",
-    "semantic_hash": "bc9bbdba2a6b2e08d3dd6453ae700cb2"
+    "mtime": 1794891509.252114,
+    "seen": 1794891559.4369295,
+    "ast_hash": "0932d0f9e30a1d93cdf73ac4be6e48e3",
+    "semantic_hash": "0932d0f9e30a1d93cdf73ac4be6e48e3"
   },
   "test/handwritingExamples.test.ts": {
     "mtime": 1794887066.5520997,
@@ -1639,9 +1639,21 @@
     "semantic_hash": "7a434be89e58edddc533e4ad7d64c973"
   },
   "app/api/ocr-review/crop/route.ts": {
-    "mtime": 1794889595.439232,
-    "seen": 1794889674.2073257,
-    "ast_hash": "f1758dac213b43c890c47069712e7178",
-    "semantic_hash": "f1758dac213b43c890c47069712e7178"
+    "mtime": 1794891509.252385,
+    "seen": 1794891559.4354737,
+    "ast_hash": "f8c17f5c3f6e350d781032800d9e0961",
+    "semantic_hash": "f8c17f5c3f6e350d781032800d9e0961"
+  },
+  "docker/handwriting_locate.py": {
+    "mtime": 1794891316.0792232,
+    "seen": 1794891559.4363437,
+    "ast_hash": "60c25e11b756e39df22fe80fe6c898d5",
+    "semantic_hash": "60c25e11b756e39df22fe80fe6c898d5"
+  },
+  "docker/test_handwriting_locate.py": {
+    "mtime": 1794891325.327405,
+    "seen": 1794891559.4363804,
+    "ast_hash": "f1dacf3e89e608c73a6a31df2743b83a",
+    "semantic_hash": "f1dacf3e89e608c73a6a31df2743b83a"
   }
 }

@@ -90,7 +90,7 @@ export function listReviewCards(limit = 5): ReviewCard[] {
       candidates,
       reason: r.reason || "",
       context: contextSnippet(text, start, r.phrase.length),
-      hasCrop: !!r.box && examplesAvailable(),
+      hasCrop: !r.page_id.includes(":rm:") && examplesAvailable(),
     });
   }
   return cards;
@@ -113,21 +113,34 @@ function learn(wrong: string, right: string, text: string, start: number, len: n
 
 /** Save a picture of the confirmed handwriting for the transcriber's examples (fire-and-forget). */
 function captureHandwriting(
-  row: { notebook_id: string; page_index: number; box: string | null; phrase: string },
+  row: {
+    notebook_id: string;
+    page_id: string;
+    page_index: number;
+    box: string | null;
+    phrase: string;
+    start_offset: number;
+    ocr_text: string | null;
+  },
   confirmed: string
 ) {
-  if (!row.box) return;
+  if (row.page_id.includes(":rm:")) return;
   let box: [number, number, number, number] | null = null;
   try {
-    const b = JSON.parse(row.box);
+    const b = row.box ? JSON.parse(row.box) : null;
     if (Array.isArray(b) && b.length === 4) box = b as [number, number, number, number];
   } catch {
-    return;
+    /* no usable box */
   }
+  const text = row.ocr_text || "";
   void captureExample({
     notebookId: row.notebook_id,
     pageIndex: row.page_index,
     box,
+    // `text` is the page transcript BEFORE this answer changed it, which is what the PDF shows.
+    locate: text
+      ? { text, offset: Math.max(0, anchorPhrase(text, row.phrase, row.start_offset)), len: row.phrase.length }
+      : undefined,
     text: confirmed,
     wrong: row.phrase,
   }).catch((e) => console.warn("[ocrReview] handwriting capture failed:", (e as Error).message));
