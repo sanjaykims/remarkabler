@@ -49,3 +49,32 @@ describe("re-transcribe whole notebooks", () => {
     expect(R.retranscribeCandidates().map((c) => c.id)).toEqual(["old"]);
   });
 });
+
+describe("server-side auto mode", () => {
+  it("continues batches, then stops when none are left", () => {
+    add("a", "2026-01-01");
+    R.setAutoRetranscribe(true);
+    expect(queued).toHaveBeenCalledTimes(1);
+    const d = dbMod.db();
+    // batch still running: nothing new queued
+    R.maybeContinueRetranscribe();
+    expect(queued).toHaveBeenCalledTimes(1);
+    // batch finished successfully
+    d.prepare(`UPDATE notebooks SET retranscribe=0, retranscribed_at=datetime('now'), status='done' WHERE id='a'`).run();
+    R.maybeContinueRetranscribe();
+    expect(R.estimateRetranscribe().auto).toBe(false);
+  });
+
+  it("stops when a batch makes no progress", () => {
+    add("b", "2026-01-01");
+    add("c", "2026-02-01");
+    R.setAutoRetranscribe(false);
+    dbMod.db().prepare(`UPDATE notebooks SET status='done', retranscribe=0`).run();
+    dbMod.db().prepare(`INSERT OR REPLACE INTO settings(key,value) VALUES('retranscribe_auto','1')`).run();
+    R.maybeContinueRetranscribe(); // queues, records left=2
+    dbMod.db().prepare(`UPDATE notebooks SET status='done', retranscribe=0`).run(); // all failed
+    R.maybeContinueRetranscribe();
+    expect(R.estimateRetranscribe().auto).toBe(false);
+    expect(R.estimateRetranscribe().autoNote).toMatch(/no progress/);
+  });
+});

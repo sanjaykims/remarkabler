@@ -1415,6 +1415,10 @@ export function runMaintenanceSweep(): void {
   } catch (e) {
     console.warn("[notes] queue drain failed:", (e as Error).message);
   }
+  // Server-side "re-transcribe everything" mode: keeps queuing batches with no page open.
+  void import("./retranscribe")
+    .then((m) => m.maybeContinueRetranscribe())
+    .catch((e) => console.warn("[notes] retranscribe continue failed:", (e as Error).message));
 
   // The relationship-export race fix shipped after some relationship rows had
   // already been written. Run this before the coarse maintenance throttle so a

@@ -4,12 +4,12 @@
 - cluster-only mode — file stats not available
 
 ## Summary
-- 2302 nodes · 6087 edges · 138 communities (125 shown, 13 thin omitted)
+- 2304 nodes · 6102 edges · 129 communities (118 shown, 11 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 20 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `7f8aee8e`
+- Built from commit: `64589933`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -141,220 +141,211 @@
 - rm2pdf
 - postcss.config.mjs
 - ocrReviewDb.test.ts
-- relationshipExportReconcile.test.ts
 - eslint
-- chatDiary.test.ts
-- chatMemoryDedup.test.ts
-- cleanupAttachments.test.ts
-- entityWikiExclude.test.ts
-- ocrLearningDb.test.ts
-- remarkableTombstone.test.ts
-- webauthnChallengeSeparation.test.ts
-- next.config.mjs
 
 ## God Nodes (most connected - your core abstractions)
 1. `db()` - 309 edges
 2. `isAuthenticated()` - 140 edges
 3. `vitest` - 90 edges
 4. `next` - 82 edges
-5. `getSetting()` - 73 edges
-6. `setSetting()` - 66 edges
+5. `getSetting()` - 76 edges
+6. `setSetting()` - 69 edges
 7. `MemoryPage()` - 42 edges
-8. `runMaintenanceSweep()` - 34 edges
+8. `runMaintenanceSweep()` - 35 edges
 9. `callMcpTool()` - 30 edges
 10. `clearSetting()` - 30 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `OPTIONS()` --calls--> `corsHeaders()`  [EXTRACTED]
-  app/api/mcp/oauth/register/route.ts → lib/mcpOauth.ts
-- `GET()` --calls--> `isAuthenticated()`  [EXTRACTED]
-  app/api/dropbox/connect/route.ts → lib/auth.ts
 - `POST()` --calls--> `isAuthenticated()`  [EXTRACTED]
-  app/api/dropbox/disconnect/route.ts → lib/auth.ts
-- `POST()` --calls--> `isAuthenticated()`  [EXTRACTED]
-  app/api/dropbox/export/route.ts → lib/auth.ts
-- `GET()` --calls--> `isAuthenticated()`  [EXTRACTED]
-  app/api/dropbox/status/route.ts → lib/auth.ts
+  app/api/insights/route.ts → lib/auth.ts
+- `POST()` --calls--> `db()`  [EXTRACTED]
+  app/api/insights/route.ts → lib/db.ts
+- `POST()` --calls--> `buildInsightExtraContext()`  [EXTRACTED]
+  app/api/insights/route.ts → lib/insightSources.ts
+- `POST()` --calls--> `buildChatContext()`  [EXTRACTED]
+  app/api/insights/route.ts → lib/notes.ts
+- `POST()` --calls--> `buildNotesContext()`  [EXTRACTED]
+  app/api/insights/route.ts → lib/notes.ts
 
 ## Import Cycles
 - 2-file cycle: `lib/entityMerge.ts -> lib/mind.ts -> lib/entityMerge.ts`
 - 3-file cycle: `lib/chatTools.ts -> lib/notes.ts -> lib/claude.ts -> lib/chatTools.ts`
-- 3-file cycle: `lib/chatTools.ts -> lib/entityMerge.ts -> lib/claude.ts -> lib/chatTools.ts`
 - 3-file cycle: `lib/chatTools.ts -> lib/mind.ts -> lib/claude.ts -> lib/chatTools.ts`
+- 3-file cycle: `lib/chatTools.ts -> lib/entityMerge.ts -> lib/claude.ts -> lib/chatTools.ts`
 - 4-file cycle: `lib/dropbox.ts -> lib/reflectionWiki.ts -> lib/notes.ts -> lib/insightSources.ts -> lib/dropbox.ts`
-- 4-file cycle: `lib/conversationWiki.ts -> lib/notes.ts -> lib/insightSources.ts -> lib/dropbox.ts -> lib/conversationWiki.ts`
+- 4-file cycle: `lib/chatTools.ts -> lib/entityMerge.ts -> lib/notes.ts -> lib/claude.ts -> lib/chatTools.ts`
 - 4-file cycle: `lib/decisionWiki.ts -> lib/notes.ts -> lib/insightSources.ts -> lib/dropbox.ts -> lib/decisionWiki.ts`
 - 4-file cycle: `lib/diaryExportDb.ts -> lib/notes.ts -> lib/insightSources.ts -> lib/dropbox.ts -> lib/diaryExportDb.ts`
-- 4-file cycle: `lib/chatTools.ts -> lib/entityMerge.ts -> lib/notes.ts -> lib/claude.ts -> lib/chatTools.ts`
-- 4-file cycle: `lib/chatTools.ts -> lib/entityMerge.ts -> lib/mind.ts -> lib/claude.ts -> lib/chatTools.ts`
+- 4-file cycle: `lib/conversationWiki.ts -> lib/notes.ts -> lib/insightSources.ts -> lib/dropbox.ts -> lib/conversationWiki.ts`
 - 4-file cycle: `lib/chatTools.ts -> lib/mind.ts -> lib/entityMerge.ts -> lib/claude.ts -> lib/chatTools.ts`
+- 4-file cycle: `lib/chatTools.ts -> lib/entityMerge.ts -> lib/mind.ts -> lib/claude.ts -> lib/chatTools.ts`
 - 5-file cycle: `lib/conversationEntities.ts -> lib/notes.ts -> lib/insightSources.ts -> lib/dropbox.ts -> lib/diaryExportDb.ts -> lib/conversationEntities.ts`
 - 5-file cycle: `lib/diaryExportDb.ts -> lib/reflectionWiki.ts -> lib/notes.ts -> lib/insightSources.ts -> lib/dropbox.ts -> lib/diaryExportDb.ts`
-- 5-file cycle: `lib/conversationWiki.ts -> lib/notes.ts -> lib/insightSources.ts -> lib/dropbox.ts -> lib/diaryExportDb.ts -> lib/conversationWiki.ts`
-- 5-file cycle: `lib/decisionWiki.ts -> lib/notes.ts -> lib/insightSources.ts -> lib/dropbox.ts -> lib/diaryExportDb.ts -> lib/decisionWiki.ts`
 - 5-file cycle: `lib/chatTools.ts -> lib/mind.ts -> lib/entityMerge.ts -> lib/notes.ts -> lib/claude.ts -> lib/chatTools.ts`
+- 5-file cycle: `lib/decisionWiki.ts -> lib/notes.ts -> lib/insightSources.ts -> lib/dropbox.ts -> lib/diaryExportDb.ts -> lib/decisionWiki.ts`
+- 5-file cycle: `lib/conversationWiki.ts -> lib/notes.ts -> lib/insightSources.ts -> lib/dropbox.ts -> lib/diaryExportDb.ts -> lib/conversationWiki.ts`
 
-## Communities (138 total, 13 thin omitted)
+## Communities (129 total, 11 thin omitted)
 
 ### Community 0 - "dropbox.ts"
-Cohesion: 0.06
-Nodes (74): dynamic, GET(), runtime, dynamic, GET(), runtime, dynamic, POST() (+66 more)
+Cohesion: 0.08
+Nodes (50): POST(), analyzeEntryContent(), AxisLabelResult, CHAT_MEMORY_EXTRACTION_GUIDANCE, chatOverNotes(), cleanEntityWiki(), client(), compareTranscriptions() (+42 more)
 
 ### Community 1 - "diaryExportDb.ts"
 Cohesion: 0.05
-Nodes (56): MAX_DIARY_ENTRY_CHARS, CHAT_TOOLS, recordLibrarianHeartbeat(), saveDecision(), getRelationshipsFor(), AUDIT_KEEP_ROWS, authFailures, callMcpTool() (+48 more)
+Nodes (53): MAX_DIARY_ENTRY_CHARS, CHAT_TOOLS, AUDIT_KEEP_ROWS, authFailures, callMcpTool(), COMPANION_GUIDANCE, configuredTokens(), conversationExportEnabled() (+45 more)
 
 ### Community 2 - "remarkableCloud.ts"
 Cohesion: 0.07
 Nodes (44): dynamic, POST(), runtime, dynamic, POST(), runtime, dynamic, POST() (+36 more)
 
 ### Community 3 - "owntracks.ts"
-Cohesion: 0.06
-Nodes (24): AuthMod, DbMod, DbMod, Mod, DbMod, DeMod, DwMod, DbMod (+16 more)
+Cohesion: 0.11
+Nodes (46): dynamic, LOCKED(), maxDuration, POST(), runtime, dynamic, GET(), runtime (+38 more)
 
 ### Community 4 - "ocrLearning.ts"
-Cohesion: 0.09
-Nodes (30): Insight, ChatMemoryItem, ChatMemoryStatus, MEMORY_FILTERS, PendingBatchDetail, OwnTracksDiagnoseButton(), dynamic, Home() (+22 more)
+Cohesion: 0.07
+Nodes (44): dynamic, LOCKED(), POST(), runtime, dynamic, LOCKED(), POST(), runtime (+36 more)
 
 ### Community 5 - "mcp.ts"
-Cohesion: 0.10
-Nodes (36): analyzeEntryContent(), AxisLabelResult, CHAT_MEMORY_EXTRACTION_GUIDANCE, chatOverNotes(), cleanEntityWiki(), client(), compareTranscriptions(), composeEntityWiki() (+28 more)
+Cohesion: 0.08
+Nodes (40): dynamic, LOCKED(), maxDuration, POST(), runtime, dynamic, LOCKED(), POST() (+32 more)
 
 ### Community 6 - "diaryGraph.ts"
-Cohesion: 0.12
-Nodes (34): dynamic, GET(), LOCKED(), maxDuration, POST(), runtime, backupConfigured(), BackupStatus (+26 more)
+Cohesion: 0.07
+Nodes (31): LockAllButton(), LINKS, Nav(), dynamic, Home(), LatestInsight, preview(), RecentNotebook (+23 more)
 
 ### Community 7 - "backup.ts"
 Cohesion: 0.11
-Nodes (35): backfillTitles(), dynamic, GET(), LOCKED(), maxDuration, PATCH(), POST(), runtime (+27 more)
+Nodes (39): dynamic, GET(), POST(), relyingParty(), runtime, AUTH_CHALLENGE_COOKIE, authFailKey(), AuthFailState (+31 more)
 
 ### Community 8 - "app/page.tsx"
-Cohesion: 0.09
-Nodes (37): SavedDecisionRow, addEdge(), addEvidence(), buildDiaryGraph(), canonicalKey(), contentId(), ContentInfo, ContentKind (+29 more)
+Cohesion: 0.06
+Nodes (28): setPickingFile(), Mode, PinGate(), onChange(), post(), submit(), Card, OcrReview() (+20 more)
 
 ### Community 9 - "chat/route.ts"
 Cohesion: 0.07
-Nodes (21): formatBytes(), MemoryPage(), disconnectDropbox(), getPosition(), load(), loadBackup(), loadDisc(), loadDropbox() (+13 more)
+Nodes (34): ATTACHMENT_DIR, dynamic, GET(), runtime, dynamic, Entry, GET(), LOCKED() (+26 more)
 
 ### Community 10 - "notes.ts"
-Cohesion: 0.16
-Nodes (35): countEntriesMentioning(), currentTimeKst(), executeTool(), ftsSearch(), getDaySummary(), getEntriesByDate(), getInsights(), getMonthSummary() (+27 more)
+Cohesion: 0.10
+Nodes (38): listUnlinkedConversations(), DecisionEntityInput, ensureDecisionPage(), ensureDecisionsNotebook(), KINDS, tagDecisionEntities(), dateKey(), DECISION_FOLDER (+30 more)
 
 ### Community 11 - "MemoryPage"
-Cohesion: 0.07
-Nodes (22): setPickingFile(), Card, OcrReview(), Stats, Estimate, OldDiaryProofread(), DuplicateCandidate, Gate (+14 more)
+Cohesion: 0.12
+Nodes (34): dynamic, GET(), LOCKED(), maxDuration, POST(), runtime, backupConfigured(), BackupStatus (+26 more)
 
 ### Community 12 - "claude.ts"
-Cohesion: 0.12
-Nodes (31): ATTACHMENT_DIR, DELETE(), dynamic, EXT, ext(), EXT_TO_MIME, GET(), IMAGE_TYPES (+23 more)
+Cohesion: 0.09
+Nodes (37): SavedDecisionRow, addEdge(), addEvidence(), buildDiaryGraph(), canonicalKey(), contentId(), ContentInfo, ContentKind (+29 more)
 
 ### Community 13 - "remarkableSync.ts"
-Cohesion: 0.12
-Nodes (28): MapStayDto, MapView(), RoutePointDto, Data, fmt(), Gate, MapPage(), MapView (+20 more)
+Cohesion: 0.07
+Nodes (20): vitest, findRouteFiles(), PUBLIC, DbMod, Mod, DbMod, NotesMod, DbMod (+12 more)
 
 ### Community 14 - "ref_fs"
 Cohesion: 0.09
-Nodes (31): BatchRow, buildTranscript(), CATEGORY_ALIASES, ChatMemoryCategory, ChatMemoryRowForDedup, compressBatch(), CompressBatchResult, createRollingBatch() (+23 more)
+Nodes (29): Insight, InsightsPage(), copy(), download(), exportText(), generate(), load(), summarize() (+21 more)
 
 ### Community 15 - "auth.ts"
-Cohesion: 0.12
-Nodes (30): dynamic, GET(), runtime, DELETE(), dynamic, GET(), LOCKED(), POST() (+22 more)
+Cohesion: 0.07
+Nodes (21): formatBytes(), MemoryPage(), disconnectDropbox(), getPosition(), load(), loadBackup(), loadDisc(), loadDropbox() (+13 more)
 
 ### Community 16 - "chatMemory.ts"
+Cohesion: 0.13
+Nodes (31): POST(), dynamic, GET(), isPlausiblePoint(), POST(), runtime, getRecentLocations(), cachedPlace() (+23 more)
+
+### Community 17 - "db"
+Cohesion: 0.11
+Nodes (29): dynamic, LOCKED(), POST(), runtime, affectedDayFileNames(), remarkablePaired(), lockRemarkableImport(), unlockRemarkableImport() (+21 more)
+
+### Community 18 - "quality"
 Cohesion: 0.12
 Nodes (28): buildDayFiles(), buildDiaryMarkdown(), buildEntityStubFiles(), buildHomeNote(), collectEntities(), countLine(), EnrichedRow, ENTITY_INDEX_FILE (+20 more)
 
-### Community 17 - "db"
-Cohesion: 0.12
-Nodes (27): dynamic, LOCKED(), POST(), runtime, lockRemarkableImport(), unlockRemarkableImport(), classifyReocr(), cursorValue() (+19 more)
-
-### Community 18 - "quality"
-Cohesion: 0.10
-Nodes (23): DELETE(), dynamic, LOCKED(), runtime, dynamic, GET(), LOCKED(), POST() (+15 more)
-
 ### Community 19 - "map/pin/route.ts"
+Cohesion: 0.12
+Nodes (23): dynamic, GET(), POST(), runtime, unlocked(), checkPasscode(), recordSuccessfulAuth(), attemptsLeft (+15 more)
+
+### Community 20 - "memory/page.tsx"
+Cohesion: 0.16
+Nodes (27): dynamic, GET(), maxDuration, POST(), runtime, processChatDiaryEntry(), reembedMissingMemories(), updateSelfModel() (+19 more)
+
+### Community 21 - "env"
+Cohesion: 0.13
+Nodes (27): DELETE(), dynamic, GET(), LOCKED(), POST(), runtime, createNotebook(), cleanName() (+19 more)
+
+### Community 22 - "setSetting"
+Cohesion: 0.13
+Nodes (26): register(), buildInsightExtraContext(), backfillEmbeddingsLoop(), buildChatContext(), claimNextQueuedNotebook(), correctPageText(), drainNotebookProcessingQueue(), ensureProfileSeed() (+18 more)
+
+### Community 23 - "layout.tsx"
+Cohesion: 0.11
+Nodes (26): dynamic, PATCH(), runtime, applyFixes(), AUTOFIX_MIN, autoFixablePairs(), buildOcrHints(), confirmedTerms() (+18 more)
+
+### Community 24 - "mind.ts"
 Cohesion: 0.07
 Nodes (27): concurrency, cancel-in-progress, group, CI, NEXT_TELEMETRY_DISABLED, jobs, quality, name (+19 more)
 
-### Community 20 - "memory/page.tsx"
-Cohesion: 0.11
-Nodes (17): clearSans, dynamic, metadata, RootLayout(), viewport, LockAllButton(), LockOffBanner(), LINKS (+9 more)
-
-### Community 21 - "env"
+### Community 25 - "discipline/route.ts"
 Cohesion: 0.07
 Nodes (26): COMMENT_BODY, COMMENT_URL, EVENT_NAME, GH_TOKEN, PR_NUMBER, REPO, if, runs-on (+18 more)
 
-### Community 22 - "setSetting"
-Cohesion: 0.12
-Nodes (17): dynamic, LOCKED(), POST(), runtime, BackfillMessage, CHUNK_TARGET_CHARS, chunkedBackfillForConversation(), chunkMessageIds() (+9 more)
+### Community 26 - "notebooks/route.ts"
+Cohesion: 0.18
+Nodes (20): track(), clearSans, dynamic, metadata, RootLayout(), viewport, LockOffBanner(), friendly() (+12 more)
 
-### Community 23 - "layout.tsx"
-Cohesion: 0.15
-Nodes (25): processChatDiaryEntry(), buildSelfModel(), modelMain(), ocrNotebookPdf(), ocrNotebookPdfWithFlags(), parsePages(), proofreadExistingPdf(), recentInsightsBlock() (+17 more)
+### Community 27 - "notebooks/page.tsx"
+Cohesion: 0.17
+Nodes (21): MapStayDto, MapView(), RoutePointDto, Data, fmt(), Gate, MapPage(), MapView (+13 more)
 
-### Community 24 - "mind.ts"
-Cohesion: 0.08
-Nodes (26): dependencies, @anthropic-ai/sdk@^0.96.0, jszip@^3.10.1, leaflet@^1.9.4, mammoth@^1.12.0, mcp-handler@^1.1.0, @modelcontextprotocol/sdk@^1.26.0, next@^16.4.6 (+18 more)
+### Community 28 - "mind/page.tsx"
+Cohesion: 0.23
+Nodes (25): countEntriesMentioning(), currentTimeKst(), executeTool(), ftsSearch(), getDaySummary(), getEntriesByDate(), getInsights(), getMonthSummary() (+17 more)
 
-### Community 25 - "discipline/route.ts"
+### Community 29 - "embeddings.ts"
+Cohesion: 0.19
+Nodes (25): allConversationNotesRows(), allConversationFileNames(), allDecisionFileNames(), buildEntityIndexNote(), buildProfileNote(), entityIndexFileName(), entityStubFileName(), sanitizeEntityName() (+17 more)
+
+### Community 30 - "dependencies"
+Cohesion: 0.16
+Nodes (24): dynamic, GET(), LOCKED(), POST(), resolve(), runtime, Slot, SLOTS (+16 more)
+
+### Community 31 - "decisionWiki.ts"
 Cohesion: 0.14
 Nodes (23): AxisLabels, EmbeddingMap(), EntityRankings(), Heatmap(), HeatmapBucket, Map3D, MapPoint, MindData (+15 more)
 
-### Community 26 - "notebooks/route.ts"
-Cohesion: 0.20
-Nodes (24): allConversationNotesRows(), allConversationFileNames(), allDecisionFileNames(), buildEntityIndexNote(), buildProfileNote(), entityIndexFileName(), entityStubFileName(), sanitizeEntityName() (+16 more)
-
-### Community 27 - "notebooks/page.tsx"
-Cohesion: 0.13
-Nodes (21): dynamic, LOCKED(), maxDuration, POST(), runtime, causeCodes(), DownloadedPage, DownloadResult (+13 more)
-
-### Community 28 - "mind/page.tsx"
-Cohesion: 0.12
-Nodes (23): devDependencies, autoprefixer@^10.4.20, postcss@^8.4.47, @types/better-sqlite3@^7.6.11, @types/d3-force@^3.0.10, @types/node@^22.7.4, @types/react@^19.2.18, @types/react-dom@^19.2.4 (+15 more)
-
-### Community 29 - "embeddings.ts"
-Cohesion: 0.08
-Nodes (11): findRouteFiles(), PUBLIC, AuthMod, DbMod, CmMod, DbMod, EmbMod, CleanupMod (+3 more)
-
-### Community 30 - "dependencies"
-Cohesion: 0.17
-Nodes (21): dynamic, GET(), POST(), relyingParty(), runtime, AUTH_CHALLENGE_COOKIE, challengeCookieOptions, consumeChallenge() (+13 more)
-
-### Community 31 - "decisionWiki.ts"
-Cohesion: 0.15
-Nodes (19): dynamic, LOCKED(), maxDuration, POST(), runtime, createNotebook(), queueNotebookProcessing(), downloadNotebook() (+11 more)
-
 ### Community 32 - "reflectionWiki.ts"
-Cohesion: 0.09
-Nodes (13): vitest, clean, CmMod, DbMod, EmbMod, CeMod, CwMod, DbMod (+5 more)
+Cohesion: 0.18
+Nodes (20): DELETE(), dynamic, GET(), LOCKED(), POST(), runtime, escapeHtml(), GET() (+12 more)
 
 ### Community 33 - "isAuthenticated"
-Cohesion: 0.19
-Nodes (18): DELETE(), dynamic, GET(), LOCKED(), POST(), runtime, escapeHtml(), GET() (+10 more)
+Cohesion: 0.14
+Nodes (21): dynamic, GET(), LOCKED(), runtime, ConversationEntityInput, ensureConversationPage(), ensureConversationsNotebook(), getCombinedEntityWiki() (+13 more)
 
 ### Community 34 - "getCurrentProfile"
-Cohesion: 0.19
-Nodes (21): ATTACHMENT_DIR, cleanupOrphanChatAttachments(), maybeCleanupOrphanAttachments(), getSetting(), setSetting(), maybeReconcileRelationshipExportRace(), autoFixPages(), createPinGate() (+13 more)
+Cohesion: 0.15
+Nodes (21): ensureReflectionPage(), ensureReflectionsNotebook(), KINDS, ReflectionEntityInput, tagReflectionEntities(), dateKey(), markReflectionsFiled(), markReflectionsLinked() (+13 more)
 
 ### Community 35 - "DiaryGraphClient.tsx"
-Cohesion: 0.17
-Nodes (20): DecisionEntityInput, ensureDecisionPage(), ensureDecisionsNotebook(), KINDS, tagDecisionEntities(), dateKey(), DECISION_FOLDER, decisionNoteFileName() (+12 more)
+Cohesion: 0.09
+Nodes (23): dependencies, better-sqlite3@^11.3.0, d3-force@^3.0.1, jszip@^3.10.1, mammoth@^1.12.0, mcp-handler@^1.1.0, next@^16.4.6, pdf-parse@^2.4.5 (+15 more)
 
 ### Community 36 - "ref_path"
-Cohesion: 0.14
-Nodes (20): maybeRefreshHandwritingNotes(), applyFixes(), AUTOFIX_MIN, autoFixablePairs(), buildOcrHints(), confirmedTerms(), correctedPairs(), correctedPairsForNotes() (+12 more)
+Cohesion: 0.15
+Nodes (20): dynamic, Kind, KINDS, maxDuration, POST(), postMergeDropbox(), runtime, relatedEntities() (+12 more)
 
 ### Community 37 - "entityRelationships.ts"
-Cohesion: 0.16
-Nodes (20): REFLECTIONS_NOTEBOOK_ID, ensureReflectionPage(), ensureReflectionsNotebook(), KINDS, ReflectionEntityInput, tagReflectionEntities(), dateKey(), getReflectionByKey() (+12 more)
+Cohesion: 0.18
+Nodes (16): anchorPhrase(), clean(), contextSnippet(), MAX_FLAGS_PER_CALL, OcrFlag, parseBox(), parseFlagLines(), replaceAt() (+8 more)
 
 ### Community 38 - "devDependencies"
-Cohesion: 0.20
-Nodes (19): dynamic, GET(), maxDuration, POST(), runtime, reembedMissingMemories(), callVoyage(), embed() (+11 more)
+Cohesion: 0.12
+Nodes (19): ATTACHMENT_DIR, DELETE(), dynamic, EXT, ext(), EXT_TO_MIME, GET(), IMAGE_TYPES (+11 more)
 
 ### Community 39 - "vitest"
 Cohesion: 0.16
-Nodes (19): dynamic, GET(), LOCKED(), runtime, ConversationEntityInput, ensureConversationPage(), ensureConversationsNotebook(), getCombinedEntityWiki() (+11 more)
+Nodes (17): dynamic, LOCKED(), maxDuration, POST(), runtime, queueNotebookProcessing(), ExistingRow, importRemarkableNotebook() (+9 more)
 
 ### Community 40 - "entityWiki.ts"
 Cohesion: 0.13
@@ -365,356 +356,328 @@ Cohesion: 0.15
 Nodes (3): main(), marker_path(), main()
 
 ### Community 42 - "compilerOptions"
-Cohesion: 0.25
-Nodes (18): track(), InsightsPage(), copy(), download(), exportText(), generate(), load(), summarize() (+10 more)
+Cohesion: 0.20
+Nodes (18): dynamic, GET(), LOCKED(), maxDuration, POST(), runtime, buildSelfModel(), BINARY_EXT (+10 more)
 
 ### Community 43 - "insights/route.ts"
 Cohesion: 0.15
-Nodes (18): dynamic, maxDuration, POST(), runtime, EntityWikiExcerpt, allEntityWikiRows(), candidates(), entityWikiAutoEnabled() (+10 more)
+Nodes (18): dynamic, maxDuration, POST(), runtime, EntityWikiExcerpt, candidates(), entityWikiAutoEnabled(), evenSample() (+10 more)
 
 ### Community 44 - "corsHeaders"
 Cohesion: 0.13
-Nodes (18): getConversationByKey(), EntityPredicate, isEntityPredicate(), PREDICATE_LABELS, PREDICATES, CleanRelationshipInput, cleanRelationships(), EntityKind (+10 more)
+Nodes (18): EntityPredicate, isEntityPredicate(), PREDICATE_LABELS, PREDICATES, CleanRelationshipInput, cleanRelationships(), EntityKind, getRelationshipsFor() (+10 more)
 
 ### Community 45 - "entityMerge.ts"
-Cohesion: 0.12
-Nodes (15): ATTACHMENT_DIR, dynamic, GET(), runtime, dynamic, GET(), LOCKED(), runtime (+7 more)
+Cohesion: 0.10
+Nodes (20): devDependencies, autoprefixer@^10.4.20, postcss@^8.4.47, @types/better-sqlite3@^7.6.11, @types/d3-force@^3.0.10, @types/node@^22.7.4, @types/react@^19.2.18, @types/react-dom@^19.2.4 (+12 more)
 
 ### Community 46 - "notebooks/pin/route.ts"
 Cohesion: 0.19
-Nodes (17): dynamic, GET(), LOCKED(), maxDuration, POST(), runtime, backfillCandidates(), Candidate (+9 more)
+Nodes (16): dynamic, fmtDate(), fmtDateTime(), fmtTime(), GET(), LOCKED(), maxDuration, runtime (+8 more)
 
 ### Community 47 - "notebooksPinDenied"
+Cohesion: 0.15
+Nodes (17): ForceEdgeInput, ForceGraph(), draw(), fit(), hit(), loop(), onDown(), onMove() (+9 more)
+
+### Community 48 - "entityTagging.ts"
+Cohesion: 0.11
+Nodes (12): better-sqlite3, AuthMod, DbMod, BackupMod, DbMod, CdMod, DbMod, MindMod (+4 more)
+
+### Community 49 - "db.ts"
+Cohesion: 0.11
+Nodes (11): AuthMod, DbMod, CeMod, CwMod, DbMod, Db, L, Review (+3 more)
+
+### Community 50 - "mcpOauth.ts"
 Cohesion: 0.11
 Nodes (18): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+10 more)
 
-### Community 48 - "entityTagging.ts"
-Cohesion: 0.20
-Nodes (16): dynamic, GET(), LOCKED(), maxDuration, POST(), runtime, BINARY_EXT, disciplineConfig() (+8 more)
-
-### Community 49 - "db.ts"
-Cohesion: 0.18
-Nodes (16): dynamic, fmtDate(), fmtDateTime(), fmtTime(), GET(), LOCKED(), maxDuration, runtime (+8 more)
-
-### Community 50 - "mcpOauth.ts"
-Cohesion: 0.18
-Nodes (16): dynamic, GET(), LOCKED(), runtime, contextSnippet(), ProofreadingStats, proofreadingStats(), recordLearned() (+8 more)
-
 ### Community 51 - "backfill-all/route.ts"
-Cohesion: 0.20
-Nodes (17): authFailKey(), AuthFailState, bumpBucket(), createSessionToken(), getAuthFailState(), getRawAuthFailState(), passcodeLockRemainingMs(), pruneExpiredAuthFailBuckets() (+9 more)
+Cohesion: 0.17
+Nodes (16): dynamic, GET(), OPTIONS(), runtime, RFC-8414, dynamic, GET(), OPTIONS() (+8 more)
 
 ### Community 52 - "graphify_gate.py"
+Cohesion: 0.24
+Nodes (16): dynamic, GET(), POST(), runtime, unlocked(), gate, makeNotebooksUnlockToken, NOTEBOOKS_UNLOCK_COOKIE (+8 more)
+
+### Community 53 - "pendingShares.ts"
 Cohesion: 0.14
 Nodes (15): AuthCode, authCodes, ClientMetadataResult, ClientRegistrationMetadata, configuredSecrets(), consentSecretValid(), currentSecretHashes(), IssuedTokens (+7 more)
 
-### Community 53 - "pendingShares.ts"
-Cohesion: 0.18
-Nodes (14): dynamic, GET(), LOCKED(), maxDuration, runtime, dynamic, GET(), hasNotes() (+6 more)
-
 ### Community 54 - "package.json"
-Cohesion: 0.18
-Nodes (15): dynamic, GET(), OPTIONS(), runtime, RFC-8414, dynamic, GET(), OPTIONS() (+7 more)
+Cohesion: 0.14
+Nodes (14): DELETE(), dynamic, LOCKED(), runtime, dynamic, GET(), runtime, next (+6 more)
 
 ### Community 55 - "maybeCompressChatSessions"
-Cohesion: 0.25
-Nodes (15): dynamic, GET(), POST(), runtime, unlocked(), gate, makeNotebooksUnlockToken, NOTEBOOKS_UNLOCK_COOKIE (+7 more)
+Cohesion: 0.16
+Nodes (12): dynamic, GET(), runtime, dynamic, GET(), runtime, buildAuthUrl(), dropboxConfigured() (+4 more)
 
 ### Community 56 - "vaultGraph.ts"
-Cohesion: 0.26
-Nodes (16): wikiLinkingEnabled(), listUnlinkedConversations(), listUnlinkedDecisions(), autoTagConversation(), autoTagDecision(), autoTagExportsEnabled(), autoTagReflection(), evenSample() (+8 more)
+Cohesion: 0.19
+Nodes (14): dynamic, GET(), LOCKED(), maxDuration, runtime, dynamic, GET(), hasNotes() (+6 more)
 
 ### Community 57 - "authorize/route.ts"
-Cohesion: 0.18
-Nodes (11): gate, MAP_UNLOCK_TTL_MS, mapUnlockCookieOptions, afterFailure(), FailState, isValidPin(), lockDurationMs(), MAX_ATTEMPTS (+3 more)
+Cohesion: 0.12
+Nodes (6): ATTACHMENT_DIR, CleanupMod, DbMod, DbMod, DropboxMod, queued
 
 ### Community 58 - "usage.ts"
-Cohesion: 0.19
-Nodes (13): dynamic, LOCKED(), POST(), runtime, dynamic, LOCKED(), POST(), runtime (+5 more)
+Cohesion: 0.18
+Nodes (16): CONVERSATION_FOLDER, conversationNoteFileName(), conversationPageId(), dateKey(), ExportedConversationRow, markConversationsFiled(), MAX_CONVERSATION_CHARS, renderConversationNote() (+8 more)
 
 ### Community 59 - "Map3D.tsx"
-Cohesion: 0.21
-Nodes (11): dynamic, GET(), runtime, DiaryGraphNode, DiaryGraphPayload, VaultNoteKind, insightDropboxFolders(), addVaultNotesToGraph() (+3 more)
+Cohesion: 0.25
+Nodes (14): dynamic, GET(), LOCKED(), POST(), runtime, Cand, estimateRetranscribe(), FILES_DIR (+6 more)
 
 ### Community 60 - "usage/page.tsx"
-Cohesion: 0.24
-Nodes (13): dynamic, GET(), POST(), runtime, unlocked(), checkPasscode(), recordSuccessfulAuth(), attemptsLeft (+5 more)
+Cohesion: 0.12
+Nodes (15): @anthropic-ai/sdk@^0.96.0, leaflet@^1.9.4, @modelcontextprotocol/sdk@^1.26.0, @types/leaflet@^1.9.12, zod@^4.4.3, engines, node, name (+7 more)
 
 ### Community 61 - "manifest.json"
+Cohesion: 0.21
+Nodes (11): dynamic, GET(), runtime, DiaryGraphEdge, DiaryGraphPayload, VaultNoteKind, insightDropboxFolders(), addVaultNotesToGraph() (+3 more)
+
+### Community 62 - "location.ts"
 Cohesion: 0.32
 Nodes (14): consentForm(), destHost(), dynamic, esc(), GET(), OAuthParams, page(), POST() (+6 more)
 
-### Community 62 - "location.ts"
-Cohesion: 0.19
-Nodes (14): dynamic, OPTIONS(), POST(), readBoundedJson(), runtime, RFC-7591, isThrottled(), recordAuthFailure() (+6 more)
-
 ### Community 63 - "register/route.ts"
-Cohesion: 0.23
-Nodes (13): dynamic, GET(), LOCKED(), POST(), runtime, Cand, estimateRetranscribe(), FILES_DIR (+5 more)
-
-### Community 64 - "analyzePending"
-Cohesion: 0.18
-Nodes (13): dynamic, LOCKED(), maxDuration, POST(), runtime, dynamic, LOCKED(), POST() (+5 more)
-
-### Community 65 - "next"
 Cohesion: 0.18
 Nodes (14): ActiveLabel(), Axes(), AxisEndLabel(), AxisLabels, Map3D(), MapPoint, Point(), sentimentColour() (+6 more)
 
-### Community 66 - "mcp/route.ts"
+### Community 64 - "analyzePending"
+Cohesion: 0.25
+Nodes (14): backfillCandidates(), Candidate, estimateBackfill(), FILES_DIR, MAX_PER_RUN, NotebookResult, pdfPath(), PENDING_CAP (+6 more)
+
+### Community 65 - "next"
 Cohesion: 0.13
 Nodes (14): background_color, description, display, icons, name, files, share_target, action (+6 more)
 
+### Community 66 - "mcp/route.ts"
+Cohesion: 0.24
+Nodes (10): dynamic, LOCKED(), POST(), runtime, BackfillMessage, CHUNK_TARGET_CHARS, chunkedBackfillForConversation(), chunkMessageIds() (+2 more)
+
 ### Community 67 - "AutoLock"
+Cohesion: 0.19
+Nodes (12): backfillTitles(), dynamic, GET(), LOCKED(), maxDuration, PATCH(), runtime, blocksFor() (+4 more)
+
+### Community 68 - "diaryGraph.test.ts"
 Cohesion: 0.25
 Nodes (10): dynamic, GET(), LOCKED(), POST(), runtime, addLocation(), isLocationEnabled(), listRecentLocations() (+2 more)
 
-### Community 68 - "diaryGraph.test.ts"
-Cohesion: 0.24
-Nodes (12): dynamic, GET(), isPlausiblePoint(), POST(), runtime, addPoint(), analyzeGaps(), checkOwntracksToken() (+4 more)
-
 ### Community 69 - "mcpOauth.test.ts"
+Cohesion: 0.21
+Nodes (13): dynamic, POST(), readBoundedJson(), runtime, RFC-7591, isThrottled(), recordAuthFailure(), REGISTER_THROTTLE_BUCKET (+5 more)
+
+### Community 70 - "notebooks/[id]/pdf/route.ts"
 Cohesion: 0.22
 Nodes (10): dynamic, LOCKED(), maxDuration, POST(), runtime, carryForwardDates(), DiaryPageRow, compareImportedNotebook() (+2 more)
 
-### Community 70 - "notebooks/[id]/pdf/route.ts"
+### Community 71 - "token/route.ts"
 Cohesion: 0.24
 Nodes (12): dynamic, GET(), runtime, dailyUsage(), FALLBACK, monthlyUsage(), Prices, PRICES (+4 more)
 
-### Community 71 - "token/route.ts"
+### Community 72 - "mind/route.ts"
 Cohesion: 0.16
 Nodes (12): Block, CaptureArgs, captureExample(), Example, examplesAvailable(), execFileAsync, FILES_DIR, MAX_EXAMPLES_TOTAL (+4 more)
 
-### Community 72 - "mind/route.ts"
+### Community 73 - "createPinGate"
 Cohesion: 0.22
 Nodes (12): auditRequest(), dynamic, guarded(), handler, maxDuration, runtime, RFC-9728, checkMcpAuth() (+4 more)
 
-### Community 73 - "createPinGate"
+### Community 74 - "dropboxExportLock.test.ts"
+Cohesion: 0.22
+Nodes (11): dynamic, GET(), LOCKED(), runtime, maybeRefreshHandwritingNotes(), correctedPairsForNotes(), handwritingNotesDue(), ProofreadingStats (+3 more)
+
+### Community 75 - "webauthn.ts"
 Cohesion: 0.40
 Nodes (11): AutoLock(), cancelPending(), lockNow(), markHiddenIfNeeded(), onPageHide(), onVisibility(), clearHiddenSince(), readHiddenSince() (+3 more)
 
-### Community 74 - "dropboxExportLock.test.ts"
-Cohesion: 0.21
-Nodes (10): DayCost, DayData, FEATURE_LABEL, FeatureCost, money(), MonthData, pad(), UsagePage() (+2 more)
-
-### Community 75 - "webauthn.ts"
+### Community 76 - "api/export/route.ts"
 Cohesion: 0.15
 Nodes (8): CeMod, CwMod, DbMod, DiaryGraphPayload, GraphMod, MindMod, NotesMod, RelMod
 
-### Community 76 - "api/export/route.ts"
+### Community 77 - "grants/route.ts"
 Cohesion: 0.22
 Nodes (7): codeFrom(), consent(), exchange(), issueAccessToken(), Mod, pkce(), register()
 
-### Community 77 - "grants/route.ts"
-Cohesion: 0.23
-Nodes (11): CONVERSATION_FOLDER, conversationNoteFileName(), dateKey(), ExportedConversationRow, MAX_CONVERSATION_CHARS, renderConversationNote(), sanitizeFileName(), saveExportedConversation() (+3 more)
-
 ### Community 78 - "interruptedNotebookRecovery.test.ts"
-Cohesion: 0.29
-Nodes (10): DELETE(), dynamic, GET(), runtime, requireAuth(), clientIp(), dropAuthCodesForClient(), listOAuthAudit() (+2 more)
-
-### Community 79 - "relatedEntities.test.ts"
 Cohesion: 0.29
 Nodes (10): dynamic, err(), POST(), readForm(), runtime, issueTokens(), pruneExpiredTokens(), redeemAuthCode() (+2 more)
 
-### Community 80 - "chatDiary.ts"
-Cohesion: 0.29
-Nodes (10): ForceGraph(), draw(), fit(), hit(), loop(), onDown(), onMove(), onWheel() (+2 more)
-
-### Community 81 - "deploy"
+### Community 79 - "relatedEntities.test.ts"
 Cohesion: 0.36
 Nodes (8): effectiveDateKeys(), buildCandidate(), buildCloudCoverage(), classifyDuplicate(), CloudCoverage, DuplicateCandidate, DuplicateClassification, findDuplicateCandidates()
 
-### Community 82 - "decrypt-backup.mjs"
-Cohesion: 0.35
-Nodes (8): anchorPhrase(), clean(), MAX_FLAGS_PER_CALL, parseBox(), parseFlagLines(), replaceAt(), squash(), resolveFlag()
-
-### Community 83 - "authRoute.test.ts"
+### Community 80 - "chatDiary.ts"
 Cohesion: 0.20
 Nodes (7): ConversationWikiMod, DbMod, deferred(), DiaryExportDbMod, DropboxMod, mockDropboxFetch(), UploadCall
 
+### Community 81 - "deploy"
+Cohesion: 0.27
+Nodes (7): dynamic, POST(), runtime, classifyDropboxError(), disconnectDropbox(), revokeAccessTokenAtDropbox(), safeDropboxError()
+
+### Community 82 - "decrypt-backup.mjs"
+Cohesion: 0.31
+Nodes (9): DELETE(), dynamic, GET(), runtime, requireAuth(), dropAuthCodesForClient(), listOAuthAudit(), listOAuthGrants() (+1 more)
+
 ### Community 84 - "topEntities.test.ts"
-Cohesion: 0.20
-Nodes (9): ForceEdgeInput, ForceNodeInput, Props, radiusFor(), SimLink, SimNode, Transform, d3-force@^3.0.1 (+1 more)
-
-### Community 85 - "diaryExportDb.test.ts"
-Cohesion: 0.20
-Nodes (5): AuthMod, DbMod, requestCookies, RouteMod, webauthn
-
-### Community 87 - "pagesForEntity.test.ts"
 Cohesion: 0.20
 Nodes (5): ChatToolsMod, DbMod, MergeMod, NotesMod, Result
 
-### Community 88 - "memories/route.ts"
-Cohesion: 0.28
-Nodes (8): dynamic, Kind, KINDS, maxDuration, POST(), postMergeDropbox(), runtime, listAliases()
-
-### Community 89 - "librarian/route.ts"
-Cohesion: 0.33
-Nodes (8): dynamic, GET(), LOCKED(), POST(), resolve(), runtime, Slot, SLOTS
-
-### Community 90 - "entityGraph.ts"
+### Community 85 - "diaryExportDb.test.ts"
 Cohesion: 0.22
 Nodes (8): build, builder, dockerfilePath, deploy, restartPolicyMaxRetries, restartPolicyType, startCommand, $schema
 
-### Community 91 - "scripts"
+### Community 86 - "entityWriteAtomicity.test.ts"
 Cohesion: 0.22
 Nodes (6): body, enc, iv, MAGIC, salt, tag
 
-### Community 92 - "chatToolsLocation.test.ts"
+### Community 87 - "pagesForEntity.test.ts"
+Cohesion: 0.22
+Nodes (5): AuthMod, DbMod, requestCookies, RouteMod, webauthn
+
+### Community 88 - "memories/route.ts"
 Cohesion: 0.22
 Nodes (4): ChatToolsMod, DbMod, MindMod, NotesMod
 
-### Community 93 - "entityMerge.test.ts"
-Cohesion: 0.32
-Nodes (7): dynamic, PATCH(), runtime, editDistance(), learnFromEdit(), looksLikeMisread(), pageTextOf()
-
-### Community 94 - "entityRelationships.test.ts"
+### Community 89 - "librarian/route.ts"
 Cohesion: 0.39
 Nodes (7): CHAT_DIARY_NOTEBOOK_NAME, ensureChatDiaryNotebook(), nextPageIndex(), normaliseDate(), saveChatDiaryEntry(), CHAT_DIARY_NOTEBOOK_ID, todayLocalDate()
 
-### Community 95 - "getTopEntities.test.ts"
-Cohesion: 0.36
-Nodes (7): ExtractResult, extractTextFromAttachment(), Mammoth, mammoth(), PdfParse, pdfParse(), shouldFallback()
-
-### Community 96 - "mcp.test.ts"
+### Community 90 - "entityGraph.ts"
 Cohesion: 0.25
 Nodes (3): DbMod, ExportMod, NotesMod
 
-### Community 98 - "chatMemoryExtract.test.ts"
+### Community 92 - "chatToolsLocation.test.ts"
 Cohesion: 0.25
 Nodes (3): ChatToolsMod, DbMod, NotesMod
 
-### Community 99 - "chatMemoryRecall.test.ts"
+### Community 93 - "entityMerge.test.ts"
 Cohesion: 0.38
 Nodes (6): dynamic, GET(), LOCKED(), MemoryRow, runtime, pendingBatchDetails()
 
-### Community 100 - "chatMemoryRolling.test.ts"
+### Community 94 - "entityRelationships.test.ts"
+Cohesion: 0.43
+Nodes (6): dynamic, GET(), LOCKED(), POST(), runtime, setDisciplineEnabled()
+
+### Community 95 - "getTopEntities.test.ts"
 Cohesion: 0.38
 Nodes (6): dynamic, GET(), LOCKED(), maxDuration, runtime, renderDiaryMarkdown()
 
-### Community 101 - "entityTagging.test.ts"
-Cohesion: 0.43
-Nodes (6): dynamic, GET(), LOCKED(), POST(), runtime, setLocationEnabled()
-
-### Community 102 - "mind.test.ts"
+### Community 96 - "mcp.test.ts"
 Cohesion: 0.38
 Nodes (4): computeRelatedEntities(), DayMembership, EntityKind, RelatedEntity
 
-### Community 103 - "notebookDedupDb.test.ts"
+### Community 97 - "api/diary/route.ts"
 Cohesion: 0.29
 Nodes (7): scripts, build, dev, lint, start, test, test:watch
 
-### Community 104 - "ocrReviewDb.test.ts"
+### Community 98 - "chatMemoryExtract.test.ts"
 Cohesion: 0.29
 Nodes (4): ChatToolsMod, DbMod, LocationMod, OwntracksMod
 
-### Community 106 - "duplicates/route.ts"
+### Community 100 - "chatMemoryRolling.test.ts"
 Cohesion: 0.29
 Nodes (4): CwMod, DbMod, MergeMod, RelMod
 
-### Community 107 - "eslint"
+### Community 101 - "entityTagging.test.ts"
 Cohesion: 0.29
 Nodes (3): DbMod, MindMod, NotesMod
 
-### Community 108 - "correctPageText.test.ts"
+### Community 102 - "mind.test.ts"
 Cohesion: 0.29
 Nodes (3): ChatToolsMod, McpMod, RouteMod
 
-### Community 109 - "dropboxTombstone.test.ts"
-Cohesion: 0.40
-Nodes (5): dynamic, Entry, GET(), LOCKED(), runtime
-
-### Community 110 - "embeddingMapDiscipline.test.ts"
-Cohesion: 0.60
-Nodes (6): ChatMemorySection(), backfillAll(), load(), processPending(), remove(), retryStuck()
-
-### Community 111 - "entityWikiExclude.test.ts"
-Cohesion: 0.40
-Nodes (5): blocksFor(), buildSavedSessionsContext(), DEFAULT_INSIGHT_DROPBOX_FOLDERS, InsightExtraContext, SavedRow
-
-### Community 112 - "ocrLearningDb.test.ts"
+### Community 103 - "notebookDedupDb.test.ts"
 Cohesion: 0.53
 Nodes (4): strip(), tokens(), WordChange, wordChanges()
 
-### Community 113 - "reflectionEntities.test.ts"
+### Community 104 - "ocrReviewDb.test.ts"
 Cohesion: 0.33
 Nodes (3): ClaudeMod, CmMod, DbMod
 
-### Community 115 - "mapPin.test.ts"
+### Community 105 - "relationshipExportReconcile.test.ts"
+Cohesion: 0.33
+Nodes (3): CmMod, DbMod, EmbMod
+
+### Community 107 - "eslint"
 Cohesion: 0.33
 Nodes (5): ClaudeMod, CwMod, DbMod, EtMod, RwMod
 
-### Community 116 - "next.config.mjs"
+### Community 108 - "correctPageText.test.ts"
 Cohesion: 0.33
 Nodes (3): DbMod, MindMod, NotesMod
 
-### Community 117 - "tailwindcss"
+### Community 109 - "dropboxTombstone.test.ts"
 Cohesion: 0.33
 Nodes (3): DbMod, DedupMod, NotesMod
 
-### Community 118 - "chatMemoryFlow.test.ts"
+### Community 110 - "embeddingMapDiscipline.test.ts"
 Cohesion: 0.33
 Nodes (3): Db, Review, Store
 
-### Community 119 - "conversationEntities.test.ts"
+### Community 111 - "entityWikiExclude.test.ts"
 Cohesion: 0.33
 Nodes (3): DbMod, DropboxMod, NotesMod
 
-### Community 120 - "dropboxStatus.test.ts"
+### Community 112 - "ocrLearningDb.test.ts"
 Cohesion: 0.50
 Nodes (4): dynamic, GET(), LOCKED(), runtime
 
-### Community 121 - "owntracksCurrent.test.ts"
+### Community 113 - "reflectionEntities.test.ts"
 Cohesion: 0.40
 Nodes (4): eslint@^9.39.5, eslint-config-next@^16.3.2, eslint, eslint-config-next
 
-### Community 122 - "session-start.sh"
+### Community 114 - "remarkableTombstone.test.ts"
 Cohesion: 0.40
-Nodes (4): CdMod, DbMod, MindMod, NotesMod
+Nodes (3): CmMod, DbMod, EmbMod
 
-### Community 124 - "rm2pdf"
+### Community 116 - "next.config.mjs"
 Cohesion: 0.40
 Nodes (3): DbMod, DropboxMod, NotesMod
 
-### Community 125 - "postcss.config.mjs"
+### Community 117 - "tailwindcss"
 Cohesion: 0.40
-Nodes (4): DbMod, EmbMod, MindMod, NotesMod
+Nodes (3): ClaudeMod, DbMod, EwMod
 
-### Community 126 - "ocrReviewDb.test.ts"
+### Community 118 - "chatMemoryFlow.test.ts"
 Cohesion: 0.40
 Nodes (4): CeMod, DbMod, ReMod, RwMod
 
-### Community 127 - "relationshipExportReconcile.test.ts"
+### Community 119 - "conversationEntities.test.ts"
 Cohesion: 0.40
 Nodes (3): DbMod, NotesMod, SyncMod
 
-### Community 129 - "chatDiary.test.ts"
+### Community 120 - "dropboxStatus.test.ts"
 Cohesion: 0.50
 Nodes (3): RFC-8414, RFC-9728, nextConfig
 
-### Community 130 - "chatMemoryDedup.test.ts"
+### Community 121 - "owntracksCurrent.test.ts"
 Cohesion: 0.50
 Nodes (3): tailwindcss@^3.4.13, tailwindcss, config
+
+### Community 123 - "entrypoint.sh"
+Cohesion: 0.50
+Nodes (3): DbMod, DeMod, DwMod
 
 ## Knowledge Gaps
 - **6 isolated node(s):** `RFC-8414`, `RFC-9728`, `RFC-8414`, `RFC-9728`, `RFC-7591` (+1 more)
   These have ≤1 connection - possible missing edges. (Counts symbols only; 873 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **13 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **11 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `db()` connect `notes.ts` to `dropbox.ts`, `diaryExportDb.ts`, `remarkableCloud.ts`, `eslint`, `ocrLearning.ts`, `mcp.ts`, `diaryGraph.ts`, `backup.ts`, `app/page.tsx`, `claude.ts`, `ref_fs`, `auth.ts`, `db`, `quality`, `setSetting`, `layout.tsx`, `notebooks/route.ts`, `dependencies`, `decisionWiki.ts`, `isAuthenticated`, `getCurrentProfile`, `DiaryGraphClient.tsx`, `ref_path`, `entityRelationships.ts`, `devDependencies`, `vitest`, `insights/route.ts`, `corsHeaders`, `entityMerge.ts`, `notebooks/pin/route.ts`, `entityTagging.ts`, `db.ts`, `mcpOauth.ts`, `backfill-all/route.ts`, `graphify_gate.py`, `pendingShares.ts`, `vaultGraph.ts`, `usage.ts`, `manifest.json`, `location.ts`, `register/route.ts`, `analyzePending`, `AutoLock`, `diaryGraph.test.ts`, `mcpOauth.test.ts`, `notebooks/[id]/pdf/route.ts`, `token/route.ts`, `mind/route.ts`, `grants/route.ts`, `interruptedNotebookRecovery.test.ts`, `relatedEntities.test.ts`, `deploy`, `decrypt-backup.mjs`, `memories/route.ts`, `entityMerge.test.ts`, `entityRelationships.test.ts`, `chatMemoryRecall.test.ts`, `correctPageText.test.ts`, `dropboxTombstone.test.ts`, `entityWikiExclude.test.ts`?**
-  _High betweenness centrality (0.212) - this node is a cross-community bridge._
+- **Why does `db()` connect `mind/page.tsx` to `dropbox.ts`, `diaryExportDb.ts`, `remarkableCloud.ts`, `owntracks.ts`, `ocrLearning.ts`, `diaryGraph.ts`, `backup.ts`, `chat/route.ts`, `notes.ts`, `MemoryPage`, `claude.ts`, `chatMemory.ts`, `db`, `memory/page.tsx`, `env`, `setSetting`, `layout.tsx`, `embeddings.ts`, `dependencies`, `reflectionWiki.ts`, `isAuthenticated`, `getCurrentProfile`, `ref_path`, `entityRelationships.ts`, `devDependencies`, `vitest`, `compilerOptions`, `insights/route.ts`, `corsHeaders`, `notebooks/pin/route.ts`, `entityTagging.ts`, `db.ts`, `pendingShares.ts`, `package.json`, `vaultGraph.ts`, `authorize/route.ts`, `usage.ts`, `Map3D.tsx`, `location.ts`, `analyzePending`, `mcp/route.ts`, `AutoLock`, `diaryGraph.test.ts`, `mcpOauth.test.ts`, `notebooks/[id]/pdf/route.ts`, `token/route.ts`, `mind/route.ts`, `createPinGate`, `dropboxExportLock.test.ts`, `interruptedNotebookRecovery.test.ts`, `relatedEntities.test.ts`, `decrypt-backup.mjs`, `librarian/route.ts`, `entityMerge.test.ts`, `mind.test.ts`?**
+  _High betweenness centrality (0.209) - this node is a cross-community bridge._
 - **What connects `RFC-8414`, `RFC-9728`, `RFC-8414` to the rest of the system?**
   _6 weakly-connected nodes found - possible missing edges._
 - **Should `dropbox.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.05506549051055867 - nodes in this community are weakly interconnected._
-- **Why does `next` connect `entityMerge.ts` to `dropbox.ts`, `remarkableCloud.ts`, `owntracks.ts`, `ocrLearning.ts`, `diaryGraph.ts`, `backup.ts`, `claude.ts`, `remarkableSync.ts`, `auth.ts`, `db`, `quality`, `memory/page.tsx`, `setSetting`, `mind.ts`, `discipline/route.ts`, `notebooks/page.tsx`, `mind/page.tsx`, `dependencies`, `decisionWiki.ts`, `isAuthenticated`, `devDependencies`, `vitest`, `insights/route.ts`, `notebooks/pin/route.ts`, `entityTagging.ts`, `db.ts`, `mcpOauth.ts`, `backfill-all/route.ts`, `pendingShares.ts`, `package.json`, `maybeCompressChatSessions`, `usage.ts`, `Map3D.tsx`, `usage/page.tsx`, `manifest.json`, `location.ts`, `register/route.ts`, `analyzePending`, `AutoLock`, `diaryGraph.test.ts`, `mcpOauth.test.ts`, `notebooks/[id]/pdf/route.ts`, `mind/route.ts`, `interruptedNotebookRecovery.test.ts`, `relatedEntities.test.ts`, `diaryExportDb.test.ts`, `memories/route.ts`, `librarian/route.ts`, `entityMerge.test.ts`, `chatMemoryRecall.test.ts`, `chatMemoryRolling.test.ts`, `entityTagging.test.ts`, `dropboxTombstone.test.ts`, `dropboxStatus.test.ts`?**
-  _High betweenness centrality (0.103) - this node is a cross-community bridge._
+  _Cohesion score 0.08181818181818182 - nodes in this community are weakly interconnected._
+- **Why does `next` connect `package.json` to `remarkableCloud.ts`, `owntracks.ts`, `ocrLearning.ts`, `mcp.ts`, `diaryGraph.ts`, `backup.ts`, `chat/route.ts`, `MemoryPage`, `remarkableSync.ts`, `ref_fs`, `chatMemory.ts`, `db`, `map/pin/route.ts`, `memory/page.tsx`, `env`, `layout.tsx`, `notebooks/route.ts`, `notebooks/page.tsx`, `dependencies`, `decisionWiki.ts`, `reflectionWiki.ts`, `isAuthenticated`, `DiaryGraphClient.tsx`, `ref_path`, `devDependencies`, `vitest`, `compilerOptions`, `insights/route.ts`, `notebooks/pin/route.ts`, `backfill-all/route.ts`, `graphify_gate.py`, `maybeCompressChatSessions`, `vaultGraph.ts`, `Map3D.tsx`, `usage/page.tsx`, `manifest.json`, `location.ts`, `mcp/route.ts`, `AutoLock`, `diaryGraph.test.ts`, `mcpOauth.test.ts`, `notebooks/[id]/pdf/route.ts`, `token/route.ts`, `createPinGate`, `dropboxExportLock.test.ts`, `interruptedNotebookRecovery.test.ts`, `deploy`, `decrypt-backup.mjs`, `pagesForEntity.test.ts`, `entityMerge.test.ts`, `entityRelationships.test.ts`, `getTopEntities.test.ts`, `ocrLearningDb.test.ts`?**
+  _High betweenness centrality (0.099) - this node is a cross-community bridge._
 - **Should `diaryExportDb.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.04597701149425287 - nodes in this community are weakly interconnected._
-- **Why does `isAuthenticated()` connect `quality` to `dropbox.ts`, `remarkableCloud.ts`, `diaryGraph.ts`, `backup.ts`, `notes.ts`, `claude.ts`, `auth.ts`, `db`, `memory/page.tsx`, `setSetting`, `notebooks/page.tsx`, `dependencies`, `decisionWiki.ts`, `isAuthenticated`, `devDependencies`, `vitest`, `entityWiki.ts`, `insights/route.ts`, `entityMerge.ts`, `notebooks/pin/route.ts`, `entityTagging.ts`, `db.ts`, `mcpOauth.ts`, `backfill-all/route.ts`, `pendingShares.ts`, `usage.ts`, `Map3D.tsx`, `register/route.ts`, `analyzePending`, `AutoLock`, `diaryGraph.test.ts`, `mcpOauth.test.ts`, `notebooks/[id]/pdf/route.ts`, `interruptedNotebookRecovery.test.ts`, `memories/route.ts`, `librarian/route.ts`, `entityMerge.test.ts`, `chatMemoryRecall.test.ts`, `chatMemoryRolling.test.ts`, `entityTagging.test.ts`, `dropboxTombstone.test.ts`, `dropboxStatus.test.ts`?**
-  _High betweenness centrality (0.058) - this node is a cross-community bridge._
+  _Cohesion score 0.04713804713804714 - nodes in this community are weakly interconnected._
+- **Why does `isAuthenticated()` connect `chat/route.ts` to `dropbox.ts`, `remarkableCloud.ts`, `owntracks.ts`, `ocrLearning.ts`, `mcp.ts`, `backup.ts`, `MemoryPage`, `chatMemory.ts`, `db`, `memory/page.tsx`, `env`, `layout.tsx`, `notebooks/route.ts`, `mind/page.tsx`, `dependencies`, `reflectionWiki.ts`, `isAuthenticated`, `ref_path`, `devDependencies`, `vitest`, `entityWiki.ts`, `compilerOptions`, `insights/route.ts`, `notebooks/pin/route.ts`, `package.json`, `maybeCompressChatSessions`, `vaultGraph.ts`, `Map3D.tsx`, `manifest.json`, `mcp/route.ts`, `AutoLock`, `diaryGraph.test.ts`, `notebooks/[id]/pdf/route.ts`, `token/route.ts`, `dropboxExportLock.test.ts`, `deploy`, `decrypt-backup.mjs`, `entityMerge.test.ts`, `entityRelationships.test.ts`, `getTopEntities.test.ts`, `ocrLearningDb.test.ts`?**
+  _High betweenness centrality (0.046) - this node is a cross-community bridge._
 - **Should `remarkableCloud.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.07111756168359942 - nodes in this community are weakly interconnected._

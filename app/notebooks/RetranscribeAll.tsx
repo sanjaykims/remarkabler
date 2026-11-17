@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Estimate = {
   notebooks: number;
   pages: number;
   estimatedUsd: number;
   inProgress: number;
+  auto: boolean;
+  autoNote: string;
   next: { name: string; pages: number } | null;
 };
 
@@ -22,7 +24,6 @@ export default function RetranscribeAll({
   const [est, setEst] = useState<Estimate | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const stopRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -67,60 +68,28 @@ export default function RetranscribeAll({
     }
   }
 
-  // "All": queue 5, wait for them to finish, repeat. Stops when none are left, nothing
-  // progressed (a notebook keeps failing), or Stop is tapped. Closing the page stops the
-  // loop; notebooks already queued still finish on the server.
-  async function runAll() {
+  // "All" runs on the server: it keeps queuing batches of 5 by itself (no page needs to
+  // stay open). Stop turns that off; the batch already running still finishes.
+  async function setAuto(on: boolean) {
     if (
+      on &&
       !confirm(
-        `Re-transcribe ALL ${est?.notebooks ?? ""} notebooks (about $${est?.estimatedUsd.toFixed(2)})? Page text is replaced (old text kept as a backup) and hand corrections are lost. Keep this page open; it runs 5 at a time.`
+        `Re-transcribe ALL ${est?.notebooks ?? ""} notebooks (about $${est?.estimatedUsd.toFixed(2)})? Page text is replaced (old text kept as a backup) and hand corrections are lost. It runs on the server, so you can close the app.`
       )
     )
       return;
-    stopRef.current = false;
     setBusy(true);
-    let why = "All done.";
-    let left = est?.notebooks ?? 0;
     try {
-      for (;;) {
-        if (stopRef.current) {
-          why = "Stopped. Notebooks already queued will still finish.";
-          break;
-        }
-        const r = await fetch("/api/ocr-review/retranscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ limit: 5 }),
-        });
-        if (r.status === 403) return onLocked();
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || !d.queued) {
-          why = d.queued === 0 ? "All done." : "Couldn't queue more.";
-          break;
-        }
-        // wait for this batch to finish
-        for (;;) {
-          await new Promise((res) => setTimeout(res, 10000));
-          const g = await fetch("/api/ocr-review/retranscribe");
-          if (g.status === 403) return onLocked();
-          const e: Estimate | null = g.ok ? await g.json() : null;
-          if (e) {
-            setEst(e);
-            setMsg(`Working… ${e.notebooks} notebooks left, ${e.inProgress} running now.`);
-            if (e.inProgress === 0) {
-              if (e.notebooks >= left) why = "Stopped: some notebooks failed to re-transcribe. Tap Test on 1 notebook to see the error.";
-              left = e.notebooks;
-              break;
-            }
-          }
-          if (stopRef.current) break;
-        }
-        if (why.startsWith("Stopped:") || left === 0) break;
-      }
+      const r = await fetch("/api/ocr-review/retranscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auto: on }),
+      });
+      if (r.status === 403) return onLocked();
+      setMsg(r.ok ? (on ? "Started. It keeps going on the server until all are done." : "Stopped. The batch already running will finish.") : "Couldn't change that.");
     } catch {
-      why = "Lost the connection. Tap All to continue.";
+      setMsg("Couldn't reach the server.");
     } finally {
-      setMsg(why);
       setBusy(false);
       onDone();
       void load();
@@ -149,15 +118,19 @@ export default function RetranscribeAll({
         <button className={btn} disabled={busy} onClick={() => queue(5)}>
           Do next 5
         </button>
-        <button className={btn} disabled={busy} onClick={runAll}>
+        <button className={btn} disabled={busy || est.auto} onClick={() => setAuto(true)}>
           All
         </button>
-        {busy && (
-          <button className={btn} onClick={() => (stopRef.current = true)}>
+        {est.auto && (
+          <button className={btn} disabled={busy} onClick={() => setAuto(false)}>
             Stop
           </button>
         )}
       </div>
+      {est.auto && (
+        <p className="text-sm">Running on the server: {est.notebooks} notebooks left. You can close the app.</p>
+      )}
+      {!est.auto && est.autoNote && <p className="text-sm">{est.autoNote}</p>}
       {msg && <p className="text-sm">{msg}</p>}
     </section>
   );

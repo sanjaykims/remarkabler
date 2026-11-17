@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { db } from "./db";
+import { db, getSetting, setSetting } from "./db";
 import { modelMain } from "./claude";
 import { priceFor } from "./usage";
 import { queueNotebookProcessing } from "./notes";
@@ -11,6 +11,9 @@ import { queueNotebookProcessing } from "./notes";
 
 const FILES_DIR = path.join(process.env.DATA_DIR || path.join(process.cwd(), "data"), "files");
 export const MAX_QUEUE_PER_CALL = 5;
+const AUTO_KEY = "retranscribe_auto";
+const NOTE_KEY = "retranscribe_auto_note";
+const LEFT_KEY = "retranscribe_auto_left";
 const PDF_TOKENS_PER_PAGE = 1700;
 const SKIP = ["github-discipline"];
 
@@ -47,6 +50,8 @@ export function estimateRetranscribe() {
     pages,
     estimatedUsd: Math.round(usd * 100) / 100,
     inProgress,
+    auto: getSetting(AUTO_KEY) === "1",
+    autoNote: getSetting(NOTE_KEY) || "",
     next: c[0] ? { name: c[0].name, pages: c[0].pages } : null,
   };
 }
@@ -62,4 +67,38 @@ export function queueRetranscribe(limit = 1) {
   }
   if (queued) queueNotebookProcessing(picked[0].id);
   return { queued, left: estimateRetranscribe() };
+}
+
+/** Turn the server-side "keep going until done" mode on or off. */
+export function setAutoRetranscribe(on: boolean) {
+  setSetting(AUTO_KEY, on ? "1" : "");
+  setSetting(NOTE_KEY, "");
+  setSetting(LEFT_KEY, "");
+  return on ? queueRetranscribe(MAX_QUEUE_PER_CALL) : { queued: 0, left: estimateRetranscribe() };
+}
+
+/** Called from the maintenance sweep: when auto mode is on and the last batch has finished,
+ *  queue the next one. Stops by itself when none are left or a whole batch made no progress
+ *  (every notebook failed), so a broken notebook can never loop forever. Never throws. */
+export function maybeContinueRetranscribe(): void {
+  try {
+    if (getSetting(AUTO_KEY) !== "1") return;
+    const e = estimateRetranscribe();
+    if (e.inProgress > 0) return;
+    if (e.notebooks === 0) {
+      setSetting(AUTO_KEY, "");
+      setSetting(NOTE_KEY, "All notebooks re-transcribed.");
+      return;
+    }
+    const last = Number(getSetting(LEFT_KEY) || "0");
+    if (last > 0 && e.notebooks >= last) {
+      setSetting(AUTO_KEY, "");
+      setSetting(NOTE_KEY, "Stopped: the last batch made no progress. Try Test on 1 notebook to see the error.");
+      return;
+    }
+    setSetting(LEFT_KEY, String(e.notebooks));
+    queueRetranscribe(MAX_QUEUE_PER_CALL);
+  } catch (err) {
+    console.warn("[retranscribe] auto-continue failed:", (err as Error).message);
+  }
 }
