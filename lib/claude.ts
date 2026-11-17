@@ -84,7 +84,20 @@ export type PageOcr = { pageIndex: number; text: string };
 
 import { splitFlagsBlock, parseFlagLines, type OcrFlag } from "./ocrFlags";
 import { buildOcrHints, isConfirmedTerm, autoFixPages } from "./ocrLearning";
-import { exampleBlocks } from "./handwritingExamples";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import {
+  cropFile,
+  exampleBlocks,
+  examplesAvailable,
+  examplesForTexts,
+  imageBlock,
+  pageExampleBlocks,
+  type Block,
+} from "./handwritingExamples";
+import { anchorPhrase } from "./ocrFlags";
+import { applySecondLook, parseLookAnswers, type LookItem } from "./secondLook";
 export type { OcrFlag };
 
 /**
@@ -118,7 +131,7 @@ export async function ocrNotebookPdfWithFlags(
   // Stream the response. The SDK rejects a non-streaming request whose
   // max_tokens is large enough that it could exceed the 10-minute timeout;
   // streaming also keeps the connection alive for a long transcription.
-  const examples = exampleBlocks();
+  const examples = [...(await pageExampleBlocks()), ...exampleBlocks()];
   const run = (ex: typeof examples) =>
     client().messages.stream({
     model: modelMain(),
@@ -208,7 +221,83 @@ export async function ocrNotebookPdfWithFlags(
       return true;
     }
   });
-  return { pages, flags };
+  // Second look at the doubtful words, next to saved pictures of the candidates (fail-open).
+  return secondLook(pdfBytes, pages, flags);
+}
+
+const SECOND_LOOK_MAX = 10;
+
+/** Re-read each doubtful word beside the writer's own confirmed pictures of the candidate
+ *  words. Any problem at all returns the first reading unchanged. */
+async function secondLook(
+  pdfBytes: Uint8Array,
+  pages: PageOcr[],
+  flags: OcrFlag[]
+): Promise<{ pages: PageOcr[]; flags: OcrFlag[] }> {
+  const same = { pages, flags };
+  let tmp: string | null = null;
+  try {
+    if (!flags.length || !examplesAvailable()) return same;
+    const items: LookItem[] = [];
+    const content: Block[] = [];
+    for (let i = 0; i < flags.length && items.length < SECOND_LOOK_MAX; i++) {
+      const f = flags[i];
+      const pi = pages.findIndex((p) => p.pageIndex === f.page - 1);
+      if (pi === -1) continue;
+      const text = pages[pi].text;
+      const offset = anchorPhrase(text, f.phrase);
+      if (offset === -1) continue;
+      const candidates = [f.phrase, ...f.alternatives];
+      const pics = examplesForTexts(candidates);
+      if (!pics.size) continue;
+      if (!tmp) {
+        tmp = path.join(os.tmpdir(), `second-look-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+        fs.writeFileSync(tmp, pdfBytes, { mode: 0o600 });
+      }
+      const strip = await cropFile(tmp, f.page, pages.length, f.box ?? null, "wide", {
+        text,
+        offset,
+        len: f.phrase.length,
+      });
+      if (!strip) continue;
+      items.push({ flag: i, page: pi, offset, occurrences: text.split(f.phrase).length - 1, candidates });
+      content.push({
+        type: "text",
+        text: `Item ${items.length}. The word near the yellow mark was read as "${f.phrase}". Candidates: ${candidates
+          .map((c) => `"${c}"`)
+          .join(", ")}.`,
+      });
+      content.push(imageBlock(strip));
+      for (const [word, bufs] of pics) {
+        content.push({ type: "text", text: `The same writer's confirmed "${word}":` });
+        for (const b of bufs) content.push(imageBlock(b));
+      }
+    }
+    if (!items.length) return same;
+    content.push({
+      type: "text",
+      text:
+        'For each item output one line of JSON and nothing else: {"item":1,"read":"<exactly one of its candidates>","sure":true}. ' +
+        "Set sure to true only when the handwriting clearly matches that candidate; otherwise false.",
+    });
+    const resp = await client().messages.create({
+      model: modelMain(),
+      max_tokens: 800,
+      system:
+        "You compare handwritten words. Each item shows a line of handwriting with one word marked, then confirmed samples of candidate words in the same person's hand. Decide which candidate the marked word is.",
+      messages: [{ role: "user", content }],
+    });
+    recordUsage("ocr_second_look", modelMain(), resp.usage);
+    const block = resp.content.find((b) => b.type === "text");
+    const answers = parseLookAnswers(block && block.type === "text" ? block.text : "");
+    const r = applySecondLook(pages, flags, items, answers);
+    return { pages: r.pages, flags: r.flags };
+  } catch (e) {
+    console.warn("[claude] second look failed, keeping the first reading:", (e as Error).message);
+    return same;
+  } finally {
+    if (tmp) fs.rmSync(tmp, { force: true });
+  }
 }
 
 function parsePages(raw: string): PageOcr[] {
@@ -1413,7 +1502,7 @@ export async function proofreadExistingPdf(
   const transcript = pages
     .map((p) => `--- PAGE ${p.pageIndex + 1} ---\n${p.text}`)
     .join("\n\n");
-  const examples = exampleBlocks();
+  const examples = [...(await pageExampleBlocks()), ...exampleBlocks()];
   const run = (ex: typeof examples) =>
     client().messages.create({
     model: modelMain(),

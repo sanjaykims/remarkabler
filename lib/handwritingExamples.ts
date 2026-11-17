@@ -47,6 +47,47 @@ function toCodePoints(l: Locate): Locate {
   return { text: l.text, offset, len };
 }
 
+const MAX_PAGE_JPEG_BYTES = 900_000;
+
+/** Run docker/cropword on any PDF file. mode "tight" = the word, "wide" = its line with a
+ *  marker, "page" = the whole page as a JPEG. Resolves null (never throws) on any problem. */
+export async function cropFile(
+  pdf: string,
+  pageNo: number,
+  expectPages: number,
+  box: Box | null | undefined,
+  mode: "tight" | "wide" | "page",
+  locate?: Locate
+): Promise<Buffer | null> {
+  try {
+    if (!examplesAvailable() || !fs.existsSync(pdf)) return null;
+    if (mode !== "page" && !box && !locate) return null;
+    const tmpDir = path.join(DATA_DIR, "tmp");
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const out = path.join(tmpDir, `crop-${crypto.randomUUID()}.${mode === "page" ? "jpg" : "png"}`);
+    const textFile = path.join(tmpDir, `crop-${crypto.randomUUID()}.txt`);
+    try {
+      const args = [CROP, pdf, String(pageNo), ...(box ?? [0, 0, 1, 1]).map(String), out, String(expectPages)];
+      if (mode !== "tight") args.push(mode);
+      if (locate && mode !== "page") {
+        const cp = toCodePoints(locate);
+        fs.writeFileSync(textFile, cp.text, { encoding: "utf8", mode: 0o600 });
+        args.push("--text", textFile, "--offset", String(cp.offset), "--len", String(cp.len));
+      }
+      await execFileAsync(PYTHON, args, { timeout: 30_000 });
+      const img = fs.readFileSync(out);
+      const max = mode === "page" ? MAX_PAGE_JPEG_BYTES : mode === "wide" ? MAX_WIDE_PNG_BYTES : MAX_PNG_BYTES;
+      return img.length === 0 || img.length > max ? null : img;
+    } finally {
+      fs.rmSync(out, { force: true });
+      fs.rmSync(textFile, { force: true });
+    }
+  } catch (e) {
+    console.warn("[handwritingExamples] crop failed:", (e as Error).message);
+    return null;
+  }
+}
+
 export async function cropPng(
   notebookId: string,
   pageIndex: number,
@@ -55,37 +96,20 @@ export async function cropPng(
   locate?: Locate
 ): Promise<Buffer | null> {
   try {
-    // Where the word is: located from the handwriting's line structure when the page
-    // transcript is given (accurate), Claude's rough box only as the fallback.
-    if ((!box && !locate) || !examplesAvailable()) return null;
-    const pdf = path.join(FILES_DIR, notebookId, "notebook.pdf");
-    if (!fs.existsSync(pdf)) return null;
     // The crop only lands on the right page when the PDF has one page per page row
     // (a sliced tall reMarkable page would shift the numbering), so the script checks it.
     const rows = (
       db().prepare(`SELECT COUNT(*) AS n FROM pages WHERE notebook_id = ?`).get(notebookId) as { n: number }
     ).n;
-    const tmpDir = path.join(DATA_DIR, "tmp");
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const out = path.join(tmpDir, `crop-${crypto.randomUUID()}.png`);
-    const textFile = path.join(tmpDir, `crop-${crypto.randomUUID()}.txt`);
-    try {
-      const args = [CROP, pdf, String(pageIndex + 1), ...(box ?? [0, 0, 1, 1]).map(String), out, String(rows)];
-      if (wide) args.push("wide");
-      if (locate) {
-        const cp = toCodePoints(locate);
-        fs.writeFileSync(textFile, cp.text, { encoding: "utf8", mode: 0o600 });
-        args.push("--text", textFile, "--offset", String(cp.offset), "--len", String(cp.len));
-      }
-      await execFileAsync(PYTHON, args, { timeout: 30_000 });
-      const png = fs.readFileSync(out);
-      return png.length === 0 || png.length > (wide ? MAX_WIDE_PNG_BYTES : MAX_PNG_BYTES) ? null : png;
-    } finally {
-      fs.rmSync(out, { force: true });
-      fs.rmSync(textFile, { force: true });
-    }
-  } catch (e) {
-    console.warn("[handwritingExamples] crop failed:", (e as Error).message);
+    return await cropFile(
+      path.join(FILES_DIR, notebookId, "notebook.pdf"),
+      pageIndex + 1,
+      rows,
+      box,
+      wide ? "wide" : "tight",
+      locate
+    );
+  } catch {
     return null;
   }
 }
@@ -149,9 +173,14 @@ export function pickExamples(limit = PROMPT_EXAMPLES): Example[] {
   }
 }
 
-type Block =
+export type Block =
   | { type: "text"; text: string }
-  | { type: "image"; source: { type: "base64"; media_type: "image/png"; data: string } };
+  | { type: "image"; source: { type: "base64"; media_type: "image/png" | "image/jpeg"; data: string } };
+
+export const imageBlock = (buf: Buffer, media: "image/png" | "image/jpeg" = "image/png"): Block => ({
+  type: "image",
+  source: { type: "base64", media_type: media, data: buf.toString("base64") },
+});
 
 /** Prompt blocks: an intro, then each image followed by what it says. Empty when none. */
 export function exampleBlocks(examples: Example[] = pickExamples()): Block[] {
@@ -172,4 +201,81 @@ export function exampleBlocks(examples: Example[] = pickExamples()): Block[] {
     out.push({ type: "text", text: `-> ${e.text}` });
   }
   return out;
+}
+
+/** Saved pictures for each of the given words (exact text match), newest first. */
+export function examplesForTexts(texts: string[], perText = 3): Map<string, Buffer[]> {
+  const out = new Map<string, Buffer[]>();
+  try {
+    const q = db().prepare(`SELECT png FROM ocr_examples WHERE text = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`);
+    for (const t of new Set(texts)) {
+      const rows = q.all(t, perText) as Array<{ png: Buffer }>;
+      if (rows.length) out.set(t, rows.map((r) => r.png));
+    }
+  } catch {
+    /* none */
+  }
+  return out;
+}
+
+// Whole-page examples: pages whose every card the owner answered (and whose answers are still
+// in the text), sent as page image + verified transcription so the transcriber sees how this
+// writer forms whole sentences. Rendered pages are cached in memory.
+export const PAGE_EXAMPLES = 2;
+const pageCache = new Map<string, Buffer>();
+
+export async function pageExampleBlocks(limit = PAGE_EXAMPLES): Promise<Block[]> {
+  try {
+    if (!examplesAvailable()) return [];
+    const cands = db()
+      .prepare(
+        `SELECT f.page_id, f.notebook_id, f.page_index, COUNT(*) AS answered
+           FROM ocr_flags f
+          WHERE f.status IN ('resolved','kept') AND f.page_id NOT LIKE '%:rm:%'
+            AND NOT EXISTS (SELECT 1 FROM ocr_flags g WHERE g.page_id = f.page_id AND g.status = 'pending')
+          GROUP BY f.page_id HAVING answered >= 2
+          ORDER BY answered DESC, MAX(f.resolved_at) DESC LIMIT 8`
+      )
+      .all() as Array<{ page_id: string; notebook_id: string; page_index: number }>;
+    const out: Block[] = [];
+    let used = 0;
+    for (const c of cands) {
+      if (used >= limit) break;
+      const text = (
+        db().prepare(`SELECT ocr_text FROM pages WHERE id = ?`).get(c.page_id) as { ocr_text: string | null } | undefined
+      )?.ocr_text;
+      if (!text || text.length < 200 || text.length > 6000) continue;
+      // The owner's answers must still be in the text (a re-transcription would have replaced them).
+      const answers = db()
+        .prepare(`SELECT resolved_text FROM ocr_flags WHERE page_id = ? AND status IN ('resolved','kept')`)
+        .all(c.page_id) as Array<{ resolved_text: string | null }>;
+      if (!answers.every((a) => a.resolved_text && text.includes(a.resolved_text))) continue;
+      const key = `${c.page_id}:${crypto.createHash("sha1").update(text).digest("hex")}`;
+      let jpg = pageCache.get(key) ?? null;
+      if (!jpg) {
+        const rows = (
+          db().prepare(`SELECT COUNT(*) AS n FROM pages WHERE notebook_id = ?`).get(c.notebook_id) as { n: number }
+        ).n;
+        jpg = await cropFile(path.join(FILES_DIR, c.notebook_id, "notebook.pdf"), c.page_index + 1, rows, null, "page");
+        if (jpg) {
+          if (pageCache.size > 8) pageCache.clear();
+          pageCache.set(key, jpg);
+        }
+      }
+      if (!jpg) continue;
+      if (!used) {
+        out.push({
+          type: "text",
+          text: "Worked examples: full pages by THIS writer, each followed by its transcription, which the writer has checked.",
+        });
+      }
+      out.push(imageBlock(jpg, "image/jpeg"));
+      out.push({ type: "text", text: `Checked transcription of the page above:\n${text}` });
+      used++;
+    }
+    return out;
+  } catch (e) {
+    console.warn("[handwritingExamples] page examples failed:", (e as Error).message);
+    return [];
+  }
 }

@@ -11,6 +11,8 @@
 - Handwriting pictures no longer trust Claude's rough box: the word is now located from the page's handwritten LINE structure (`docker/handwriting_locate.py`: ink bands + the transcript's line number/column; numpy added to the image). Claude's box is only the fallback, so older cards without a box get pictures too. Cards from reMarkable-sync notebooks get no picture (their flag page numbers don't map onto the merged PDF).
 - Card pictures are no longer cached by the browser (`no-store` + a version on the image URL): phones kept showing the old, wrongly placed picture for an hour after a fix.
 - Handwriting pictures: no storage cap any more (up to 5 per word); up to 60 are sent with each transcription (was 8). If a request fails with the pictures attached it is retried once without them, so examples can never cost a transcription.
+- Second look: after the first transcription, each doubtful word that has saved pictures of a candidate is re-read by Claude next to those pictures (`secondLook` in `lib/claude.ts`, pure logic in `lib/secondLook.ts`). Confident "as first read" drops the card; a confident different reading fixes the text (only when the word occurs once on the page) and keeps a card offering the first reading. Fail-open.
+- Whole-page examples: up to 2 pages whose cards you all answered are sent as page image + checked transcription with every transcription (`pageExampleBlocks`, `cropword ... page`).
 - Manual edits only become handwriting lessons when the words look alike (`looksLikeMisread`); rewordings are ignored. Card answers always learn.
 
 ## 2026-11-17 (Old-diary proofreading: "All" and "Stop" buttons)
