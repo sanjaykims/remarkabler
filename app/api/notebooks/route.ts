@@ -7,6 +7,7 @@ import {
   runMaintenanceSweep,
 } from "@/lib/notes";
 import { isAuthenticated } from "@/lib/auth";
+import { notebooksPinDenied } from "@/lib/notebooksPin";
 import {
   FileLike,
   isFileLike,
@@ -23,8 +24,10 @@ export const dynamic = "force-dynamic";
 const LOCKED = () =>
   NextResponse.json({ error: "Locked" }, { status: 401 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   if (!(await isAuthenticated())) return LOCKED();
+  const pinDenied = notebooksPinDenied(req);
+  if (pinDenied) return pinDenied;
   // Fire-and-forget the background sweep — gated internally to ≤ once per
   // 5 min, so visiting /notebooks repeatedly is safe. Picks up any new
   // Dropbox exports, runs the daily/weekly background work, etc.
@@ -46,6 +49,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   if (!(await isAuthenticated())) return LOCKED();
+  const pinDenied = notebooksPinDenied(req);
+  if (pinDenied) return pinDenied;
   const form = await req.formData().catch(() => null);
   const raw: unknown[] = form ? form.getAll("file") : [];
   const files: FileLike[] = raw.filter(
@@ -105,6 +110,8 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   if (!(await isAuthenticated())) return LOCKED();
+  const pinDenied = notebooksPinDenied(req);
+  if (pinDenied) return pinDenied;
   const id = req.nextUrl.searchParams.get("id");
   if (!id) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });

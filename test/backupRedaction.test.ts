@@ -63,6 +63,14 @@ beforeAll(async () => {
     `INSERT INTO settings (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run("map_pin_fail", '{"fails":1}');
+  conn.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run("notebooks_pin_hash", "salt:hash");
+  conn.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run("notebooks_pin_fail", '{"fails":1}');
   // Non-sensitive setting — should survive redaction.
   conn.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?)
@@ -99,6 +107,8 @@ describe("redactSensitiveSettings", () => {
       expect(get("auth_fail_global")).toBeUndefined();
       expect(get("map_pin_hash")).toBeUndefined();
       expect(get("map_pin_fail")).toBeUndefined();
+      expect(get("notebooks_pin_hash")).toBeUndefined();
+      expect(get("notebooks_pin_fail")).toBeUndefined();
       // Non-sensitive key still present.
       expect(get("mind_dates_reparsed_v2")).toBe("yes");
     } finally {

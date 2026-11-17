@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
+import { notebooksPinDenied } from "@/lib/notebooksPin";
 import { correctPageText } from "@/lib/notes";
 
 export const runtime = "nodejs";
@@ -10,11 +11,13 @@ export const dynamic = "force-dynamic";
 // Returns every page of one notebook with its OCR'd text. Fetched lazily
 // when the user expands a notebook on the Notebooks page so the main list
 // stays light.
-export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
+  const pinDenied = notebooksPinDenied(req);
+  if (pinDenied) return pinDenied;
   const id = params.id;
   if (!id) {
     return NextResponse.json({ error: "Missing notebook id" }, { status: 400 });
@@ -48,6 +51,8 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
+  const pinDenied = notebooksPinDenied(req);
+  if (pinDenied) return pinDenied;
   const id = params.id;
   if (!id) {
     return NextResponse.json({ error: "Missing notebook id" }, { status: 400 });

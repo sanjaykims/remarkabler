@@ -11,7 +11,13 @@ export default function PinGate({
   lockedMs,
   attemptsLeft,
   onUnlocked,
+  endpoint = "/api/map/pin",
+  label = "map",
+  blurb = "Your location trail has its own PIN on top of the app lock. You'll be asked for it every time you open the Map.",
 }: {
+  endpoint?: string;
+  label?: string;
+  blurb?: string;
   configured: boolean;
   lockedMs: number;
   attemptsLeft: number;
@@ -29,7 +35,7 @@ export default function PinGate({
   async function post(body: Record<string, string>) {
     setBusy(true);
     try {
-      const r = await fetch("/api/map/pin", {
+      const r = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -97,20 +103,17 @@ export default function PinGate({
   const title =
     mode === "setup"
       ? first === null
-        ? "Create a 4-digit map PIN"
+        ? `Create a 4-digit ${label} PIN`
         : "Enter it again to confirm"
       : mode === "reset"
-        ? "Set a new map PIN"
-        : "Enter your map PIN";
+        ? `Set a new ${label} PIN`
+        : `Enter your ${label} PIN`;
 
   return (
     <div className="rounded border border-slate-200 dark:border-slate-800 p-5 space-y-4 max-w-sm">
       <h2 className="text-lg font-medium">{title}</h2>
       {mode === "setup" && first === null && (
-        <p className="text-sm opacity-70">
-          Your location trail has its own PIN on top of the app lock. You&apos;ll be asked for it
-          every time you open the Map.
-        </p>
+        <p className="text-sm opacity-70">{blurb}</p>
       )}
       {mode === "reset" && (
         <input

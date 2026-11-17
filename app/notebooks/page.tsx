@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatLocalTime } from "@/lib/format";
 import { setPickingFile } from "../lockState";
 import { track } from "../analytics";
+import PinGate from "../map/PinGate";
 
 type Notebook = {
   id: string;
@@ -44,7 +45,97 @@ type DuplicateCandidate = {
   hasUndated: boolean;
 };
 
+type Gate = { configured: boolean; unlocked: boolean; lockedMs: number; attemptsLeft: number };
+
+const PIN_ENDPOINT = "/api/notebooks/pin";
+// Backgrounding the app (e.g. the Android file picker) shouldn't instantly
+// re-lock mid-upload, but a phone left hidden for a minute should.
+const HIDDEN_RELOCK_MS = 60_000;
+
+// Second layer on top of the app lock: a 4-digit Notebooks PIN. The server
+// enforces it on every Notebooks data route; this wrapper is only the UI for
+// obtaining the unlock cookie and for dropping back to the PIN screen.
 export default function NotebooksPage() {
+  const [gate, setGate] = useState<Gate | null>(null);
+  const [gateError, setGateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(PIN_ENDPOINT)
+      .then((r) => r.json())
+      .then((g) => setGate(g))
+      .catch(() => setGateError("Couldn't reach the server."));
+  }, []);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const lock = () => {
+      fetch(PIN_ENDPOINT, {
+        method: "POST",
+        keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "lock" }),
+      }).catch(() => {});
+    };
+    const relock = () => {
+      lock();
+      setGate((g) => (g ? { ...g, unlocked: false } : g));
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        timer = setTimeout(relock, HIDDEN_RELOCK_MS);
+      } else if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", lock);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", lock);
+      if (timer) clearTimeout(timer);
+      lock();
+    };
+  }, []);
+
+  if (gateError) return <p className="text-sm text-red-600">{gateError}</p>;
+  if (!gate) return <p className="text-sm opacity-70">Loading…</p>;
+  if (!gate.unlocked) {
+    return (
+      <div className="space-y-6">
+        <section className="space-y-2 pt-1">
+          <Eyebrow>Your notebooks</Eyebrow>
+          <h1 className="text-3xl font-semibold tracking-tight text-balance">Notebooks</h1>
+        </section>
+        <PinGate
+          key={gate.configured ? "set" : "new"}
+          endpoint={PIN_ENDPOINT}
+          label="Notebooks"
+          blurb="Your notebooks have their own PIN on top of the app lock. You'll be asked for it every time you open this tab."
+          configured={gate.configured}
+          lockedMs={gate.lockedMs}
+          attemptsLeft={gate.attemptsLeft}
+          onUnlocked={() => setGate((g) => (g ? { ...g, configured: true, unlocked: true } : g))}
+        />
+      </div>
+    );
+  }
+  return (
+    <NotebooksContent
+      onLocked={() => setGate((g) => (g ? { ...g, unlocked: false } : g))}
+    />
+  );
+}
+
+function NotebooksContent({ onLocked }: { onLocked: () => void }) {
+  // Any 403 from a Notebooks route means the PIN unlock expired or was
+  // revoked: drop back to the PIN screen instead of showing a broken list.
+  // (Shadows the global fetch inside this component on purpose.)
+  const fetch = (input: RequestInfo | URL, init?: RequestInit) =>
+    window.fetch(input, init).then((r) => {
+      if (r.status === 403) onLocked();
+      return r;
+    });
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);

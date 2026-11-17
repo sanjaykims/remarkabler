@@ -188,6 +188,25 @@ describe("quarantine abuse resistance", () => {
 });
 
 describe("pre-approval preview", () => {
+  // The preview route is behind the Notebooks PIN too: set one and present a
+  // valid unlock cookie, like the browser does after the PIN screen.
+  async function unlockedReq() {
+    const nb = await import("@/lib/notebooksPin");
+    const { NextRequest } = await import("next/server");
+    nb.setNotebooksPin("2468");
+    return new NextRequest("http://localhost/api/shares/x/pdf", {
+      headers: { cookie: `${nb.NOTEBOOKS_UNLOCK_COOKIE}=${nb.makeNotebooksUnlockToken()}` },
+    });
+  }
+
+  it("refuses the preview without the Notebooks PIN unlock", async () => {
+    const route = await import("@/app/api/shares/[id]/pdf/route");
+    const { NextRequest } = await import("next/server");
+    const res = await route.GET(new NextRequest("http://localhost/api/shares/x/pdf"), {
+      params: Promise.resolve({ id: "anything" }),
+    });
+    expect(res.status).toBe(403);
+  });
   it("serves a quarantined PDF to the authenticated owner as an attachment", async () => {
     const route = await import("@/app/api/shares/[id]/pdf/route");
     const created = pendingMod.createPendingShare({
@@ -196,7 +215,7 @@ describe("pre-approval preview", () => {
       source: "203.0.113.5",
     });
 
-    const res = await route.GET({} as never, {
+    const res = await route.GET(await unlockedReq(), {
       params: Promise.resolve({ id: created.id }),
     });
 
@@ -211,7 +230,7 @@ describe("pre-approval preview", () => {
 
   it("404s for an unknown id", async () => {
     const route = await import("@/app/api/shares/[id]/pdf/route");
-    const res = await route.GET({} as never, {
+    const res = await route.GET(await unlockedReq(), {
       params: Promise.resolve({ id: "does-not-exist" }),
     });
     expect(res.status).toBe(404);

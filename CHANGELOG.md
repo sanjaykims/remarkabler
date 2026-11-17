@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-17 (Notebooks tab: its own 4-digit PIN)
+
+The Notebooks tab now has a second lock on top of the app lock: a 4-digit Notebooks PIN, separate
+from the Map PIN (different settings keys, cookie and token domain, so one never opens the other).
+Enforced server-side on every Notebooks data route (`/api/notebooks`, `/duplicates`, `[id]/pages`,
+`[id]/pdf`, `/api/shares`, `[id]/pdf`) via `notebooksPinDenied` (403 "Notebooks PIN required");
+fails closed until a PIN is created. Same escalating lockout as Map (5 tries, then 15 min / 1 h /
+4 h / 24 h), reset needs the app passcode. The page re-locks on leaving, and after 60 s in the
+background (grace so the Android file picker doesn't drop an upload). Mechanics were factored into
+`lib/pinGate.ts` (`createPinGate`); `lib/mapPin.ts` is now a thin wrapper with unchanged keys and
+exports, so existing Map PINs keep working. `notebooks_pin_hash`/`notebooks_pin_fail` are redacted
+from off-site backups. Tests: `test/notebooksPin.test.ts` (flow, independence from Map, every route
+guarded), backup redaction, and the pending-share preview test.
+
 ## 2026-11-13 (Map: tap a stay to see and copy its exact coordinates)
 
 On `/map`, tapping a stay in the list now reveals its exact latitude/longitude (6 decimals, the

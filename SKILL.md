@@ -69,6 +69,7 @@ Companion docs — read in order if any is unfamiliar:
 | `backup.ts` + `backupCrypto.ts` | Weekly tar.gz of `/data` to a private GitHub repo, keep-last-12, AES-256-GCM encrypted with `BACKUP_PASSPHRASE` (refuses to run without it; `scripts/decrypt-backup.mjs` restores). `dropbox_refresh_token` redacted. |
 | `dropbox.ts` | OAuth refresh-token flow, folder polling, dedupe by `dropbox_file_id` **+ tombstones**. Fired from `runMaintenanceSweep`. Also opt-in **per-day** diary auto-export back to Dropbox (`maybeExportDiaryToDropbox`, one `.md` per day into `dropboxExportFolder`, needs `files.content.write` scope) + the conversation/reflection/decision vault exporters. |
 | `diaryExport.ts` / `diaryExportDb.ts` | Diary→Markdown: pure assembly, carry-forward, per-day file builder + DB renderers. **Obsidian-native**: entity `[[wikilinks]]`, entity **stub notes** (with `## Related notes` back-links to tagged conversations/reflections/decisions), and the **vault-structure "second brain" notes** (`Home.md`, `People|Places|Projects.md`, `Profile.md` — `renderVaultStructureFiles`/`vaultStructureFileNames`). Excludes discipline + synthetic notebooks from day files, includes them in the entity graph/stubs. |
+| `pinGate.ts` / `mapPin.ts` / `notebooksPin.ts` | 4-digit PIN gates on top of the app lock. `pinGate.ts` = shared factory (scrypt hash, escalating lockout, HMAC unlock cookie); `mapPin.ts` (Map tab) and `notebooksPin.ts` (Notebooks tab, `notebooksPinDenied` route guard) each fix their own keys/cookie. |
 | `notebookDedup.ts` / `notebookDedupDb.ts` | Flags old notebooks whose diary dates are already covered by a reMarkable-cloud import (`/notebooks` "Possible duplicates"). |
 | `remarkableCloud.ts` / `rmRender.ts` / `remarkableImport.ts` / `remarkableSync.ts` | reMarkable-cloud secondary source (rmapi-js, unofficial). Pair+list, `.rm`→PDF render (image-only), on-demand import, zero-tap page-hash sync. |
 | `owntracks.ts` / `location.ts` | OwnTracks ingestion, stay clustering, reverse-geocoding (Nominatim cache). |
@@ -116,7 +117,7 @@ Companion docs — read in order if any is unfamiliar:
   `chat/attachment/[id]`, `chat/memories` (GET list+status), `chat/memories/[id]` (DELETE soft-delete),
   `chat/memories/retry/[batchId]` (POST reset stuck batch),
   `chat/memories/backfill-all` (POST chunked re-process, `?reset=true` for destructive clean re-run).
-- **Notes:** `notebooks`, `notebooks/[id]/pages`, `shares` (authenticated pending-share approval/discard), `diary`, `graph`.
+- **Notes:** `notebooks`, `notebooks/[id]/pages`, `notebooks/pin`, `shares` (authenticated pending-share approval/discard; all Notebooks-tab routes also need the Notebooks PIN unlock), `diary`, `graph`.
 - **Memory/profile:** `memory` (the `/memory` page's profile editor — *not* chat memory).
 - **Insights:** `insights`.
 - **Mind:** `mind`, `mind/analyze`, `mind/reanalyze`, `mind/axis-labels`, `mind/reparse-dates`, `mind/merge-entities` (Claude-driven entity dedup), `mind/build-wiki` (batched life-wiki build).

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
+import { notebooksPinDenied } from "@/lib/notebooksPin";
 import { db } from "@/lib/db";
 import {
   discardPendingShare,
@@ -13,13 +14,17 @@ export const dynamic = "force-dynamic";
 
 const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   if (!(await isAuthenticated())) return LOCKED();
+  const pinDenied = notebooksPinDenied(req);
+  if (pinDenied) return pinDenied;
   return NextResponse.json({ shares: listPendingShares() });
 }
 
 export async function POST(req: NextRequest) {
   if (!(await isAuthenticated())) return LOCKED();
+  const pinDenied = notebooksPinDenied(req);
+  if (pinDenied) return pinDenied;
   const body = (await req.json().catch(() => null)) as
     | { id?: unknown; action?: unknown }
     | null;
@@ -52,6 +57,8 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   if (!(await isAuthenticated())) return LOCKED();
+  const pinDenied = notebooksPinDenied(req);
+  if (pinDenied) return pinDenied;
   const id = req.nextUrl.searchParams.get("id");
   if (!id) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });

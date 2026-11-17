@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
+import { notebooksPinDenied } from "@/lib/notebooksPin";
 import { db, DATA_DIR } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -13,9 +14,11 @@ const LOCKED = () => NextResponse.json({ error: "Locked" }, { status: 401 });
 // for the reMarkable cloud quality gate: seeing the actual rendered pages
 // tells apart "the renderer dropped this content" from "the render is fine
 // but OCR misread it". Works for any notebook (uploaded/Dropbox/cloud).
-export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   if (!(await isAuthenticated())) return LOCKED();
+  const pinDenied = notebooksPinDenied(req);
+  if (pinDenied) return pinDenied;
   const id = params.id;
   // Only serve ids that exist as notebooks — never arbitrary paths.
   const row = db()

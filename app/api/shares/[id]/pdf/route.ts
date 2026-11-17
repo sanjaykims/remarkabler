@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
+import { notebooksPinDenied } from "@/lib/notebooksPin";
 import { readPendingShare } from "@/lib/pendingShares";
 
 export const runtime = "nodejs";
@@ -21,12 +22,14 @@ export const dynamic = "force-dynamic";
  * keeps that outside the app's origin.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   props: { params: Promise<{ id: string }> }
 ) {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Locked" }, { status: 401 });
   }
+  const pinDenied = notebooksPinDenied(req);
+  if (pinDenied) return pinDenied;
   const params = await props.params;
 
   // readPendingShare re-verifies size and magic bytes, discarding a quarantine

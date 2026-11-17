@@ -49,6 +49,9 @@ const SENSITIVE_SETTING_KEYS = [
   // offline, so it never ships off-site (restore => set a fresh PIN).
   "map_pin_hash",
   "map_pin_fail",
+  // Notebooks-tab PIN: same reasoning as the Map PIN above.
+  "notebooks_pin_hash",
+  "notebooks_pin_fail",
 ];
 
 // Per-source lockout buckets are keyed auth_fail_state:<sha256(client ip)>,
