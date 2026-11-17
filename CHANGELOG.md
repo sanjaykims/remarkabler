@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-17 (Tests: PIN gate)
+Added `test/pinGate.test.ts`: direct tests for the shared PIN gate (4-digit validation, escalating
+lockout, a lockout blocking even the correct PIN, PIN change invalidating old unlock tokens, tokens never
+crossing between gates, tampered/expired tokens). Test-only; no runtime change.
+
 ## 2026-11-17 (Security: Next.js 16.3.2 -> 16.4.6)
 Upgraded Next.js to clear the known advisories (server-actions DoS, SSG/ISR cache poisoning, and the
 image/`use cache` RCE family; the app doesn't use the latter features). `npm audit` no longer flags
