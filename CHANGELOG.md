@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-17 (Old-diary proofreading: "All" and "Stop" buttons)
+"Proofread older diary" gets an **All** button that keeps going 3 notebooks at a time until none are left,
+and a **Stop** button while it runs. It still pauses by itself when 60 review cards are waiting, and on
+any error. UI only (`app/notebooks/OldDiaryProofread.tsx`); the server cap of 3 per request is unchanged.
+
 ## 2026-11-17 (Proofreading: fewer noisy cards)
 First live test of the old-diary pass showed noise: whole-sentence cards, a card whose own reason said "no
 strong flag", and duplicate-looking options. The flag parser now drops phrases longer than 2 words / 30
