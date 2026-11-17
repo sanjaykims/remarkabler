@@ -49,6 +49,12 @@ export async function POST(req: NextRequest) {
   const r = resolveFlag(id, action);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
 
+  // Rewrites the handwriting-habits note once enough new corrections exist
+  // (no-op otherwise; never throws).
+  void import("@/lib/handwritingNotes")
+    .then((m) => m.maybeRefreshHandwritingNotes())
+    .catch((e) => console.warn("[ocr-review] handwriting notes failed:", (e as Error).message));
+
   // A changed page must reach the Obsidian/Dropbox day file (best-effort,
   // .catch guards the returned promise; the try only guards the import).
   if (r.changed) {

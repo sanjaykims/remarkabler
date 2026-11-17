@@ -22,6 +22,8 @@ type Stats = {
   weeks: Array<{ week: string; flagged: number; corrected: number; kept: number }>;
   learnedTerms: number;
   learnedFixes: number;
+  autoFixed?: number;
+  hasNotes?: boolean;
 };
 
 export default function OcrReview({ onLocked }: { onLocked: () => void }) {
@@ -80,6 +82,8 @@ export default function OcrReview({ onLocked }: { onLocked: () => void }) {
           Proofreading so far: {stats.totals.flagged} flagged, {stats.totals.corrected} fixed,{" "}
           {stats.totals.kept} kept. Learned {stats.learnedTerms} confirmed words and{" "}
           {stats.learnedFixes} corrections.
+          {stats.autoFixed ? ` Auto-fixed ${stats.autoFixed} words you had confirmed 3+ times.` : ""}
+          {stats.hasNotes ? " Handwriting notes written." : ""}
         </p>
         {stats.weeks.map((w) => (
           <p key={w.week}>

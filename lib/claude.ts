@@ -83,7 +83,7 @@ function client(): Anthropic {
 export type PageOcr = { pageIndex: number; text: string };
 
 import { splitFlagsBlock, parseFlagLines, type OcrFlag } from "./ocrFlags";
-import { buildOcrHints, isConfirmedTerm } from "./ocrLearning";
+import { buildOcrHints, isConfirmedTerm, autoFixPages } from "./ocrLearning";
 export type { OcrFlag };
 
 /**
@@ -175,11 +175,15 @@ export async function ocrNotebookPdfWithFlags(
   // Peel the flags block off BEFORE page parsing so it can never leak into the
   // last page's text.
   const { body, flagsRaw } = splitFlagsBlock(rawAll);
-  const pages = parsePages(body);
+  const parsed = parsePages(body);
 
-  if (pages.length === 0) {
+  if (parsed.length === 0) {
     throw new Error("Claude returned no transcribable content for this PDF.");
   }
+  // Fixes the owner confirmed 3+ times are applied now, so they never reach a
+  // card again (flags on text that no longer contains the phrase are dropped
+  // when saved).
+  const pages = autoFixPages(parsed);
   // Belt and braces: never re-ask about a spelling the owner already confirmed.
   const flags = parseFlagLines(flagsRaw).filter((f) => {
     try {
@@ -1375,6 +1379,37 @@ export async function compareTranscriptions(
  * collapsed entries in the Insights history so they read as topics rather
  * than a trimmed opening sentence.
  */
+/**
+ * Summarise the writer's handwriting habits from their confirmed corrections
+ * (e.g. which letters get confused). Short, advisory, written for the next OCR
+ * prompt. Cheap: chat-model, tiny input.
+ */
+export async function composeHandwritingNotes(
+  pairs: Array<{ wrong: string; right: string; count: number }>
+): Promise<string> {
+  const model = modelChat();
+  const resp = await client().messages.create({
+    model,
+    max_tokens: 400,
+    system: [
+      "You help a handwriting transcriber. Below are word pairs: what was first read, and what the writer",
+      "confirmed it actually says. Describe in at most 5 short sentences the writer's handwriting habits that",
+      "explain the mistakes (letter shapes that get confused, joined letters, mixed scripts, recurring names).",
+      "Only state patterns the pairs genuinely support; if there is no clear pattern, say so in one sentence.",
+      "Plain text, no list markers, no preamble.",
+    ].join("\n"),
+    messages: [
+      {
+        role: "user",
+        content: pairs.map((p) => `"${p.wrong}" -> "${p.right}" (x${p.count})`).join("\n").slice(0, 4000),
+      },
+    ],
+  });
+  recordUsage("handwriting_notes", model, resp.usage);
+  const block = resp.content.find((b) => b.type === "text");
+  return (block && block.type === "text" ? block.text : "").trim().slice(0, 800);
+}
+
 export async function generateInsightTitle(content: string): Promise<string> {
   // Titles are 2-5 words — Opus is overkill. Use the chat model (Sonnet by
   // default) which is ~5× cheaper and indistinguishable for this task.

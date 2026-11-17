@@ -24,7 +24,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   const d = dbMod.db();
-  for (const t of ["ocr_learned", "ocr_flags", "pages_fts", "entry_entities", "daily_summaries", "pages", "notebooks"]) {
+  for (const t of ["ocr_learned", "settings", "ocr_flags", "pages_fts", "entry_entities", "daily_summaries", "pages", "notebooks"]) {
     d.prepare(`DELETE FROM ${t}`).run();
   }
 });
@@ -130,5 +130,49 @@ describe("the loop end to end", () => {
     expect(s.learnedTerms).toBe(1);
     expect(s.learnedFixes).toBe(1);
     expect(s.weeks[0]).toMatchObject({ flagged: 2, corrected: 1, kept: 1 });
+  });
+});
+
+describe("Phase 3: auto-fix and handwriting notes", () => {
+  it("applies a fix only after 3 confirmations, whole word, case-sensitive", () => {
+    for (let i = 0; i < 2; i++) L.recordLearned({ wrong: "Elim", right: "Elin", source: "review" });
+    expect(L.autoFixablePairs()).toEqual([]);
+    L.recordLearned({ wrong: "Elim", right: "Elin", source: "review" });
+    const pairs = L.autoFixablePairs();
+    expect(pairs).toEqual([{ wrong: "Elim", right: "Elin" }]);
+    expect(L.applyFixes("Met Elim. Elimination of elim, Elim!", pairs)).toEqual({
+      text: "Met Elin. Elimination of elim, Elin!",
+      n: 2,
+    });
+  });
+
+  it("never auto-fixes short words, confirmed terms, or fixes the owner reversed", () => {
+    for (let i = 0; i < 3; i++) {
+      L.recordLearned({ wrong: "teh", right: "the", source: "review" }); // too short
+      L.recordLearned({ wrong: "Taylr", right: "Taylor", source: "review" });
+      L.recordLearned({ wrong: "Gemin", right: "Gemini", source: "review" });
+    }
+    L.recordLearned({ wrong: "Gemini", right: "Gemin", source: "manual_edit" }); // owner reversed it
+    for (let i = 0; i < 4; i++) L.recordLearned({ wrong: "Taylr", right: "Taylr", source: "review" }); // confirmed
+    expect(L.autoFixablePairs()).toEqual([]);
+  });
+
+  it("autoFixPages counts changes and leaves other pages untouched", () => {
+    for (let i = 0; i < 3; i++) L.recordLearned({ wrong: "Elim", right: "Elin", source: "review" });
+    const pages = [{ pageIndex: 0, text: "Elim here" }, { pageIndex: 1, text: "nothing" }];
+    const out = L.autoFixPages(pages);
+    expect(out[0].text).toBe("Elin here");
+    expect(out[1]).toBe(pages[1]);
+    expect(L.proofreadingStats().autoFixed).toBe(1);
+  });
+
+  it("notes become due after 8 new corrections and feed the hints", () => {
+    expect(L.handwritingNotesDue()).toBe(false);
+    for (let i = 0; i < 8; i++) L.recordLearned({ wrong: `wrongword${i}`, right: `rightword${i}`, source: "review" });
+    expect(L.handwritingNotesDue()).toBe(true);
+    L.saveHandwritingNotes("Tends to write n like m.");
+    expect(L.handwritingNotesDue()).toBe(false);
+    expect(L.buildOcrHints()).toContain("Tends to write n like m.");
+    expect(L.proofreadingStats().hasNotes).toBe(true);
   });
 });

@@ -802,7 +802,10 @@ features need the deployed instance to fully verify.
   suggestions, not retraining, and the data never goes in the repo or on MCP. `ocrLearning.ts` uses the
   literal `"github-discipline"` (not `DISCIPLINE_ID` from `lib/notes.ts`) to avoid the
   notes -> claude -> ocrLearning import cycle. Manual-edit learning only keeps substitutions of at most 3
-  words and 12 hunks per edit, and skips punctuation-only changes.
+  words and 12 hunks per edit, and skips punctuation-only changes. Phase 3 auto-fix
+  (`autoFixPages`) only applies a fix confirmed 3+ times, whole word, 4+ letters, and must stay
+  fail-open (error = text untouched); it must never apply when the spelling is a confirmed term or the
+  owner reversed the fix (the owner's own edits always win). `handwritingNotes.ts` is best-effort too.
 - **Graphify-first is enforced by hooks.** `.claude/hooks/graphify_gate.py` (PreToolUse on edits)
   blocks code edits until `graphify query|explain|path` ran in the session within 45 min;
   `graphify_mark.py` (PostToolUse on Bash) records it. Registered in `.claude/settings.json`; they

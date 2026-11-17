@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-17 (Transcription proofreading, Phase 3: auto-fix and handwriting notes)
+A fix you have confirmed 3 or more times is now applied automatically to new transcriptions (whole word,
+case-sensitive, 4+ letters; never when the spelling is a confirmed term, or when you ever changed the fix
+back yourself). The progress block shows how many words were auto-fixed. Claude also writes a short
+"handwriting habits" note (which letters get confused, recurring names) once 8 new corrections have
+piled up (chat model, a few cents), and it joins the next transcription's hints. New:
+`lib/handwritingNotes.ts`, `composeHandwritingNotes` in `lib/claude.ts`, `autoFixPages`/`applyFixes`
+in `lib/ocrLearning.ts`. Not built: a second proofreading pass over the page image and handwriting
+image examples (need page crops; cost/complexity), left for later.
+
 ## 2026-11-17 (Audit follow-up: dependencies and Memory page split)
 `npm audit fix` applied the non-breaking transitive updates (critical advisories remain only in
 PostHog's DOMPurify and an Express-side `proxy-addr`, neither on a diary path). Moved two self-contained

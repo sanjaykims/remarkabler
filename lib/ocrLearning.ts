@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { db } from "./db";
+import { db, getSetting, setSetting } from "./db";
 import { wordChanges } from "./ocrDiff";
 
 // The learning half of transcription proofreading. Claude itself is not
@@ -16,6 +16,13 @@ const MAX_LEN = 120;
 // Kept in sync with DISCIPLINE_ID in lib/notes.ts; a literal here avoids an
 // import cycle (notes -> claude -> ocrLearning).
 const DISCIPLINE_NOTEBOOK = "github-discipline";
+
+export const NOTES_KEY = "ocr_handwriting_notes";
+const NOTES_AT_KEY = "ocr_handwriting_notes_at"; // corrected-pair count when notes were last written
+const AUTOFIX_KEY = "ocr_autofix_count";
+/** A fix confirmed this many times is applied automatically to new transcriptions. */
+export const AUTOFIX_MIN = 3;
+const AUTOFIX_MIN_LEN = 4;
 
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 
@@ -124,6 +131,8 @@ export function formatHints(args: {
   terms: string[];
   pairs: Array<{ wrong: string; right: string }>;
   names: string[];
+  /** Claude-written summary of this writer's handwriting habits (lib/handwritingNotes.ts). */
+  notes?: string;
   cap?: number;
 }): string {
   const cap = args.cap ?? HINT_CHAR_CAP;
@@ -131,7 +140,8 @@ export function formatHints(args: {
   let terms = [...args.terms];
   let pairs = [...args.pairs];
   let names = args.names.filter((n) => !termSet.has(n.toLowerCase()));
-  if (!terms.length && !pairs.length && !names.length) return "";
+  const notes = (args.notes || "").trim();
+  if (!terms.length && !pairs.length && !names.length && !notes) return "";
 
   const render = () => {
     const lines = [
@@ -149,6 +159,7 @@ export function formatHints(args: {
           pairs.map((p) => `"${p.wrong}" -> "${p.right}"`).join("; ")
       );
     }
+    if (notes) lines.push(`- Handwriting habits observed in this writer: ${notes}`);
     if (names.length) {
       lines.push(
         `- Names that appear often in this diary (do not flag them when legible): ${names.join("; ")}`
@@ -166,7 +177,7 @@ export function formatHints(args: {
     else if (pairs.length === longest) pairs.pop();
     else terms.pop();
     out = render();
-    if (!terms.length && !pairs.length && !names.length) return "";
+    if (!terms.length && !pairs.length && !names.length) return notes ? render() : "";
   }
   return out;
 }
@@ -178,6 +189,7 @@ export function buildOcrHints(): string {
       terms: confirmedTerms(MAX_TERMS),
       pairs: correctedPairs(MAX_PAIRS),
       names: topNames(MAX_ENTITIES),
+      notes: getSetting(NOTES_KEY) || "",
     });
   } catch (e) {
     console.warn("[ocrLearning] building hints failed:", (e as Error).message);
@@ -208,11 +220,98 @@ export function rankCandidates(phrase: string, alternatives: string[]): string[]
   return out;
 }
 
+const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Fixes the owner has confirmed AUTOFIX_MIN+ times. Skipped when the same
+ * spelling is a confirmed-correct term, or when the owner ever changed the fix
+ * back (the reverse pair exists): their own edits always win over automation.
+ */
+export function autoFixablePairs(): Array<{ wrong: string; right: string }> {
+  const rows = db()
+    .prepare(
+      `SELECT c.wrong, c.right FROM ocr_learned c
+        WHERE c.kind = 'corrected' AND c.count >= ? AND length(c.wrong) >= ?
+          AND NOT EXISTS (SELECT 1 FROM ocr_learned r
+                           WHERE r.wrong = c.right AND r.right = c.wrong)
+        ORDER BY length(c.wrong) DESC`
+    )
+    .all(AUTOFIX_MIN, AUTOFIX_MIN_LEN) as Array<{ wrong: string; right: string }>;
+  const confirmed = new Set(confirmedTerms(1000));
+  return rows.filter((r) => !confirmed.has(r.wrong));
+}
+
+/** Pure: replace whole-word, case-sensitive occurrences. Returns the new text and how many changes. */
+export function applyFixes(
+  text: string,
+  pairs: Array<{ wrong: string; right: string }>
+): { text: string; n: number } {
+  let n = 0;
+  let out = text;
+  for (const p of pairs) {
+    const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(p.wrong)}(?![\\p{L}\\p{N}])`, "gu");
+    out = out.replace(re, () => {
+      n++;
+      return p.right;
+    });
+  }
+  return { text: out, n };
+}
+
+/** Apply confirmed fixes to fresh transcriptions. Fail-open: any error returns the text untouched. */
+export function autoFixPages<T extends { text: string }>(pages: T[]): T[] {
+  try {
+    const pairs = autoFixablePairs();
+    if (!pairs.length) return pages;
+    let total = 0;
+    const out = pages.map((pg) => {
+      const r = applyFixes(pg.text, pairs);
+      total += r.n;
+      return r.n ? { ...pg, text: r.text } : pg;
+    });
+    if (total) setSetting(AUTOFIX_KEY, String((Number(getSetting(AUTOFIX_KEY)) || 0) + total));
+    return out;
+  } catch (e) {
+    console.warn("[ocrLearning] auto-fix failed:", (e as Error).message);
+    return pages;
+  }
+}
+
+/** Corrected pairs, for the handwriting-notes writer (most confirmed first). */
+export function correctedPairsForNotes(limit = 60): Array<{ wrong: string; right: string; count: number }> {
+  return db()
+    .prepare(
+      `SELECT wrong, right, count FROM ocr_learned WHERE kind = 'corrected'
+        ORDER BY count DESC, last_seen DESC LIMIT ?`
+    )
+    .all(limit) as Array<{ wrong: string; right: string; count: number }>;
+}
+
+export const NOTES_EVERY = 8;
+
+/** True once at least NOTES_EVERY new corrections exist since notes were last written. */
+export function handwritingNotesDue(): boolean {
+  const n = (
+    db().prepare(`SELECT COUNT(*) AS n FROM ocr_learned WHERE kind = 'corrected'`).get() as { n: number }
+  ).n;
+  return n >= NOTES_EVERY && n - (Number(getSetting(NOTES_AT_KEY)) || 0) >= NOTES_EVERY;
+}
+
+export function saveHandwritingNotes(notes: string): void {
+  const n = (
+    db().prepare(`SELECT COUNT(*) AS n FROM ocr_learned WHERE kind = 'corrected'`).get() as { n: number }
+  ).n;
+  setSetting(NOTES_KEY, notes.trim().slice(0, 800));
+  setSetting(NOTES_AT_KEY, String(n));
+}
+
 export type ProofreadingStats = {
   totals: { flagged: number; corrected: number; kept: number; pending: number };
   weeks: Array<{ week: string; flagged: number; corrected: number; kept: number }>;
   learnedTerms: number;
   learnedFixes: number;
+  autoFixed: number;
+  hasNotes: boolean;
 };
 
 export function proofreadingStats(): ProofreadingStats {
@@ -240,5 +339,12 @@ export function proofreadingStats(): ProofreadingStats {
               COALESCE(SUM(kind = 'corrected'), 0) AS fixes FROM ocr_learned`
     )
     .get() as { terms: number; fixes: number };
-  return { totals: t, weeks, learnedTerms: l.terms, learnedFixes: l.fixes };
+  return {
+    totals: t,
+    weeks,
+    learnedTerms: l.terms,
+    learnedFixes: l.fixes,
+    autoFixed: Number(getSetting(AUTOFIX_KEY)) || 0,
+    hasNotes: !!getSetting(NOTES_KEY),
+  };
 }
