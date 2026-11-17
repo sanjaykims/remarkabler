@@ -1,12 +1,14 @@
 #!/opt/renderer/bin/python
-"""cropword PDF PAGE X0 Y0 X1 Y1 OUT.png EXPECT_PAGES
+"""cropword PDF PAGE X0 Y0 X1 Y1 OUT.png EXPECT_PAGES [wide]
 
 Crop one handwritten word out of a PDF page and save it as a small greyscale
 PNG. PAGE is 1-based; the box is in thousandths of the page width/height
 (Claude's rough estimate, so it is padded generously). EXPECT_PAGES guards the
 page mapping: when it is > 0 and the PDF has a different number of pages
 (a tall reMarkable page was sliced, say) we exit 3 instead of cropping the
-wrong page. Exit codes: 0 ok, 2 usage/bad input, 3 page-count mismatch.
+wrong page. With the optional 10th argument `wide` the output is the whole line
+(full page width, a little above and below) with the word's box outlined in red,
+so the owner sees the surrounding words. Exit codes: 0 ok, 2 usage/bad input, 3 page-count mismatch.
 """
 import sys
 
@@ -16,10 +18,11 @@ MAX_W, MAX_H = 520, 180
 
 
 def main() -> int:
-    if len(sys.argv) != 9:
+    wide = len(sys.argv) == 10 and sys.argv[9] == "wide"
+    if len(sys.argv) not in (9, 10) or (len(sys.argv) == 10 and not wide):
         print(__doc__, file=sys.stderr)
         return 2
-    pdf_path, page_s, x0, y0, x1, y1, out, expect = sys.argv[1:]
+    pdf_path, page_s, x0, y0, x1, y1, out, expect = sys.argv[1:9]
     page_no = int(page_s)
     x0, y0, x1, y1 = (float(v) / 1000.0 for v in (x0, y0, x1, y1))
     if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
@@ -36,6 +39,23 @@ def main() -> int:
     w, h = img.size
     # Claude's boxes are approximate: pad 4% of the page width, 1.5% of the height.
     px, py = 0.04, 0.015
+    if wide:
+        from PIL import ImageDraw
+
+        # Whole line for context: full width, ~3.5% of the page height above/below the word.
+        strip = (0, int(max(0.0, y0 - 0.035) * h), w, int(min(1.0, y1 + 0.035) * h))
+        crop = img.crop(strip).convert("RGB")
+        top = int(max(0.0, y0 - 0.035) * h)
+        rect = (
+            int(max(0.0, x0 - 0.01) * w),
+            int(y0 * h) - top - 3,
+            int(min(1.0, x1 + 0.01) * w),
+            int(y1 * h) - top + 3,
+        )
+        ImageDraw.Draw(crop).rectangle(rect, outline=(220, 38, 38), width=5)
+        crop.thumbnail((1000, 320))
+        crop.save(out, format="PNG", optimize=True)
+        return 0
     box = (
         int(max(0.0, x0 - px) * w),
         int(max(0.0, y0 - py) * h),

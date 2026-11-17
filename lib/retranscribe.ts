@@ -102,3 +102,10 @@ export function maybeContinueRetranscribe(): void {
     console.warn("[retranscribe] auto-continue failed:", (err as Error).message);
   }
 }
+
+/** Make every finished notebook eligible for re-transcription again (does not start anything). */
+export function resetRetranscribed(): number {
+  return db()
+    .prepare(`UPDATE notebooks SET retranscribed_at = NULL WHERE status = 'done' AND retranscribe = 0 AND retranscribed_at IS NOT NULL`)
+    .run().changes;
+}

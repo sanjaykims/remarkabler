@@ -68,6 +68,25 @@ export default function RetranscribeAll({
     }
   }
 
+  async function resetAll() {
+    if (!confirm("Make all notebooks ready to be re-transcribed again? Nothing starts until you tap a button.")) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/ocr-review/retranscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset: true }),
+      });
+      if (r.status === 403) return onLocked();
+      setMsg(r.ok ? "Ready. Tap Test on 1 notebook or All." : "Couldn't reset.");
+    } catch {
+      setMsg("Couldn't reach the server.");
+    } finally {
+      setBusy(false);
+      void load();
+    }
+  }
+
   // "All" runs on the server: it keeps queuing batches of 5 by itself (no page needs to
   // stay open). Stop turns that off; the batch already running still finishes.
   async function setAuto(on: boolean) {
@@ -120,6 +139,9 @@ export default function RetranscribeAll({
         </button>
         <button className={btn} disabled={busy || est.auto} onClick={() => setAuto(true)}>
           All
+        </button>
+        <button className={btn} disabled={busy || est.auto} onClick={resetAll}>
+          Make all ready again
         </button>
         {est.auto && (
           <button className={btn} disabled={busy} onClick={() => setAuto(false)}>

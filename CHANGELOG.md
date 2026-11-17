@@ -6,6 +6,7 @@
 - New "Re-check for handwriting pictures" button on /notebooks: re-queues already-proofread notebooks and removes only waiting cards that have no word position (answers and text untouched), so the next pass produces cards that can save crops.
 - New "Re-transcribe whole notebooks" section on /notebooks: queues done notebooks (newest first, 1 or 5 at a time, or "All" = the server keeps queuing batches of 5 until none are left, even with the app closed, with Stop) for a full re-transcription through the normal OCR queue, with the current hints and handwriting examples. Replaces page text (old text kept in `ocr_text_backup`), skips the profile fold, skips reMarkable page-synced notebooks, and a failed run leaves the old text in place.
 - "Needs your eye" cards now show a picture of your actual handwriting for that spot (`/api/ocr-review/crop`, cropped on demand from the stored PDF, behind the app lock and Notebooks PIN). Shown only for cards that have a word position; hidden when it can't be made.
+- Card pictures now show the whole handwritten line around the spot (full page width, word outlined in red) so you can read the context; the saved training examples stay tight crops. New "Make all ready again" button re-arms every notebook for re-transcription without starting anything.
 - Manual edits only become handwriting lessons when the words look alike (`looksLikeMisread`); rewordings are ignored. Card answers always learn.
 
 ## 2026-11-17 (Old-diary proofreading: "All" and "Stop" buttons)

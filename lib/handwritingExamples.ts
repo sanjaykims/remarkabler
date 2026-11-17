@@ -22,6 +22,7 @@ export const MAX_EXAMPLES_TOTAL = 150;
 export const MAX_PER_TEXT = 2;
 export const PROMPT_EXAMPLES = 8;
 const MAX_PNG_BYTES = 40_000;
+const MAX_WIDE_PNG_BYTES = 400_000;
 const MAX_TEXT = 40;
 
 export function examplesAvailable(): boolean {
@@ -36,7 +37,12 @@ export type Box = [number, number, number, number];
 
 /** Crop one word out of a notebook's stored PDF as a small PNG. Resolves null (never throws)
  *  when the renderer, the PDF, the box or the page mapping isn't usable. */
-export async function cropPng(notebookId: string, pageIndex: number, box: Box | null | undefined): Promise<Buffer | null> {
+export async function cropPng(
+  notebookId: string,
+  pageIndex: number,
+  box: Box | null | undefined,
+  wide = false
+): Promise<Buffer | null> {
   try {
     if (!box || !examplesAvailable()) return null;
     const pdf = path.join(FILES_DIR, notebookId, "notebook.pdf");
@@ -50,11 +56,11 @@ export async function cropPng(notebookId: string, pageIndex: number, box: Box | 
     fs.mkdirSync(tmpDir, { recursive: true });
     const out = path.join(tmpDir, `crop-${crypto.randomUUID()}.png`);
     try {
-      await execFileAsync(PYTHON, [CROP, pdf, String(pageIndex + 1), ...box.map(String), out, String(rows)], {
+      await execFileAsync(PYTHON, [CROP, pdf, String(pageIndex + 1), ...box.map(String), out, String(rows), ...(wide ? ["wide"] : [])], {
         timeout: 30_000,
       });
       const png = fs.readFileSync(out);
-      return png.length === 0 || png.length > MAX_PNG_BYTES ? null : png;
+      return png.length === 0 || png.length > (wide ? MAX_WIDE_PNG_BYTES : MAX_PNG_BYTES) ? null : png;
     } finally {
       fs.rmSync(out, { force: true });
     }
