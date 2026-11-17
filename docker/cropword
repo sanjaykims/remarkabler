@@ -40,20 +40,26 @@ def main() -> int:
     # Claude's boxes are approximate: pad 4% of the page width, 1.5% of the height.
     px, py = 0.04, 0.015
     if wide:
-        from PIL import ImageDraw
+        from PIL import Image, ImageDraw
 
-        # Whole line for context: full width, ~3.5% of the page height above/below the word.
-        strip = (0, int(max(0.0, y0 - 0.035) * h), w, int(min(1.0, y1 + 0.035) * h))
-        crop = img.crop(strip).convert("RGB")
-        top = int(max(0.0, y0 - 0.035) * h)
+        # Claude's position guess can be a line or so off, so show generous context:
+        # full width and ~7% of the page height above and below the guess (about 4-5
+        # lines), with a soft translucent marker instead of a tight outline.
+        pad = 0.07
+        top = int(max(0.0, y0 - pad) * h)
+        bottom = int(min(1.0, y1 + pad) * h)
+        crop = img.crop((0, top, w, bottom)).convert("RGBA")
         rect = (
             int(max(0.0, x0 - 0.01) * w),
             int(y0 * h) - top - 3,
             int(min(1.0, x1 + 0.01) * w),
             int(y1 * h) - top + 3,
         )
-        ImageDraw.Draw(crop).rectangle(rect, outline=(220, 38, 38), width=5)
-        crop.thumbnail((1000, 320))
+        overlay = Image.new("RGBA", crop.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        d.rectangle(rect, fill=(250, 204, 21, 70), outline=(234, 88, 12, 200), width=3)
+        crop = Image.alpha_composite(crop, overlay).convert("RGB")
+        crop.thumbnail((1000, 600))
         crop.save(out, format="PNG", optimize=True)
         return 0
     box = (

@@ -9,7 +9,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `2389652c`
+- Built from commit: `755a1770`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -661,16 +661,16 @@ Nodes (3): tailwindcss@^3.4.13, tailwindcss, config
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `db()` connect `chatMemory.ts` to `dropbox.ts`, `diaryExportDb.ts`, `remarkableCloud.ts`, `owntracks.ts`, `ocrLearning.ts`, `mcp.ts`, `diaryGraph.ts`, `app/page.tsx`, `notes.ts`, `MemoryPage`, `claude.ts`, `auth.ts`, `map/pin/route.ts`, `layout.tsx`, `mind.ts`, `notebooks/page.tsx`, `mind/page.tsx`, `decisionWiki.ts`, `reflectionWiki.ts`, `isAuthenticated`, `getCurrentProfile`, `DiaryGraphClient.tsx`, `ref_path`, `entityRelationships.ts`, `devDependencies`, `insights/route.ts`, `corsHeaders`, `entityMerge.ts`, `notebooks/pin/route.ts`, `notebooksPinDenied`, `entityTagging.ts`, `db.ts`, `mcpOauth.ts`, `graphify_gate.py`, `package.json`, `maybeCompressChatSessions`, `vaultGraph.ts`, `authorize/route.ts`, `usage.ts`, `usage/page.tsx`, `register/route.ts`, `analyzePending`, `mcp/route.ts`, `AutoLock`, `diaryGraph.test.ts`, `mcpOauth.test.ts`, `token/route.ts`, `createPinGate`, `api/export/route.ts`, `deploy`, `decrypt-backup.mjs`, `entityGraph.ts`, `scripts`, `entityRelationships.test.ts`, `chatMemoryRolling.test.ts`, `entityTagging.test.ts`, `entityWikiExclude.test.ts`?**
-  _High betweenness centrality (0.187) - this node is a cross-community bridge._
+  _High betweenness centrality (0.178) - this node is a cross-community bridge._
 - **What connects `RFC-8414`, `RFC-9728`, `RFC-8414` to the rest of the system?**
   _6 weakly-connected nodes found - possible missing edges._
 - **Should `dropbox.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.052594670406732116 - nodes in this community are weakly interconnected._
 - **Why does `next` connect `AutoLock` to `dropbox.ts`, `diaryExportDb.ts`, `remarkableCloud.ts`, `ocrLearning.ts`, `mcp.ts`, `diaryGraph.ts`, `backup.ts`, `app/page.tsx`, `notes.ts`, `ref_fs`, `auth.ts`, `db`, `quality`, `map/pin/route.ts`, `env`, `mind.ts`, `discipline/route.ts`, `embeddings.ts`, `decisionWiki.ts`, `reflectionWiki.ts`, `isAuthenticated`, `DiaryGraphClient.tsx`, `ref_path`, `entityRelationships.ts`, `devDependencies`, `vitest`, `insights/route.ts`, `corsHeaders`, `entityMerge.ts`, `db.ts`, `mcpOauth.ts`, `package.json`, `usage.ts`, `Map3D.tsx`, `manifest.json`, `mcp/route.ts`, `diaryGraph.test.ts`, `mcpOauth.test.ts`, `createPinGate`, `api/export/route.ts`, `interruptedNotebookRecovery.test.ts`, `deploy`, `decrypt-backup.mjs`, `authRoute.test.ts`, `entityGraph.ts`, `scripts`, `chatToolsLocation.test.ts`, `entityMerge.test.ts`, `entityTagging.test.ts`, `mind.test.ts`, `entityWikiExclude.test.ts`?**
-  _High betweenness centrality (0.109) - this node is a cross-community bridge._
+  _High betweenness centrality (0.108) - this node is a cross-community bridge._
 - **Should `diaryExportDb.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.05693664795509222 - nodes in this community are weakly interconnected._
 - **Why does `isAuthenticated()` connect `mind.ts` to `dropbox.ts`, `diaryExportDb.ts`, `ocrLearning.ts`, `mcp.ts`, `diaryGraph.ts`, `app/page.tsx`, `auth.ts`, `chatMemory.ts`, `quality`, `map/pin/route.ts`, `embeddings.ts`, `decisionWiki.ts`, `isAuthenticated`, `DiaryGraphClient.tsx`, `ref_path`, `entityRelationships.ts`, `devDependencies`, `vitest`, `entityWiki.ts`, `insights/route.ts`, `corsHeaders`, `entityMerge.ts`, `db.ts`, `mcpOauth.ts`, `package.json`, `usage.ts`, `manifest.json`, `mcp/route.ts`, `AutoLock`, `diaryGraph.test.ts`, `mcpOauth.test.ts`, `createPinGate`, `api/export/route.ts`, `deploy`, `decrypt-backup.mjs`, `authRoute.test.ts`, `entityGraph.ts`, `scripts`, `chatToolsLocation.test.ts`, `entityMerge.test.ts`, `entityTagging.test.ts`, `mind.test.ts`, `entityWikiExclude.test.ts`?**
-  _High betweenness centrality (0.063) - this node is a cross-community bridge._
+  _High betweenness centrality (0.056) - this node is a cross-community bridge._
 - **Should `remarkableCloud.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.052289815447710185 - nodes in this community are weakly interconnected._

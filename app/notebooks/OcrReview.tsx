@@ -135,6 +135,12 @@ export default function OcrReview({ onLocked }: { onLocked: () => void }) {
               onError={(e) => (e.currentTarget.style.display = "none")}
             />
           )}
+          {c.hasCrop && (
+            <p className="text-xs opacity-60">
+              The yellow mark is Claude&apos;s guess for where it is and can be a line off; look at the
+              lines around it.
+            </p>
+          )}
           <p className="text-sm leading-relaxed break-words">
             {c.context.before}
             <mark className="bg-amber-200 dark:bg-amber-900 text-inherit rounded px-0.5">

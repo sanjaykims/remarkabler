@@ -2738,13 +2738,13 @@
       "degree": 35
     },
     {
-      "id": "lib_mcp_callmcptool",
-      "label": "callMcpTool()",
+      "id": "lib_db_clearsetting",
+      "label": "clearSetting()",
       "degree": 30
     },
     {
-      "id": "lib_notebookspin_notebookspindenied",
-      "label": "notebooksPinDenied()",
+      "id": "lib_mcp_callmcptool",
+      "label": "callMcpTool()",
       "degree": 30
     }
   ],
@@ -2764,29 +2764,7 @@
       "source": "GET()",
       "target": "isAuthenticated()",
       "source_files": [
-        "app/api/dropbox/callback/route.ts",
-        "lib/auth.ts"
-      ],
-      "confidence": "EXTRACTED",
-      "relation": "calls",
-      "why": "connects across different repos/directories; bridges separate communities"
-    },
-    {
-      "source": "GET()",
-      "target": "setSetting()",
-      "source_files": [
-        "app/api/dropbox/callback/route.ts",
-        "lib/db.ts"
-      ],
-      "confidence": "EXTRACTED",
-      "relation": "calls",
-      "why": "connects across different repos/directories; bridges separate communities"
-    },
-    {
-      "source": "GET()",
-      "target": "isAuthenticated()",
-      "source_files": [
-        "app/api/dropbox/connect/route.ts",
+        "app/api/export/diary/route.ts",
         "lib/auth.ts"
       ],
       "confidence": "EXTRACTED",
@@ -2797,8 +2775,30 @@
       "source": "POST()",
       "target": "isAuthenticated()",
       "source_files": [
-        "app/api/dropbox/disconnect/route.ts",
+        "app/api/remarkable/compare/route.ts",
         "lib/auth.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "postMergeDropbox()",
+      "target": "entityStubRelPathForName()",
+      "source_files": [
+        "app/api/mind/merge-entities/route.ts",
+        "lib/diaryExportDb.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "GET()",
+      "target": "findDuplicateCandidates()",
+      "source_files": [
+        "app/api/notebooks/duplicates/route.ts",
+        "lib/notebookDedupDb.ts"
       ],
       "confidence": "EXTRACTED",
       "relation": "calls",
