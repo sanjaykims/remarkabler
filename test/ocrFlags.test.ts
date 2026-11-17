@@ -79,3 +79,15 @@ describe("parseFlagLines noise filter", () => {
     expect(f[0]).toMatchObject({ phrase: "Elim", alternatives: ["Elin"] });
   });
 });
+
+describe("whole-word anchoring", () => {
+  it("never anchors a piece of a longer Latin word or number", async () => {
+    const { anchorPhrase, parseFlagLines } = await import("../lib/ocrFlags");
+    expect(anchorPhrase("회사에서 Copilot studio", "opilot")).toBe(-1);
+    expect(anchorPhrase("about 100 won", "10")).toBe(-1);
+    expect(anchorPhrase("met Copilot team", "Copilot")).toBe(4);
+    expect(anchorPhrase("심천에서 Futian", "심천")).toBe(0); // Korean particles attach
+    const line = JSON.stringify({ page: 1, phrase: "opilot", alternatives: ["Copilot"], reason: "it reads 'Copilot studio' correctly - no flag needed" });
+    expect(parseFlagLines(line)).toEqual([]);
+  });
+});

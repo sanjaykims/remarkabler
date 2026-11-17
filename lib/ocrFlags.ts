@@ -27,7 +27,8 @@ const MAX_PHRASE = 120;
 const MAX_FLAG_WORDS = 2;
 const MAX_FLAG_CHARS = 30;
 // Claude sometimes writes a "flag" whose own reason says it is fine; those are noise.
-const SELF_DISMISSED = /no strong flag|not a strong flag|appears? consistent|looks? correct|seems? correct/i;
+const SELF_DISMISSED =
+  /no strong flag|not a strong flag|no flag (is )?needed|appears? consistent|looks? correct|seems? correct|reads? [^.]{0,60}correctly|is correct\b/i;
 const squash = (s: string) => s.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
 const MAX_ALT = 120;
 const MAX_REASON = 160;
@@ -91,7 +92,21 @@ export function parseFlagLines(flagsRaw: string): OcrFlag[] {
   return out;
 }
 
-/** Offset of `phrase` in `text`, preferring the occurrence nearest `hint`. -1 if absent. */
+/** Offset of `phrase` in `text` as a whole word, preferring the occurrence nearest `hint`. -1 if absent. */
+const ALNUM = /[A-Za-z0-9]/;
+
+/** True when the match at `i` is only a piece of a longer Latin word or number ("opilot" inside
+ *  "Copilot", "10" inside "100"). Replacing such a piece would corrupt the word. Korean is left
+ *  alone on purpose: particles attach directly to a word ("심천에서"). */
+function insideLatinWord(text: string, i: number, phrase: string): boolean {
+  const before = text[i - 1] ?? "";
+  const after = text[i + phrase.length] ?? "";
+  return (
+    (ALNUM.test(phrase[0]) && ALNUM.test(before)) ||
+    (ALNUM.test(phrase[phrase.length - 1]) && ALNUM.test(after))
+  );
+}
+
 export function anchorPhrase(text: string, phrase: string, hint = 0): number {
   if (!phrase) return -1;
   let best = -1;
@@ -99,6 +114,10 @@ export function anchorPhrase(text: string, phrase: string, hint = 0): number {
   for (;;) {
     const i = text.indexOf(phrase, from);
     if (i === -1) break;
+    if (insideLatinWord(text, i, phrase)) {
+      from = i + 1;
+      continue;
+    }
     if (best === -1 || Math.abs(i - hint) < Math.abs(best - hint)) best = i;
     from = i + 1;
   }
@@ -113,7 +132,7 @@ export function replaceAt(
   replacement: string
 ): string | null {
   let s = start;
-  if (text.slice(s, s + phrase.length) !== phrase) {
+  if (text.slice(s, s + phrase.length) !== phrase || insideLatinWord(text, s, phrase)) {
     s = anchorPhrase(text, phrase, start);
     if (s === -1) return null; // text changed underneath the flag
   }
