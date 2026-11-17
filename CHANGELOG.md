@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-17 (Dev tooling: Ponytail)
+Registered the Ponytail plugin (ponytail.dev, source `DietrichGebert/ponytail`) in `.claude/settings.json`
+so Claude Code sessions in this repo write the least code that works (reuse first, small tests for risky
+logic) and get `/ponytail-review` and `/ponytail-audit`. Dev-only; no runtime impact. Takes effect in new
+sessions; if it does not load, run `/plugin marketplace add DietrichGebert/ponytail` then
+`/plugin install ponytail@ponytail`.
+
 ## 2026-11-17 (Transcription proofreading, Phase 2: learning)
 
 Your answers now teach the transcriber. "Keep as written" records a confirmed spelling (e.g. a

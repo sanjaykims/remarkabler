@@ -11,6 +11,12 @@
         "source": "github",
         "repo": "sanjaykims/agent-skills"
       }
+    },
+    "ponytail": {
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
+      }
     }
   },
   "enabledPlugins": [
@@ -21,6 +27,10 @@
     {
       "marketplace": "sanjaykims-agent-skills",
       "plugin": "agent-skills"
+    },
+    {
+      "marketplace": "ponytail",
+      "plugin": "ponytail"
     }
   ],
   "hooks": {
