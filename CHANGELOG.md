@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - README: cost, privacy, and lock up front
+
+README now opens with a "Before you start" section (bring-your-own API key and what it covers, chat on a Claude subscription via MCP, what is sent to Anthropic, the unofficial reMarkable cloud protocol) and Quick start sets `APP_PASSCODE` as its own step, because an unset passcode leaves a hosted app open. Docs only.
+
 ## Unreleased - Phase 5: handwriting examples
 
 - Claude now returns a rough `box` for each doubtful word; when you confirm or correct a card, a small crop of that word is saved (`ocr_examples`) and a few are shown to the transcriber as labelled handwriting examples. Needs the Docker image (`docker/cropword`); off elsewhere, never blocks anything.

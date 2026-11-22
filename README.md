@@ -21,6 +21,26 @@ vault export and reverse-geocoding for location names).
 > connector setup, see [`docs/mcp-setup.md`](./docs/mcp-setup.md). For a visual
 > overview, see [`remarkabler-architecture.pdf`](./remarkabler-architecture.pdf).
 
+## Before you start: cost, privacy, and a lock
+
+- **You bring your own Anthropic API key.** Transcribing handwriting and
+  building the evolving profile run inside the app, on your key, and are billed
+  per use. Remarkabler has a **Usage** page (cost calendar) so you can see
+  exactly what you're spending.
+- **Chatting can run on your Claude subscription instead.** If you use the
+  optional MCP connector ([`docs/mcp-setup.md`](./docs/mcp-setup.md)), you can
+  talk to your diary from the claude.ai app or Claude Code with no per-token
+  billing for chat. (Transcription still needs the API key.)
+- **Your pages are sent to Anthropic** to be transcribed and to answer you.
+  Everything else stays in your own database. Nothing is sent anywhere else
+  unless you turn on an optional feature (Dropbox export, location names).
+- **Set `APP_PASSCODE` before you put anything in it.** Without it the app is
+  open to anyone who has the URL, and a hosted URL is public. See step 2 of
+  Quick start.
+- **reMarkable cloud sync is unofficial.** It uses reMarkable's unofficial
+  protocol and could break at any time. Manual PDF upload and Dropbox ingest are
+  the dependable ways in.
+
 ## How it works
 
 ```
@@ -58,8 +78,9 @@ You'll need an [Anthropic API key](https://console.anthropic.com).
 The button starts a new Railway project from this repo. Then, in your new project:
 
 1. **Variables → `ANTHROPIC_API_KEY`** — paste your key from [console.anthropic.com](https://console.anthropic.com).
-2. **Volumes** — add a volume (Railway → service → New → Volume) mounted at `/data`. Then in **Variables** add `DATA_DIR=/data`.
-3. Open the URL Railway assigns. Done.
+2. **Variables → `APP_PASSCODE`** — choose a passcode. **Do this before you open the app**: unset means anyone with the URL can read your diary. On the lock screen you can then register a passkey (fingerprint / Face ID) with it.
+3. **Volumes** — add a volume (Railway → service → New → Volume) mounted at `/data`. Then in **Variables** add `DATA_DIR=/data`.
+4. Open the URL Railway assigns. Done.
 
 You can flip on optional features later by adding more variables (see [Configuration](#configuration)). For a truly one-click flow for *other* people, you can [publish your running project as a Railway template](https://docs.railway.com/guides/marketplace/publish) once it's live — that pre-configures the volume and env vars for the next person.
 
@@ -70,7 +91,7 @@ You can flip on optional features later by adding more variables (see [Configura
 
 ### Local
 ```bash
-cp .env.local.example .env.local   # paste your ANTHROPIC_API_KEY
+cp .env.local.example .env.local   # paste your ANTHROPIC_API_KEY (and set APP_PASSCODE if the app will be reachable from anywhere but your own machine)
 npm install
 npm run dev
 ```
