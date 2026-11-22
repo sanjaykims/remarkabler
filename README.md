@@ -34,9 +34,10 @@ vault export and reverse-geocoding for location names).
 - **Your pages are sent to Anthropic** to be transcribed and to answer you.
   Everything else stays in your own database. Nothing is sent anywhere else
   unless you turn on an optional feature (Dropbox export, location names).
-- **Set `APP_PASSCODE` before you put anything in it.** Without it the app is
-  open to anyone who has the URL, and a hosted URL is public. See step 2 of
-  Quick start.
+- **A passcode is required.** In production the app stays locked (it shows a
+  setup screen and refuses every request) until you set `APP_PASSCODE`, so a
+  public URL can never expose your diary by accident. See step 2 of Quick
+  start. (`ALLOW_OPEN_APP=true` opts out on purpose, e.g. behind a VPN.)
 - **reMarkable cloud sync is unofficial.** It uses reMarkable's unofficial
   protocol and could break at any time. Manual PDF upload and Dropbox ingest are
   the dependable ways in.
@@ -78,7 +79,7 @@ You'll need an [Anthropic API key](https://console.anthropic.com).
 The button starts a new Railway project from this repo. Then, in your new project:
 
 1. **Variables → `ANTHROPIC_API_KEY`** — paste your key from [console.anthropic.com](https://console.anthropic.com).
-2. **Variables → `APP_PASSCODE`** — choose a passcode. **Do this before you open the app**: unset means anyone with the URL can read your diary. On the lock screen you can then register a passkey (fingerprint / Face ID) with it.
+2. **Variables → `APP_PASSCODE`** — choose a passcode. The app won't serve anything until this is set (it shows a setup screen instead). On the lock screen you can then register a passkey (fingerprint / Face ID) with it.
 3. **Volumes** — add a volume (Railway → service → New → Volume) mounted at `/data`. Then in **Variables** add `DATA_DIR=/data`.
 4. Open the URL Railway assigns. Done.
 
@@ -159,7 +160,8 @@ its variable is set** — so you flip each one on by adding a single variable.
 | `CHAT_FALLBACK_MODEL` | Used if the chat model is briefly overloaded (e.g. `claude-sonnet-4-6`). |
 | `CHAT_MEMORY_MODEL` | Optional. Model that extracts durable memories from cleared chats (defaults to `CHAT_MODEL`). |
 | `DATA_DIR` | Where `app.db` + PDFs live (mount a persistent volume here). |
-| `APP_PASSCODE` | Set to enable the private lock (passkey + passcode backup). Unset = app is open (a red in-app banner + a boot log warn until it's set). |
+| `APP_PASSCODE` | The private lock (passkey + passcode backup). **Required in production:** unset = the app fails closed (setup screen, every API 401). In dev/test, unset = open with a red banner. |
+| `ALLOW_OPEN_APP` | Set to `true` to run in production with no lock on purpose (e.g. behind a VPN). Not recommended on a public URL. |
 | `VOYAGE_API_KEY` | Optional. Enables Voyage embeddings for semantic diary search + the `/mind` 3D map. |
 
 ### Sources & sync

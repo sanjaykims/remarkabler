@@ -266,7 +266,7 @@ attribute cost to features and surfaces.
 **Optional — feature toggles (set in Railway, then redeploy):**
 - `CHAT_MODEL`, `CHAT_FALLBACK_MODEL`, `CHAT_MEMORY_MODEL` — model overrides.
 - `VOYAGE_API_KEY` / `VOYAGE_MODEL` — embeddings (without this, recall is keyword-only).
-- `APP_PASSCODE` — turns on the passkey/passcode lock.
+- `APP_PASSCODE` — the passkey/passcode lock; required in production (unset = fail closed). `ALLOW_OPEN_APP=true` — run unlocked on purpose.
 - `INACTIVITY_HOURS` — server-side session inactivity timeout (default 24).
 - `NEXT_PUBLIC_POSTHOG_KEY` / `NEXT_PUBLIC_POSTHOG_HOST` — analytics (build-time inlined).
 - `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` / `APP_BASE_URL` / `DROPBOX_INGEST_PATH` — Dropbox auto-ingest. `OCR_CONCURRENCY_LIMIT` caps shared OCR budget (default 2, max 5).
@@ -299,7 +299,7 @@ attribute cost to features and surfaces.
 10. **One throttled `runMaintenanceSweep`** drives every background job.
 11. **The MCP endpoint is read-only by default and fails closed.** Every write tool is OFF behind its own flag, deterministic-destination, size-capped; a missing/short `MCP_AUTH_TOKEN` returns 503 (never "open"); sensitive tools stay excluded unless `MCP_ALLOW_SENSITIVE_TOOLS=true`.
 12. **Synthetic notebooks excluded from analytics, included in entity stubs and `/graph`; Remarkabler is the SOLE deterministic writer of its vault.** `CHAT_DIARY_NOTEBOOK_ID` is the one synthetic-notebook exception — it's REAL diary and stays on every list.
-13. **Every data API route gates behind the app lock — `test/authGuard.test.ts` enforces it.** There's no `middleware.ts`; each route calls `isAuthenticated()`/`requireAuth()` (`lib/auth.ts`) and the layout gates the UI. Only login + the MCP bearer endpoint + the OAuth handshake (+ `csp-report`) are on the PUBLIC allowlist. Lock-off (`APP_PASSCODE` unset) is loud now: boot warning + red in-app banner. Baseline hardening headers (HSTS/COOP/CORP/etc.) live in `next.config.mjs`.
+13. **Every data API route gates behind the app lock — `test/authGuard.test.ts` enforces it.** There's no `middleware.ts`; each route calls `isAuthenticated()`/`requireAuth()` (`lib/auth.ts`) and the layout gates the UI. Only login + the MCP bearer endpoint + the OAuth handshake (+ `csp-report`) are on the PUBLIC allowlist. In production, `APP_PASSCODE` unset FAILS CLOSED (`appIsFailClosed()` in `lib/auth.ts`: setup screen + 401; `ALLOW_OPEN_APP=true` opts out); in dev/test unset = open with a boot warning + red banner. Baseline hardening headers (HSTS/COOP/CORP/etc.) live in `next.config.mjs`.
 
 ## Known intentional limits
 

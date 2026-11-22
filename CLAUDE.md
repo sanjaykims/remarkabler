@@ -86,13 +86,19 @@ and generate an accumulating record of "insights" about themselves.
   tier once extraction quality is known to hold.
 - Optional env var `APP_PASSCODE` enables the private lock. When set, the
   whole app (pages + APIs) is gated behind a passkey (fingerprint / Face ID)
-  or the passcode itself. When unset, the app is fully open — so the lock can
-  be turned on/off purely by adding/removing this one variable. **Because
-  "unset = wide open" is easy to miss, that state is now loud, not silent:** a
-  server boot `console.warn` (`instrumentation.ts`) and a dismissible red
-  in-app banner (`app/LockOffBanner.tsx`, rendered by `app/layout.tsx` only
-  when `!isLockEnabled()`) both nag to set `APP_PASSCODE`. Treat the passcode
-  as effectively required for any internet-reachable deploy.
+  or the passcode itself. **Production FAILS CLOSED without it** (`appIsFailClosed()`
+  in `lib/auth.ts`: `NODE_ENV=production` + no `APP_PASSCODE` + not
+  `ALLOW_OPEN_APP=true`): `isAuthenticated()` returns false for everyone, so
+  every API answers 401 and `app/layout.tsx` renders `app/SetupRequired.tsx`
+  instead of the app. The process never crashes (a crash loop would hide the
+  explanation from the owner and trip host health checks). `ALLOW_OPEN_APP=true`
+  is the explicit, loud opt-out (e.g. behind a VPN). Dev, test and `npm run
+  build` are unchanged: unset there = open, with the boot `console.warn`
+  (`instrumentation.ts`, message differs per state) and the dismissible red
+  banner (`app/LockOffBanner.tsx`, only when `!isLockEnabled()` and the app is
+  actually served). Do NOT revert this to "unset = open" in production — that
+  shipped once as the default and a skipped variable published a diary.
+  `test/failClosedLock.test.ts` pins the matrix.
 - Optional analytics: set `NEXT_PUBLIC_POSTHOG_KEY` (and optionally
   `NEXT_PUBLIC_POSTHOG_HOST`, default `https://us.i.posthog.com`) to enable
   PostHog. It only sends anonymous page views + a few explicit events

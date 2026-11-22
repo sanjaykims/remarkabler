@@ -2,7 +2,9 @@
 
 ## Unreleased - README: cost, privacy, and lock up front
 
-README now opens with a "Before you start" section (bring-your-own API key and what it covers, chat on a Claude subscription via MCP, what is sent to Anthropic, the unofficial reMarkable cloud protocol) and Quick start sets `APP_PASSCODE` as its own step, because an unset passcode leaves a hosted app open. Docs only.
+**Security: production now fails closed without `APP_PASSCODE`.** Before, an unset passcode meant the whole app and every API were open to anyone with the URL, so a new user who skipped one variable published their diary. Now, in production with no `APP_PASSCODE`, every page shows a "Set a passcode" screen (`app/SetupRequired.tsx`) and every API answers 401 (`appIsFailClosed()` in `lib/auth.ts`, applied inside `isAuthenticated()`). The process still starts, so the owner can read the explanation. `ALLOW_OPEN_APP=true` is the explicit opt-out. Dev, test and `npm run build` are unchanged. New `test/failClosedLock.test.ts`.
+
+README now opens with a "Before you start" section (bring-your-own API key and what it covers, chat on a Claude subscription via MCP, what is sent to Anthropic, the unofficial reMarkable cloud protocol) and Quick start sets `APP_PASSCODE` as its own step.
 
 ## Unreleased - Phase 5: handwriting examples
 

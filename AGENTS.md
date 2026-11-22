@@ -231,9 +231,10 @@ full picture; the essentials:
     and each `app/api/**/route.ts` calls `isAuthenticated()`/`requireAuth()`
     (`lib/auth.ts`). Only the login endpoint, the MCP bearer endpoint, the
     OAuth handshake, and the `csp-report` sink are on the test's PUBLIC
-    allowlist — adding to it is a deliberate security decision. Lock-off
-    (`APP_PASSCODE` unset = whole app open) is now loud: a boot warning
-    (`instrumentation.ts`) + a red in-app banner (`app/LockOffBanner.tsx`).
+    allowlist — adding to it is a deliberate security decision. In
+    production, `APP_PASSCODE` unset FAILS CLOSED (`appIsFailClosed()`; setup
+    screen + 401 everywhere; `ALLOW_OPEN_APP=true` opts out). Dev/test unset =
+    open with a boot warning + red banner (`app/LockOffBanner.tsx`).
     Baseline response headers (HSTS, COOP, CORP, X-Frame-Options,
     Permissions-Policy) live in `next.config.mjs`; an enforced CSP is a
     deferred report-only-first pass (no `dangerouslySetInnerHTML` = no active

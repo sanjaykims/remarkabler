@@ -1,8 +1,9 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { isAuthenticated, isLockEnabled } from "@/lib/auth";
+import { appIsFailClosed, isAuthenticated, isLockEnabled } from "@/lib/auth";
 import LockScreen from "./LockScreen";
+import SetupRequired from "./SetupRequired";
 import LockOffBanner from "./LockOffBanner";
 import AutoLock from "./AutoLock";
 import Nav from "./Nav";
@@ -52,12 +53,16 @@ export const dynamic = "force-dynamic";
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const authed = await isAuthenticated();
   const lockEnabled = isLockEnabled();
+  // Production with no APP_PASSCODE: serve only the setup screen (fail closed).
+  const failClosed = appIsFailClosed();
 
   return (
     <html lang="en" className={clearSans.variable}>
       <body>
         <PostHogProvider>
-          {authed ? (
+          {failClosed ? (
+            <SetupRequired />
+          ) : authed ? (
             <>
               {!lockEnabled && <LockOffBanner />}
               <header className="border-b border-slate-200 dark:border-slate-800 pt-safe pl-safe pr-safe">

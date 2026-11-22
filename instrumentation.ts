@@ -44,11 +44,26 @@ export async function register() {
     // statically importing next/headers + the native better-sqlite3 module
     // into this boot file, same reason the scheduler import below is dynamic.
     if (!process.env.APP_PASSCODE) {
-      console.warn(
-        "[security] App lock is OFF — APP_PASSCODE is not set, so the whole " +
-          "app and all APIs are open to anyone with the URL. Set APP_PASSCODE " +
-          "in the environment (Railway) to require a passkey/passcode."
-      );
+      // Mirrors appIsFailClosed() in lib/auth.ts (inline for the import reason
+      // above): production + no passcode + no explicit opt-out = locked.
+      if (
+        process.env.NODE_ENV === "production" &&
+        process.env.ALLOW_OPEN_APP !== "true"
+      ) {
+        console.warn(
+          "[security] APP_PASSCODE is not set, so the app is LOCKED (fail " +
+            "closed): every page shows a setup screen and every API answers " +
+            "401. Set APP_PASSCODE in the environment (Railway) and redeploy. " +
+            "To run unlocked on purpose, set ALLOW_OPEN_APP=true."
+        );
+      } else {
+        console.warn(
+          "[security] App lock is OFF — APP_PASSCODE is not set and " +
+            "ALLOW_OPEN_APP/dev mode lets the app run unlocked, so the whole " +
+            "app and all APIs are open to anyone with the URL. Set " +
+            "APP_PASSCODE to require a passkey/passcode."
+        );
+      }
     }
 
     const { startBackgroundMaintenanceScheduler } = await import("./lib/notes");

@@ -113,12 +113,34 @@ const INACTIVITY_TIMEOUT_MS =
 const ACTIVITY_REFRESH_THROTTLE_MS = 60 * 1000;
 
 /**
- * The lock is active only once the owner sets APP_PASSCODE in the environment.
- * Before that, the app behaves exactly as before — so deploying this code
- * cannot lock anyone out; the lock "turns on" when the passcode is set.
+ * The lock is active once the owner sets APP_PASSCODE in the environment.
+ * See `appIsFailClosed()` for what happens in production when it is NOT set.
  */
 export function isLockEnabled(): boolean {
   return !!process.env.APP_PASSCODE;
+}
+
+/**
+ * Fail closed: in a production build with no APP_PASSCODE, the app refuses to
+ * serve anything (every page shows a "set a passcode" screen and every API
+ * answers 401) instead of silently being open to anyone with the URL.
+ *
+ * Why: this app holds a private diary, and a hosted deploy gets a public URL.
+ * "Unset = wide open" meant a new user who skipped one variable published their
+ * diary to the internet. The escape hatch is deliberate and loud: set
+ * ALLOW_OPEN_APP=true to run unlocked on purpose (e.g. behind a VPN).
+ *
+ * Only production is affected: `npm run dev`, `npm test` and `npm run build`
+ * (which renders nothing request-bound) are unchanged. The process never
+ * crashes — a crash loop would fail the host's health checks and hide the
+ * explanation; serving the setup screen tells the owner exactly what to do.
+ */
+export function appIsFailClosed(): boolean {
+  return (
+    !isLockEnabled() &&
+    process.env.NODE_ENV === "production" &&
+    process.env.ALLOW_OPEN_APP !== "true"
+  );
 }
 
 // A signing secret for session tokens, generated once and kept in the DB so
@@ -224,7 +246,7 @@ export function revokeSessionToken(token: string | undefined): void {
  * at most once per minute.
  */
 export async function isAuthenticated(): Promise<boolean> {
-  if (!isLockEnabled()) return true;
+  if (!isLockEnabled()) return !appIsFailClosed();
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const verified = token ? verifySessionToken(token) : null;
   if (!verified) return false;
