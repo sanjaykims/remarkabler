@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - Ponytail skill (smallest-complete-change mode)
+
+- Vendored the MIT `ponytail` skill (prompt only) under `.claude/skills/ponytail/`. No hooks, status band, or board installed; no runtime or app code changed. Repo rules in `CLAUDE.md` take precedence over it.
+
 ## Unreleased - Re-cut saved handwriting pictures made by the old locator
 
 - Saved handwriting pictures (`ocr_examples`) were cut by the same locator that put the marker one line too high, so on affected pages a picture could show the line above the confirmed word while being labelled with the right text, which makes it a misleading example for the transcriber. New `lib/exampleRepair.ts` (sweep job, a few rows per run, single-flight, Docker image only) re-cuts each older picture in place from its answered card, using the corrected locator. A picture is replaced ONLY when the re-cut succeeds; otherwise the old one stays and the row is marked done so it is not retried forever. New `ocr_examples.locator_v` column (old rows default to 0; new captures write `LOCATOR_VERSION` = 2) so this runs once per picture, and a future locator change can reuse it by bumping the constant. Never touches page text, cards, or learned corrections. Pure card-matching logic is unit tested (`test/exampleRepair.test.ts`); the re-cutting itself needs the Docker renderer, so it can only be confirmed on Railway (look for `[exampleRepair] checked N saved pictures, re-cut M` in the logs).

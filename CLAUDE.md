@@ -1214,6 +1214,16 @@ collides with the mattpocock pack's — the two use disjoint naming
 conventions (`tdd` vs. `test-driven-development`, `deep-code-review` vs.
 `code-review-and-quality`, etc.) and can be used side by side.
 
+Also vendored: [`DietrichGebert/ponytail`](https://github.com/DietrichGebert/ponytail)
+(MIT) — one skill, `.claude/skills/ponytail/` ("lazy senior dev": the smallest
+complete change, no unrequested abstraction, ends replies with what was skipped).
+Only the prompt/SKILL.md was vendored; its hooks, status band and local
+"board" were deliberately NOT installed (they read session data and spawn
+background processes — not needed for the prompt to work). Run it at the
+default `full` level. It never overrides this file: every "do not regress"
+rule above (fail-open handling, auth gates, `.catch()` on background calls,
+Graphify-first, push-everything) still wins over "write less code".
+
 ### Issue tracker
 
 Issues live in this repo's GitHub Issues. See `docs/agents/issue-tracker.md`
