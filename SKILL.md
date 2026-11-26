@@ -77,6 +77,7 @@ Companion docs — read in order if any is unfamiliar:
 | `pdfPageMap.ts` | Pure: which PDF page shows a page row (`pagemap.json` for reMarkable-cloud notebooks). |
 | `secondLook.ts` | Pure logic for the OCR second look (parse answers, apply confident ones). The call is `secondLook` in `claude.ts`. |
 | `handwritingExamples.ts` | Phase 5: crops confirmed words (`docker/cropword`, Docker only) into `ocr_examples`; `pickExamples`/`exampleBlocks` feed labelled handwriting images to OCR/proofread prompts. Fail-open, local-only. |
+| `exampleRepair.ts` | One-time sweep job: re-cuts saved `ocr_examples` pictures made by an older line locator (`locator_v` < `LOCATOR_VERSION`), in place, only on success. Fail-open, a few rows per sweep, Docker image only. |
 | `ocrDiff.ts` / `ocrLearning.ts` | Proofreading Phase 2 (learning). `ocrDiff.wordChanges` (pure) extracts small word substitutions from a manual edit; `ocrLearning` records confirmed terms / corrected pairs in `ocr_learned`, builds the advisory OCR hint block (`buildOcrHints`), ranks card candidates, and computes the progress stats. Fail-open, local-only. |
 | `ocrFlags.ts` / `ocrFlagStore.ts` / `ocrReview.ts` | Transcription proofreading. Claude's OCR returns a trailing `--- FLAGS ---` JSONL block of doubtful phrases (`ocrNotebookPdfWithFlags`); `ocrFlagStore` writes `ocr_flags` rows from both ingest paths; `ocrReview` lists cards and applies the owner's choice via `correctPageText`. `ocrFlags` is the pure parse/anchor/replace layer. |
 | `notebookDedup.ts` / `notebookDedupDb.ts` | Flags old notebooks whose diary dates are already covered by a reMarkable-cloud import (`/notebooks` "Possible duplicates"). |
@@ -104,7 +105,7 @@ Companion docs — read in order if any is unfamiliar:
 | `entry_analysis` | Per-page themes/sentiment/summary for `/mind`. Discipline notebook excluded. |
 | `entry_entities` | Per-page named entities (`kind` ∈ person/place/project, `name`, `name_norm` for grouping). Populated alongside `entry_analysis`. Powers `top_entities`/`pages_for_entity`/`related_entities`. ON DELETE CASCADE from `pages`. |
 | `notebooks.proofread_at` | Column set when the old-diary proofreading pass finishes for a notebook (NULL = not yet / retry). |
-| `ocr_examples` | Cropped PNG of confirmed handwriting + its text (`lib/handwritingExamples.ts`); local-only, capped at 150. |
+| `ocr_examples` | Cropped PNG of confirmed handwriting + its text (`lib/handwritingExamples.ts`); `locator_v` = which line-locator version cut it (older ones are re-cut by `lib/exampleRepair.ts`); local-only, capped at 150. |
 | `ocr_learned` | Learned proofreading cases: (wrong, right, kind confirmed/corrected, count) from owner answers and manual edits (`lib/ocrLearning.ts`). |
 | `ocr_flags` | Pending/resolved/kept/stale proofreading flags (phrase, candidates, offset) per page; cascade-deleted with the notebook (`lib/ocrFlagStore.ts`). |
 | `entity_aliases` | Merge records folding a duplicate spelling into a canonical `(kind, name_norm)` (`lib/entityMerge.ts`). |

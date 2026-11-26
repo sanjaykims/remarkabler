@@ -23,6 +23,10 @@ const CROP = process.env.CROPWORD_BIN || "/usr/local/bin/cropword";
 // bounded, because the API limits images per request and a failed request would cost a transcription.
 export const MAX_PER_TEXT = 5;
 export const PROMPT_EXAMPLES = 60;
+/** Bump when docker/handwriting_locate.py changes in a way that moves word positions, so saved
+ *  pictures made by the older locator get re-cropped (lib/exampleRepair.ts). 1 = the original
+ *  locator, 2 = the fix for equal band/line counts that put the marker one line too high. */
+export const LOCATOR_VERSION = 2;
 const MAX_PNG_BYTES = 40_000;
 const MAX_WIDE_PNG_BYTES = 400_000;
 const MAX_TEXT = 40;
@@ -181,8 +185,17 @@ export async function captureExample(a: CaptureArgs): Promise<boolean> {
     const png = await cropPng(a.notebookId, a.pageIndex, a.box, false, a.locate, a.pageRowId);
     if (!png) return false;
     db()
-      .prepare(`INSERT INTO ocr_examples(id, text, wrong, notebook_id, png) VALUES(?,?,?,?,?)`)
-      .run(crypto.randomUUID(), text, a.wrong && a.wrong !== text ? a.wrong : null, a.notebookId, png);
+      .prepare(
+        `INSERT INTO ocr_examples(id, text, wrong, notebook_id, png, locator_v) VALUES(?,?,?,?,?,?)`
+      )
+      .run(
+        crypto.randomUUID(),
+        text,
+        a.wrong && a.wrong !== text ? a.wrong : null,
+        a.notebookId,
+        png,
+        LOCATOR_VERSION
+      );
     return true;
   } catch (e) {
     console.warn("[handwritingExamples] capture failed:", (e as Error).message);

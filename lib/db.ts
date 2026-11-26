@@ -64,6 +64,14 @@ export function db(): Database.Database {
   } catch {
     // column already exists
   }
+  // Which version of the line locator (docker/handwriting_locate.py) cut this saved handwriting
+  // picture. 0 = made before the "equal band/line counts" fix, so it may show the line above the
+  // word; lib/exampleRepair.ts re-crops those in place. New captures write LOCATOR_VERSION.
+  try {
+    _db.exec(`ALTER TABLE ocr_examples ADD COLUMN locator_v INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // column already exists
+  }
   // Lookup index for the watcher's "have I seen this file?" check.
   _db.exec(
     `CREATE INDEX IF NOT EXISTS idx_notebooks_dropbox_file_id

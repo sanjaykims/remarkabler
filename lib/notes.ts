@@ -1494,6 +1494,18 @@ export function runMaintenanceSweep(): void {
   } catch {
     // best-effort
   }
+  // One-time repair of saved handwriting pictures cut by the older line locator
+  // (lib/exampleRepair.ts). No-op off the Docker image and once every row is current;
+  // a few rows per sweep, never touches page text or answers.
+  try {
+    void import("./exampleRepair")
+      .then((m) => m.maybeRepairExamples())
+      .catch((e) =>
+        console.warn("[sweep] handwriting picture repair failed:", (e as Error).message)
+      );
+  } catch {
+    // best-effort
+  }
   // Life-wiki: keep entity profiles fresh as new entries arrive. Lazy-imported
   // (entityWiki pulls in notes for DISCIPLINE_ID). No-op unless the user has
   // built the wiki at least once; bounded to a few Claude calls per sweep.
