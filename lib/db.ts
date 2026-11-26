@@ -17,6 +17,12 @@ export function db(): Database.Database {
   const dbPath = path.join(DATA_DIR, "app.db");
   _db = new Database(dbPath);
   _db.pragma("journal_mode = WAL");
+  // With WAL, NORMAL skips an fsync per commit: an app crash loses nothing and the file can't
+  // corrupt; only a power cut can drop the very last commit (the weekly backup covers that).
+  _db.pragma("synchronous = NORMAL");
+  _db.pragma("temp_store = MEMORY");
+  _db.pragma("cache_size = -65536"); // 64 MB page cache
+  _db.pragma("mmap_size = 268435456"); // 256 MB memory-mapped reads
   // SQLite ships with foreign keys off by default. We rely on ON DELETE
   // CASCADE in several tables (chat_attachments → chat_messages,
   // entry_analysis → pages) so without this pragma cascades are silently

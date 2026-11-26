@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - Lean pass: runtime efficiency
+
+- SQLite `synchronous=NORMAL`/memory temp store/larger cache; semantic search and the /mind map no longer load full page text they do not use; the life-wiki pass stops after 2 consecutive Claude failures and counts failed attempts against its limit (new `test/entityWikiOutage.test.ts`); /notebooks refresh no longer restarts its timer on every poll; proofreading card images load lazily. Findings and the not-yet-done list are in `docs/reviews/2026-11-26-lean-pass.md`.
+
 ## Unreleased - Lean pass (dead exports removed, review report)
 
 - Removed two exports used nowhere (`MAP_UNLOCK_TTL_MS`, `entityWikiAutoEnabled`). No behavior change. Full review of dead code, dependencies, bundle and indexes is in `docs/reviews/2026-11-26-lean-pass.md`; features that might be unused are listed there for the owner to decide, not removed.

@@ -128,6 +128,8 @@ export default function OcrReview({ onLocked }: { onLocked: () => void }) {
             // Shown inside the app: a new browser tab can lose the login, and Android can't show a PDF inline.
             // eslint-disable-next-line @next/next/no-img-element
             <img
+              loading="lazy"
+              decoding="async"
               src={`/api/ocr-review/crop?id=${encodeURIComponent(c.id)}&full=1`}
               alt="The whole handwritten page"
               className="max-w-full rounded border border-slate-300 dark:border-slate-700 bg-white"
@@ -142,6 +144,8 @@ export default function OcrReview({ onLocked }: { onLocked: () => void }) {
           {c.hasCrop && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
+              loading="lazy"
+              decoding="async"
               src={`/api/ocr-review/crop?id=${encodeURIComponent(c.id)}&v=4`}
               alt="Your handwriting for this spot"
               className="max-w-full rounded border border-slate-300 dark:border-slate-700 bg-white"

@@ -347,7 +347,7 @@ async function semanticSearch(
   try {
     const rows = db()
       .prepare(
-        `SELECT p.id AS page_id, p.ocr_text AS text, n.name AS notebook_name,
+        `SELECT p.id AS page_id, n.name AS notebook_name,
                 p.embedding AS embedding
          FROM pages p JOIN notebooks n ON n.id = p.notebook_id
          WHERE p.embedding IS NOT NULL
@@ -357,7 +357,6 @@ async function semanticSearch(
       )
       .all(excludeId, SEMANTIC_SCAN_CAP) as Array<{
         page_id: string;
-        text: string;
         notebook_name: string;
         embedding: Buffer;
       }>;
@@ -368,13 +367,18 @@ async function semanticSearch(
         return {
           page_id: r.page_id,
           notebook_name: r.notebook_name,
-          text: r.text,
           score: cosineSimilarity(qVec, vec),
         };
       })
       .filter((s): s is NonNullable<typeof s> => s !== null);
     scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, limit);
+    // Text is read only for the few hits returned, not for all scanned pages.
+    const top = scored.slice(0, limit);
+    const getText = db().prepare(`SELECT ocr_text FROM pages WHERE id = ?`);
+    return top.map((t) => ({
+      ...t,
+      text: (getText.get(t.page_id) as { ocr_text: string | null } | undefined)?.ocr_text ?? "",
+    }));
   } catch (e) {
     console.warn("[chatTools] semanticSearch failed:", (e as Error).message);
     return [];

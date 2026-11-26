@@ -268,11 +268,13 @@ function NotebooksContent({ onLocked }: { onLocked: () => void }) {
 
   // While any notebook is still transcribing, refresh the list periodically
   // so it updates on its own when the background OCR finishes.
+  const hasActive = notebooks.some((n) => n.status === "queued" || n.status === "processing");
   useEffect(() => {
-    if (!notebooks.some((n) => n.status === "queued" || n.status === "processing")) return;
+    if (!hasActive) return;
     const t = setInterval(load, 4000);
     return () => clearInterval(t);
-  }, [notebooks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load is stable enough; only restart when activity starts or stops
+  }, [hasActive]);
 
   async function approvePending(share: PendingShare) {
     if (pendingActionId) return;

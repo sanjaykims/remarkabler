@@ -608,7 +608,7 @@ export function getEmbeddingMap(limit: number = 500): MapPoint[] {
               p.embedding   AS embedding,
               p.entry_date  AS entry_date,
               p.page_index  AS page_index,
-              p.ocr_text    AS ocr_text,
+              substr(p.ocr_text, 1, 200) AS ocr_text, -- only the preview is used
               n.name        AS notebook_name,
               a.themes      AS themes,
               a.sentiment   AS sentiment,

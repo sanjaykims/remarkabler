@@ -205,6 +205,10 @@ export async function refreshEntityWiki(
   let generated = 0;
   let failed = 0;
   let remaining = 0;
+  // Attempts (not just successes) spend the pass budget, and two failures in a row end the
+  // pass, so an API outage costs a couple of calls per sweep instead of one per stale entity.
+  let attempted = 0;
+  let failStreak = 0;
   const entities: Array<{ kind: Kind; name: string }> = [];
   // Set the in-flight flag as the LAST thing before the try, so a throw in
   // the setup below (setSetting / db().prepare — synchronous DB writes that
@@ -238,19 +242,22 @@ export async function refreshEntityWiki(
           )
           .get(kind, c.norm) as { source_hash: string } | undefined;
         if (existing && existing.source_hash === hash) continue; // fresh
-        if (generated >= limit) {
+        if (attempted >= limit || failStreak >= 2) {
           remaining++; // stale but over this pass's budget
           continue;
         }
+        attempted++;
         let summary: string | null = null;
         try {
           summary = await composeEntityWiki(kind, c.name, excerpts);
         } catch (e) {
           console.warn(`[entityWiki] compose ${kind}/${c.name} failed:`, (e as Error).message);
           failed++;
+          failStreak++;
           continue;
         }
         if (!summary) continue;
+        failStreak = 0;
         try {
           upsert.run(kind, c.norm, c.name, summary, hash, model);
           generated++;
