@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { getSetting, setSetting, clearSetting } from "@/lib/db";
+import { floorOpus } from "@/lib/claude";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,10 +28,16 @@ function resolve(s: Slot): { value: string; source: "db" | "env" | "default" } {
   return { value: s.def, source: "default" };
 }
 
+// The main model as actually used (older Opus is lifted to 5.5).
+function shownMain() {
+  const r = resolve(SLOTS.main);
+  return { ...r, value: floorOpus(r.value) };
+}
+
 export async function GET() {
   if (!(await isAuthenticated())) return LOCKED();
   return NextResponse.json({
-    main: resolve(SLOTS.main),
+    main: shownMain(),
     chat: resolve(SLOTS.chat),
     fallback: resolve(SLOTS.fallback),
   });
@@ -52,7 +59,7 @@ export async function POST(req: NextRequest) {
   }
   return NextResponse.json({
     ok: true,
-    main: resolve(SLOTS.main),
+    main: shownMain(),
     chat: resolve(SLOTS.chat),
     fallback: resolve(SLOTS.fallback),
   });

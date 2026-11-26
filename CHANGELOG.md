@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased - Economy pass: Opus 5.5 floor, cheaper side jobs
+
+- OCR, second look, proofreading, profile and insights keep the main model, now never older than Opus 5.5: `floorOpus` lifts a stale `claude-opus-4-*` from `CLAUDE_MODEL` or the in-app setting (Memory tab shows the model actually used). Opus 5.5 lists at $4/$20 per million tokens vs $5/$25 for 4.x, so this alone is about 20% cheaper on transcription.
+- The daily summary and the writing coach moved from the main model to the chat model (Sonnet 5.5); both are short, non-transcription jobs. Test: `test/floorOpus.test.ts`.
+
 ## Unreleased - Lean pass: runtime efficiency
 
 - SQLite `synchronous=NORMAL`/memory temp store/larger cache; semantic search and the /mind map no longer load full page text they do not use; the life-wiki pass stops after 2 consecutive Claude failures and counts failed attempts against its limit (new `test/entityWikiOutage.test.ts`); /notebooks refresh no longer restarts its timer on every poll; proofreading card images load lazily. Findings and the not-yet-done list are in `docs/reviews/2026-11-26-lean-pass.md`.

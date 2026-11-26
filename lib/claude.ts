@@ -33,12 +33,13 @@ function recentInsightsBlock(maxChars = 2000): string {
 // the Railway env var, which overrides the built-in default. Building the model
 // dynamically means flipping a model in the UI takes effect immediately, with
 // no restart, and the env var keeps working when nothing's been set in-app.
+// Transcription and proofreading run on this model, so an older Opus (a stale
+// CLAUDE_MODEL env var or in-app setting) is lifted to 5.5; anything else is kept.
+export function floorOpus(model: string): string {
+  return /^claude-opus-[1-4]\b/.test(model) || /^claude-3-opus/.test(model) ? "claude-opus-5-5" : model;
+}
 export function modelMain(): string {
-  return (
-    getSetting("model_main") ||
-    process.env.CLAUDE_MODEL ||
-    "claude-opus-5-5"
-  );
+  return floorOpus(getSetting("model_main") || process.env.CLAUDE_MODEL || "claude-opus-5-5");
 }
 export function modelChat(): string {
   return (
@@ -1320,7 +1321,7 @@ export async function summarizeDay(opts: {
   entries: string;
 }): Promise<string> {
   const resp = await client().messages.create({
-    model: modelMain(),
+    model: modelChat(),
     max_tokens: 800,
     system: [
       "You summarise a person's diary entries from one day into a short,",
@@ -1341,7 +1342,7 @@ export async function summarizeDay(opts: {
       },
     ],
   });
-  recordUsage("daily_summary", modelMain(), resp.usage);
+  recordUsage("daily_summary", modelChat(), resp.usage);
   const block = resp.content.find((b) => b.type === "text");
   return block && block.type === "text" ? block.text : "";
 }
@@ -1995,7 +1996,7 @@ export async function coachWriting(args: {
   entries: string;
   lastExercise?: string | null;
 }): Promise<string> {
-  const model = modelMain();
+  const model = modelChat();
   const resp = await client().messages.create({
     model,
     max_tokens: 1800,

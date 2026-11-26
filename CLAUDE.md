@@ -79,10 +79,10 @@ and generate an accumulating record of "insights" about themselves.
   Nixpacks, set the builder back — one line. Renderer helper files live in
   `docker/` (`rm2pdf`, `patch_rm_palette.py`, empty `certs/` CA hook).
 - Railway config: env vars `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`
-  (set to `claude-opus-4-7`), `DATA_DIR=/data`; a persistent volume is mounted
+  (optional; default and floor `claude-opus-5-5` — `floorOpus` in `lib/claude.ts` lifts any older Opus, e.g. a stale `claude-opus-4-7`, to 5.5 for OCR/proofreading/profile/insights), `DATA_DIR=/data`; a persistent volume is mounted
   at `/data` and holds the SQLite database and uploaded PDFs. Optional
   `CHAT_MODEL` overrides the model used for chat only (defaults to
-  `claude-sonnet-5`); OCR and insights stay on `CLAUDE_MODEL`. Optional
+  `claude-sonnet-5-5`); OCR, proofreading, profile and insights stay on `CLAUDE_MODEL`; the daily summary and writing coach run on the chat model. Optional
   `CHAT_MEMORY_MODEL` overrides the model used to extract durable items
   from cleared chats (defaults to `CHAT_MODEL`); set this to a cheaper
   tier once extraction quality is known to hold.
