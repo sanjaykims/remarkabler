@@ -1075,3 +1075,22 @@ describe("POST /api/mcp", () => {
     expect(() => JSON.parse(callRpc.result.content[0].text)).not.toThrow();
   });
 });
+
+describe("get_page_image (opt-in)", () => {
+  it("is hidden and refused unless MCP_ALLOW_PAGE_IMAGES=true", async () => {
+    delete process.env.MCP_ALLOW_PAGE_IMAGES;
+    expect(mcp.mcpToolList().some((t) => t.name === "get_page_image")).toBe(false);
+    const parts = await mcp.callMcpToolContent("get_page_image", { notebook: "x" });
+    expect(JSON.parse((parts[0] as { text: string }).text).error).toMatch(/not available/);
+  });
+  it("is listed when enabled, and unknown notebooks are a clean error", async () => {
+    process.env.MCP_ALLOW_PAGE_IMAGES = "true";
+    try {
+      expect(mcp.mcpToolList().some((t) => t.name === "get_page_image")).toBe(true);
+      const parts = await mcp.callMcpToolContent("get_page_image", { notebook: "nope" });
+      expect(JSON.parse((parts[0] as { text: string }).text).error).toMatch(/Unknown notebook/);
+    } finally {
+      delete process.env.MCP_ALLOW_PAGE_IMAGES;
+    }
+  });
+});

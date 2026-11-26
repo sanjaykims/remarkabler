@@ -212,6 +212,7 @@ Its **own flag**:
 
 ```
 MCP_ALLOW_DIARY_WRITE=true
+# MCP_ALLOW_PAGE_IMAGES=true   # lets a connected Claude view handwritten page pictures (get_page_image)
 ```
 
 How it behaves:

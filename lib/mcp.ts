@@ -1,3 +1,10 @@
+import {
+  PAGE_IMAGE_TOOL,
+  PAGE_IMAGE_TOOL_NAME,
+  pageImagesEnabled,
+  callPageImageTool,
+  type McpContent,
+} from "@/lib/mcpPageImage";
 import { createHash, timingSafeEqual } from "crypto";
 import { db } from "@/lib/db";
 import { clientIp } from "@/lib/clientIp";
@@ -636,6 +643,10 @@ export function mcpToolList(): McpToolDef[] {
   if (diaryWriteEnabled() && !excluded.has(DIARY_TOOL_NAME)) {
     tools.push(DIARY_TOOL);
   }
+  // Page pictures — raw handwriting images, its own opt-in flag (see lib/mcpPageImage.ts).
+  if (pageImagesEnabled() && !excluded.has(PAGE_IMAGE_TOOL_NAME)) {
+    tools.push(PAGE_IMAGE_TOOL as unknown as McpToolDef);
+  }
   // The librarian tools (Phase C + relationship enrichment) — all seven gate
   // behind one flag, including
   // the reads, since get_conversation exposes full conversation content the
@@ -1146,4 +1157,16 @@ export function recordMcpAudit(
   } catch (e) {
     console.warn("[mcp] audit write failed:", (e as Error).message);
   }
+}
+
+// Content-part variant used by the route: the picture tool returns an image part, every other
+// tool its usual JSON text. Exclusions and the opt-in flag are enforced exactly as for text tools.
+export async function callMcpToolContent(name: string, args: unknown): Promise<McpContent[]> {
+  if (name === PAGE_IMAGE_TOOL_NAME) {
+    if (effectiveExcludedToolNames().has(name)) {
+      return [{ type: "text", text: JSON.stringify({ error: `Tool not available: ${name}` }) }];
+    }
+    return await callPageImageTool(args);
+  }
+  return [{ type: "text", text: await callMcpTool(name, args) }];
 }

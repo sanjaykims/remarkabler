@@ -153,6 +153,7 @@ and generate an accumulating record of "insights" about themselves.
   entity graph. The tool's description instructs the calling Claude to write
   in the person's first-person voice and get their approval before saving. OFF
   by default.
+  Optional `MCP_ALLOW_PAGE_IMAGES=true` enables the read tool `get_page_image` (`lib/mcpPageImage.ts`): returns a handwritten page JPEG or a proofreading card's marker picture so a connected Claude can debug the locator against the real page. Its own flag, OFF by default, hidden and refused when off.
   Optional `MCP_ALLOW_WIKI_LINKING=true` enables the seven Phase C/librarian tools
   (`lib/conversationEntities.ts` / `lib/entityRelationships.ts`) so a SEPARATE, recurring Claude Code agent
   — set up by the user as a cron Routine, billed to their own Claude

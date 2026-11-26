@@ -6,7 +6,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import {
   mcpToolList,
-  callMcpTool,
+  callMcpToolContent,
   checkMcpAuth,
   clientIp,
   isThrottled,
@@ -41,10 +41,11 @@ const handler = createMcpHandler(
       tools: mcpToolList(),
     }));
     server.server.setRequestHandler(CallToolRequestSchema, async (req) => {
-      const text = await callMcpTool(
+      const parts = await callMcpToolContent(
         req.params.name,
         req.params.arguments ?? {}
       );
+      const text = parts[0]?.type === "text" ? parts[0].text : "";
       // executeTool never throws; tool failures come back as {"error": ...}
       // JSON. Surface those as MCP tool errors so the model sees them as
       // failures rather than data.
@@ -56,7 +57,7 @@ const handler = createMcpHandler(
       } catch {
         // Non-JSON text is still a valid tool result.
       }
-      return { content: [{ type: "text", text }], isError };
+      return { content: parts, isError };
     });
   },
   {

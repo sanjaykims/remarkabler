@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - MCP `get_page_image` (look at a handwritten page)
+
+- New opt-in MCP read tool `get_page_image` (`lib/mcpPageImage.ts`, flag `MCP_ALLOW_PAGE_IMAGES=true`, OFF by default, hidden from `tools/list` and refused on `tools/call` when off, honors `MCP_EXCLUDE_TOOLS`). Given a notebook (id or exact name) and page number it returns the page JPEG plus that page's card ids/phrases; with `flag_id` it returns the card's own picture (line crop with the marker), so a misplaced marker can be debugged against the real page. Read-only, never throws, never in the repo. `app/api/mcp/route.ts` now returns MCP content parts (`callMcpToolContent` in `lib/mcp.ts`) so a tool can return an image.
+
 ## Unreleased - "view page" replaces "open PDF" on proofreading cards
 
 - On a phone, "open PDF" opened a new browser tab that did not carry the app login ("The app is locked") and Android browsers can't show a PDF inline anyway. The card now has **view page**, which shows the whole handwritten page inside the card with the same login as the word picture. New `full=1` mode on `/api/ocr-review/crop` (same app lock + Notebooks PIN) returns the page as a JPEG via `pagePicture()` in `lib/handwritingExamples.ts`, which shares `resolvePdfPage()` with `cropPng`. The `/api/notebooks/[id]/pdf` route and its readable error page stay for other uses.
