@@ -282,7 +282,10 @@ def _analyze(img_gray, page_text):
     info = dict(N=N, K=K)
     if N == 0 or K == 0:
         res = (a, bands, lines, ext, [None] * N, 0.0, info)
-    elif K == N:
+    elif K == N and _align(lines, bands, ext, pitch)[0] == list(range(N)):
+        # Equal counts are NOT proof of a 1:1 pairing: a split title (two bands for one line)
+        # plus merged/faint lines elsewhere can cancel out, and pairing by index then puts every
+        # marker one line too high. Only take this shortcut when the alignment agrees with it.
         assign = list(range(N))
         lw = np.array([l["w"] for l in lines])
         bw = np.array([e[1] - e[0] + 1 for e in ext], float)

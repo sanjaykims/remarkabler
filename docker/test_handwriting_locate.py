@@ -146,7 +146,39 @@ def show(mode, r):
         print(f"    mean conf hits={np.mean(r['confs_ok']):.2f} misses={np.mean(r['confs_bad']):.2f}")
 
 
+def check_equal_counts_but_shifted():
+    """Regression: K == N by coincidence must not pair line i with band i.
+
+    A big title drawn as two separate ink pieces gives one extra band at the top, and a faint line
+    (gray above DARK_THRESH, invisible to the detector) removes one further down, so the counts
+    match while every line between them sits one band lower than its index. Pairing by index put
+    the marker exactly one handwritten line too high (seen on a real 18-line page)."""
+    w, h = 900, 900
+    img = Image.new("L", (w, h), 255)
+    d = ImageDraw.Draw(img)
+    fk = ImageFont.truetype(KR, 34, index=1)
+    texts = ["제목 글", "오늘 아침 회사에서 점심을 먹고 운동했다", "가족과 함께 교회 갔다",
+             "피곤하지만 기분 좋은 하루였어요 정말로", "글라스 연구 미팅", "흐린 줄 이 줄은 안 보인다",
+             "다시 이어지는 긴 문장입니다 오늘도", "짧은 줄", "마지막 줄 입니다 고맙습니다"]
+    d.text((120, 100), "제목", font=fk, fill=20)
+    d.text((400, 100 + 34 + 30), "글", font=fk, fill=20)  # second piece of the title, clear gap
+    centers = {}
+    for i in range(1, len(texts)):
+        y = 260 + (i - 1) * 70
+        centers[i] = y + 17
+        d.text((120, y), texts[i], font=fk, fill=190 if i == 5 else 20)  # line 5 is too faint to detect
+    text = "\n".join(texts)
+    bands = LC.find_text_lines(np.asarray(img))
+    assert len(bands) == len(texts), f"setup no longer has K == N (K={len(bands)}, N={len(texts)})"
+    off = text.index("교회")
+    box = LC.locate_word_ex(img, text, off, 2)[0]
+    cy = (box[1] + box[3]) / 2 * h / 1000
+    assert abs(cy - centers[2]) < 30, f"marker at y={cy:.0f}, line is at y={centers[2]} (one line = 70)"
+    print("equal-counts-but-shifted: ok")
+
+
 if __name__ == "__main__":
+    check_equal_counts_but_shifted()
     img, text, words, _ = make_page(0, "clean"); img.save("/tmp/lines/sample_clean.png")
     img, text, words, _ = make_page(3, "touch"); img.save("/tmp/lines/sample_touch.png")
     img, text, words, _ = make_page(5, "scribble"); img.save("/tmp/lines/sample_scribble.png")

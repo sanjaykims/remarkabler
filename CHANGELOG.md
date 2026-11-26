@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - Marker exactly one line too high (equal band/line counts)
+
+- **Fixed: on some pages every proofreading marker sat one handwritten line too high.** `docker/handwriting_locate.py` took a "direct" shortcut (line *i* = ink band *i*) whenever the number of detected bands equalled the number of transcript lines. That equality can be a coincidence: a big title drawn as two ink pieces adds a band at the top while a faint line elsewhere drops one, so the counts match yet everything between them is offset by one. The shortcut is now taken only when the DP alignment agrees with it; otherwise the DP result is used (it skips the spurious band). Found by viewing the real page through the new `get_page_image` tool (a real page with 18 lines and 18 bands, title split in two). Regression check `check_equal_counts_but_shifted` in `docker/test_handwriting_locate.py` fails on the old code and passes now; synthetic accuracy (clean / scribble / touch) is unchanged. Not verified on the live Railway render: that needs a re-check of the real page's cards after deploy.
+
 ## Unreleased - MCP `get_page_image` (look at a handwritten page)
 
 - New opt-in MCP read tool `get_page_image` (`lib/mcpPageImage.ts`, flag `MCP_ALLOW_PAGE_IMAGES=true`, OFF by default, hidden from `tools/list` and refused on `tools/call` when off, honors `MCP_EXCLUDE_TOOLS`). Given a notebook (id or exact name) and page number it returns the page JPEG plus that page's card ids/phrases; with `flag_id` it returns the card's own picture (line crop with the marker), so a misplaced marker can be debugged against the real page. Read-only, never throws, never in the repo. `app/api/mcp/route.ts` now returns MCP content parts (`callMcpToolContent` in `lib/mcp.ts`) so a tool can return an image.
