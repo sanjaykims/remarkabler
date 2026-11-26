@@ -3,6 +3,8 @@
 ## Unreleased - Proofreading card: marker and open-PDF fixes
 
 - **Yellow marker no longer lands on blank paper.** When the line locator isn't confident, `docker/cropword` used Claude's rough box as-is (often a line or more off). It now snaps that box onto the nearest detected handwritten line, and draws no marker at all when no line is near. Confident locations are unchanged.
+- **Marker no longer spans several lines (the real cause).** When handwriting lines touch, the detector merged two or three lines into one tall band and then estimated the line height FROM those merged bands, so it never split them and the yellow box covered about five lines. `docker/handwriting_locate.py` now also measures the line spacing from the repeating ink pattern (`_acf_pitch`, autocorrelation of the row profile) and uses it when it is clearly smaller. Checked on a real card screenshot: 5 merged bands became 10 single-line bands and the word lands on its own line.
+- **Graphify-first is now enforced for Bash edits too.** `.claude/hooks/graphify_gate.py` also blocks Bash commands that write code files (python/sed/tee/redirects/patch) until `graphify query|explain|path` has run, and the unlock now lasts 15 minutes instead of 45. CLAUDE.md states the rule as "always, no exceptions".
 - **"open PDF" shows a readable page instead of raw JSON.** `/api/notebooks/[id]/pdf` still enforces the app lock and the Notebooks PIN, but a browser navigation that is denied (most often the 10-minute PIN unlock had expired) or finds no stored PDF now gets a short HTML page explaining what to do, with a link to Notebooks. API callers still get JSON.
 
 ## Unreleased - README: cost, privacy, and lock up front

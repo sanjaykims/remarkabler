@@ -42,6 +42,32 @@ def _est_pitch(bands):
     return float(m)
 
 
+def _acf_pitch(prof):
+    """Line spacing from the repeating ink pattern (autocorrelation of the row profile), or None.
+
+    The segment-based estimate collapses when touching lines merge into one tall band (it then
+    reports two or three lines as "one line", so nothing ever gets split and the marker covers
+    several lines). The ink rows repeat once per line, so the first strong autocorrelation peak
+    is the real spacing regardless of how the segments merged."""
+    v = _smooth(np.asarray(prof, float), 2.0)
+    v = v - v.mean()
+    n = len(v)
+    if n < 80 or not v.any():
+        return None
+    ac = np.correlate(v, v, "full")[n - 1:]
+    if ac[0] <= 0:
+        return None
+    ac = ac / ac[0]
+    lo, hi = 12, min(n // 2, 300)
+    best = None
+    for i in range(lo + 1, hi - 1):
+        if ac[i] > ac[i - 1] and ac[i] >= ac[i + 1] and ac[i] >= 0.3:
+            if best is None or ac[i] > 1.25 * ac[best]:
+                best = i
+            break  # the FIRST strong peak is the spacing; later ones are multiples
+    return float(best) if best else None
+
+
 def find_text_lines(img_gray):
     """-> list of (y0, y1) pixel bands (y1 exclusive), top to bottom."""
     a = np.asarray(img_gray)
@@ -94,6 +120,9 @@ def find_text_lines(img_gray):
                 break
 
     pitch = _est_pitch(segs)
+    ap = _acf_pitch(prof)
+    if ap is not None and ap < 0.8 * pitch:
+        pitch = ap  # merged lines had inflated the estimate
 
     # split touching lines at profile valleys (both sides must be line-sized)
     s2 = _smooth(prof, 4.0)

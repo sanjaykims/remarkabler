@@ -48,8 +48,10 @@ artifacts and repo rules, not local hook/cache files.
 
 ## Standing rules from the owner
 
-- **Use Graphify whenever you touch code** (see the Graphify section above) — never skip it
-  because it isn't installed; install it with the documented isolated venv.
+- **Use Graphify FIRST, ALWAYS, whenever you touch code** (see the Graphify section above) — before
+  the first edit of every task and whenever the work moves to a new area, never skipped for small
+  fixes, never replaced by reading files directly, never bypassed with Bash-script edits. If it
+  isn't installed, install it with the documented isolated venv.
 - **Push everything to GitHub.** Every commit is pushed to the remote right away.
 - **Keep the repo current with every feature** (code, `CHANGELOG.md`, the docs, and the Graphify
   map). No conversation or session logs are needed. This repo is public, so never commit
@@ -816,8 +818,13 @@ features need the deployed instance to fully verify.
   `pages.ocr_text`; text changes only through the owner's tap (`resolveFlag` -> `correctPageText`). It
   stays behind the app lock AND the Notebooks PIN (a route test enforces it), pauses at `PENDING_CAP`
   pending cards, and a failed notebook keeps `proofread_at` NULL so it can be retried.
-- **Graphify-first is enforced by hooks.** `.claude/hooks/graphify_gate.py` (PreToolUse on edits)
-  blocks code edits until `graphify query|explain|path` ran in the session within 45 min;
+- **Graphify-first is ALWAYS, with no exceptions, and enforced by hooks.** The owner has repeated
+  this several times: run `graphify query|explain|path` BEFORE every code change and again
+  whenever the task moves to a different area, even for "small" fixes and even when the file is
+  already known. Changing code through a Bash script (python/sed/tee/redirect/patch) counts as an
+  edit and must not be used to dodge the rule. `.claude/hooks/graphify_gate.py` (PreToolUse on
+  Edit/Write/MultiEdit/NotebookEdit **and Bash commands that write code files**)
+  blocks code edits until `graphify query|explain|path` ran in the session within 15 min;
   `graphify_mark.py` (PostToolUse on Bash) records it. Registered in `.claude/settings.json`; they
   take effect in a new session. Do not remove them.
 - **Rolling memory must stay OUTSIDE the raw-history window.** As an active
