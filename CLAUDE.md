@@ -1217,10 +1217,13 @@ conventions (`tdd` vs. `test-driven-development`, `deep-code-review` vs.
 Also vendored: [`DietrichGebert/ponytail`](https://github.com/DietrichGebert/ponytail)
 (MIT) — one skill, `.claude/skills/ponytail/` ("lazy senior dev": the smallest
 complete change, no unrequested abstraction, ends replies with what was skipped).
-Only the prompt/SKILL.md was vendored; its hooks, status band and local
-"board" were deliberately NOT installed (they read session data and spawn
-background processes — not needed for the prompt to work). Run it at the
-default `full` level. It never overrides this file: every "do not regress"
+The prompt/SKILL.md is vendored. `.claude/settings.json` ALSO enables the
+upstream `ponytail` plugin (marketplace `DietrichGebert/ponytail`), which on
+session start loads its own hooks, status band and local "board" (they read
+session data and spawn background processes; the hook scripts make no network
+calls). The vendored copy alone is enough for the prompt, so remove that
+`settings.json` entry if the extras are not wanted. Run it at the default
+`full` level. It never overrides this file: every "do not regress"
 rule above (fail-open handling, auth gates, `.catch()` on background calls,
 Graphify-first, push-everything) still wins over "write less code".
 
