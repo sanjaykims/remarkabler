@@ -89,15 +89,12 @@ export async function cropFile(
   }
 }
 
-export async function cropPng(
+/** Which PDF file and page show this page row, or null when it can't be told. */
+function resolvePdfPage(
   notebookId: string,
   pageIndex: number,
-  box: Box | null | undefined,
-  wide = false,
-  locate?: Locate,
-  /** the page row id; needed for reMarkable-cloud pages, whose PDF page comes from the page map */
   pageRowId?: string
-): Promise<Buffer | null> {
+): { pdf: string; pageNo: number; expect: number } | null {
   try {
     const dir = path.join(FILES_DIR, notebookId);
     const rows = (
@@ -126,10 +123,36 @@ export async function cropPng(
       map,
     });
     if (!at) return null;
-    return await cropFile(path.join(dir, "notebook.pdf"), at.pageNo, at.expect, box, wide ? "wide" : "tight", locate);
+    return { pdf: path.join(dir, "notebook.pdf"), pageNo: at.pageNo, expect: at.expect };
   } catch {
     return null;
   }
+}
+
+export async function cropPng(
+  notebookId: string,
+  pageIndex: number,
+  box: Box | null | undefined,
+  wide = false,
+  locate?: Locate,
+  /** the page row id; needed for reMarkable-cloud pages, whose PDF page comes from the page map */
+  pageRowId?: string
+): Promise<Buffer | null> {
+  const at = resolvePdfPage(notebookId, pageIndex, pageRowId);
+  if (!at) return null;
+  return await cropFile(at.pdf, at.pageNo, at.expect, box, wide ? "wide" : "tight", locate);
+}
+
+/** The whole handwritten page as a JPEG, for viewing inside the app (a new browser tab can lose
+ *  the login, and Android browsers can't show a PDF inline). Null when it can't be made. */
+export async function pagePicture(
+  notebookId: string,
+  pageIndex: number,
+  pageRowId?: string
+): Promise<Buffer | null> {
+  const at = resolvePdfPage(notebookId, pageIndex, pageRowId);
+  if (!at) return null;
+  return await cropFile(at.pdf, at.pageNo, at.expect, null, "page");
 }
 
 export type CaptureArgs = {

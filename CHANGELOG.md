@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - "view page" replaces "open PDF" on proofreading cards
+
+- On a phone, "open PDF" opened a new browser tab that did not carry the app login ("The app is locked") and Android browsers can't show a PDF inline anyway. The card now has **view page**, which shows the whole handwritten page inside the card with the same login as the word picture. New `full=1` mode on `/api/ocr-review/crop` (same app lock + Notebooks PIN) returns the page as a JPEG via `pagePicture()` in `lib/handwritingExamples.ts`, which shares `resolvePdfPage()` with `cropPng`. The `/api/notebooks/[id]/pdf` route and its readable error page stay for other uses.
+
 ## Unreleased - Proofreading card: marker and open-PDF fixes
 
 - **Yellow marker no longer lands on blank paper.** When the line locator isn't confident, `docker/cropword` used Claude's rough box as-is (often a line or more off). It now snaps that box onto the nearest detected handwritten line, and draws no marker at all when no line is near. Confident locations are unchanged.

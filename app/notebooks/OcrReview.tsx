@@ -35,6 +35,7 @@ export default function OcrReview({ onLocked }: { onLocked: () => void }) {
   const [custom, setCustom] = useState<Record<string, string>>({});
   const [typing, setTyping] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pageView, setPageView] = useState<Record<string, "open" | "failed" | undefined>>({});
 
   const load = useCallback(async () => {
     try {
@@ -112,20 +113,32 @@ export default function OcrReview({ onLocked }: { onLocked: () => void }) {
         <div key={c.id} className="space-y-2 border-t border-slate-200 dark:border-slate-800 pt-3">
           <p className="text-xs opacity-60">
             {c.notebookName} · page {c.pageIndex + 1}
-            {!c.pageId.includes(":rm:") && (
-              <>
-                {" · "}
-                <a
-                  className="underline"
-                  href={`/api/notebooks/${encodeURIComponent(c.notebookId)}/pdf#page=${c.pageIndex + 1}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  open PDF
-                </a>
-              </>
-            )}
+            {" · "}
+            <button
+              type="button"
+              className="underline"
+              onClick={() =>
+                setPageView((p) => ({ ...p, [c.id]: p[c.id] ? undefined : "open" }))
+              }
+            >
+              {pageView[c.id] ? "hide page" : "view page"}
+            </button>
           </p>
+          {pageView[c.id] === "open" && (
+            // Shown inside the app: a new browser tab can lose the login, and Android can't show a PDF inline.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/ocr-review/crop?id=${encodeURIComponent(c.id)}&full=1`}
+              alt="The whole handwritten page"
+              className="max-w-full rounded border border-slate-300 dark:border-slate-700 bg-white"
+              onError={() => setPageView((p) => ({ ...p, [c.id]: "failed" }))}
+            />
+          )}
+          {pageView[c.id] === "failed" && (
+            <p className="text-xs text-red-600">
+              The page picture isn&apos;t available for this notebook (it needs the stored PDF).
+            </p>
+          )}
           {c.hasCrop && (
             // eslint-disable-next-line @next/next/no-img-element
             <img

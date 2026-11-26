@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { notebooksPinDenied } from "@/lib/notebooksPin";
 import { db } from "@/lib/db";
-import { cropPng, type Box } from "@/lib/handwritingExamples";
+import { cropPng, pagePicture, type Box } from "@/lib/handwritingExamples";
 import { anchorPhrase } from "@/lib/ocrFlags";
 
 export const runtime = "nodejs";
@@ -33,6 +33,14 @@ export async function GET(req: NextRequest) {
       }
     | undefined;
   if (!row) return NextResponse.json({ error: "No picture" }, { status: 404 });
+  if (req.nextUrl.searchParams.get("full") === "1") {
+    // The whole page, to read inside the app (replaces opening the PDF in a new tab).
+    const jpg = await pagePicture(row.notebook_id, row.page_index, row.page_id);
+    if (!jpg) return NextResponse.json({ error: "No picture" }, { status: 404 });
+    return new NextResponse(new Uint8Array(jpg), {
+      headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, no-store" },
+    });
+  }
   let box: Box | null = null;
   try {
     const b = row.box ? JSON.parse(row.box) : null;
