@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - Lean pass (dead exports removed, review report)
+
+- Removed two exports used nowhere (`MAP_UNLOCK_TTL_MS`, `entityWikiAutoEnabled`). No behavior change. Full review of dead code, dependencies, bundle and indexes is in `docs/reviews/2026-11-26-lean-pass.md`; features that might be unused are listed there for the owner to decide, not removed.
+
 ## Unreleased - Ponytail skill (smallest-complete-change mode)
 
 - Vendored the MIT `ponytail` skill (prompt only) under `.claude/skills/ponytail/`. No hooks, status band, or board installed; no runtime or app code changed. Repo rules in `CLAUDE.md` take precedence over it.

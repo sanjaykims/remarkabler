@@ -1,6 +1,5 @@
 import {
   MAX_ATTEMPTS,
-  UNLOCK_TTL_MS,
   afterFailure,
   createPinGate,
   isValidPin,
@@ -15,7 +14,6 @@ import {
 // PINs and unlock cookies keep working across this refactor.
 
 export const MAP_UNLOCK_COOKIE = "fc_map_unlock";
-export const MAP_UNLOCK_TTL_MS = UNLOCK_TTL_MS;
 
 const gate = createPinGate({
   hashKey: "map_pin_hash",

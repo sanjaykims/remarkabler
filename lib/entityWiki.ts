@@ -299,7 +299,3 @@ export async function maybeRefreshEntityWiki(): Promise<void> {
     console.warn("[entityWiki] sweep refresh failed:", (e as Error).message);
   }
 }
-
-export function entityWikiAutoEnabled(): boolean {
-  return getSetting(AUTO_SETTING) === "1";
-}
