@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased - Proofreading card: marker and open-PDF fixes
+
+- **Yellow marker no longer lands on blank paper.** When the line locator isn't confident, `docker/cropword` used Claude's rough box as-is (often a line or more off). It now snaps that box onto the nearest detected handwritten line, and draws no marker at all when no line is near. Confident locations are unchanged.
+- **"open PDF" shows a readable page instead of raw JSON.** `/api/notebooks/[id]/pdf` still enforces the app lock and the Notebooks PIN, but a browser navigation that is denied (most often the 10-minute PIN unlock had expired) or finds no stored PDF now gets a short HTML page explaining what to do, with a link to Notebooks. API callers still get JSON.
+
 ## Unreleased - README: cost, privacy, and lock up front
 
 **Security: production now fails closed without `APP_PASSCODE`.** Before, an unset passcode meant the whole app and every API were open to anyone with the URL, so a new user who skipped one variable published their diary. Now, in production with no `APP_PASSCODE`, every page shows a "Set a passcode" screen (`app/SetupRequired.tsx`) and every API answers 401 (`appIsFailClosed()` in `lib/auth.ts`, applied inside `isAuthenticated()`). The process still starts, so the owner can read the explanation. `ALLOW_OPEN_APP=true` is the explicit opt-out. Dev, test and `npm run build` are unchanged. New `test/failClosedLock.test.ts`.

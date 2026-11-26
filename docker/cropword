@@ -64,6 +64,7 @@ def main() -> int:
         img.thumbnail((1100, 1500))
         img.save(out, format="JPEG", quality=72)
         return 0
+    located = False
     # Prefer locating the word from the line structure of the handwriting.
     if "--text" in opts and "--offset" in opts and "--len" in opts:
         try:
@@ -79,12 +80,46 @@ def main() -> int:
             if conf >= 0.5 or (none_box and wide):
                 x0, y0, x1, y1 = lx0 / 1000.0, ly0 / 1000.0, lx1 / 1000.0, ly1 / 1000.0
                 none_box = False
+                located = True
             elif not wide:
                 return 4  # training crops are only made from a confident location
         except Exception as e:  # fall back to Claude's box (cards only)
             print("locate failed:", e, file=sys.stderr)
             if not wide:
                 return 4
+    show_marker = True
+    if wide and not none_box and not located and (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+        # Claude's box is only an estimate and is often a line or more off, which put the
+        # yellow marker on blank paper. Snap it onto the nearest handwritten line, or draw no
+        # marker at all rather than a misleading one.
+        try:
+            import numpy as np
+
+            from handwriting_locate import _band_extent, find_text_lines
+
+            arr = np.asarray(img)
+            bands = find_text_lines(arr)
+            cy = (y0 + y1) / 2 * h
+            best = None
+            for b in bands:
+                if b[0] <= cy < b[1]:
+                    best = b
+                    break
+            if best is None and bands:
+                pitch = float(np.median([b[1] - b[0] for b in bands])) or 1.0
+                near = min(bands, key=lambda b: abs((b[0] + b[1]) / 2 - cy))
+                if abs((near[0] + near[1]) / 2 - cy) <= 1.5 * pitch:
+                    best = near
+            if best is None:
+                show_marker = False
+            else:
+                y0, y1 = best[0] / h, best[1] / h
+                xl, xr, _ = _band_extent(arr, best)
+                x0, x1 = max(x0, xl / w), min(x1, (xr + 1) / w)
+                if not x0 < x1:  # the guessed columns miss the ink: mark the whole line
+                    x0, x1 = xl / w, (xr + 1) / w
+        except Exception as e:
+            print("snap failed:", e, file=sys.stderr)
     if none_box or not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
         return 4
     # Claude's boxes are approximate: pad 4% of the page width, 1.5% of the height.
@@ -107,7 +142,8 @@ def main() -> int:
         )
         overlay = Image.new("RGBA", crop.size, (0, 0, 0, 0))
         d = ImageDraw.Draw(overlay)
-        d.rectangle(rect, fill=(250, 204, 21, 70), outline=(234, 88, 12, 200), width=3)
+        if show_marker:
+            d.rectangle(rect, fill=(250, 204, 21, 70), outline=(234, 88, 12, 200), width=3)
         crop = Image.alpha_composite(crop, overlay).convert("RGB")
         crop.thumbnail((1000, 600))
         crop.save(out, format="PNG", optimize=True)
