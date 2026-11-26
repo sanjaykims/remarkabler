@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function GraphPage() {
   if (!(await isAuthenticated())) return null;
-  const graph = await addVaultNotesToGraph(buildDiaryGraph()).catch(() => buildDiaryGraph());
+  const base = buildDiaryGraph(); // built once; the vault overlay is optional and fail-soft
+  const graph = await addVaultNotesToGraph(base).catch(() => base);
   return <DiaryGraphClient initialGraph={graph} />;
 }

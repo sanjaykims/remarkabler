@@ -845,9 +845,15 @@ export function maybeGenerateDailySummaries(): void {
  * pages predate the embedding column, this brings them online so semantic
  * search works against the full corpus. Fire-and-forget; safe to call often.
  */
+// shortcut: in-memory only (a restart retries at once), when a bad page needs a smarter fix, store it.
+// A page the embedding service keeps rejecting would otherwise be retried, and fail, every sweep.
+let embedRetryAt = 0;
+const EMBED_RETRY_MS = 60 * 60 * 1000;
+
 export function maybeBackfillEmbeddings(): void {
   if (backfillingEmbeddings) return;
   if (!embeddingsEnabled()) return;
+  if (Date.now() < embedRetryAt) return;
   // Cheap guard: only run when at least one page is missing an embedding.
   try {
     const row = db()
@@ -863,7 +869,9 @@ export function maybeBackfillEmbeddings(): void {
   backfillingEmbeddings = true;
   (async () => {
     try {
-      await backfillEmbeddingsLoop();
+      const failed = new Set<string>();
+      await backfillEmbeddingsLoop(failed);
+      if (failed.size) embedRetryAt = Date.now() + EMBED_RETRY_MS;
     } finally {
       backfillingEmbeddings = false;
     }

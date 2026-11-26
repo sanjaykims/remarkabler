@@ -1,6 +1,10 @@
 import fs from "fs";
 import path from "path";
-import { execSync } from "child_process";
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+// Async on purpose: the copy and tar can take many seconds and must not freeze the web server.
+const run = promisify(execFile);
 import Database from "better-sqlite3";
 import { db, DATA_DIR, getSetting, setSetting, clearSetting } from "./db";
 import {
@@ -394,24 +398,26 @@ export async function runBackup(): Promise<number> {
     // 2. Copy the PDF + attachment directories (use cp for symlink safety).
     const filesSrc = path.join(DATA_DIR, "files");
     if (fs.existsSync(filesSrc)) {
-      execSync(`cp -r "${filesSrc}" "${stagingDir}/files"`, { stdio: "pipe" });
+      await run("cp", ["-r", filesSrc, `${stagingDir}/files`]);
     }
     const attSrc = path.join(DATA_DIR, "chat-attachments");
     if (fs.existsSync(attSrc)) {
-      execSync(`cp -r "${attSrc}" "${stagingDir}/chat-attachments"`, {
-        stdio: "pipe",
-      });
+      await run("cp", ["-r", attSrc, `${stagingDir}/chat-attachments`]);
     }
 
     // 3. tar + gzip the whole staging directory.
-    execSync(`tar czf "${tarPath}" -C "${stagingDir}" .`, { stdio: "pipe" });
+    await run("tar", ["czf", tarPath, "-C", stagingDir, "."]);
 
     // 4. Read the archive, ENCRYPT it, verify the round trip, and push only
     // the ciphertext to GitHub.
-    const plainBytes = fs.readFileSync(tarPath);
-    const bytes = encryptBackup(plainBytes, passphrase);
-    if (!decryptBackup(bytes, passphrase).equals(plainBytes)) {
-      throw new Error("Backup encryption self-check failed; nothing was uploaded.");
+    let bytes: Buffer;
+    {
+      // Scoped so the plaintext copy can be freed before the upload buffers are built.
+      const plainBytes = fs.readFileSync(tarPath);
+      bytes = encryptBackup(plainBytes, passphrase);
+      if (!decryptBackup(bytes, passphrase).equals(plainBytes)) {
+        throw new Error("Backup encryption self-check failed; nothing was uploaded.");
+      }
     }
     await pushToGithub(
       bytes,
@@ -430,7 +436,7 @@ export async function runBackup(): Promise<number> {
   } finally {
     // Always clean up the staging area + the tarball.
     try {
-      execSync(`rm -rf "${stagingDir}" "${tarPath}"`, { stdio: "pipe" });
+      await run("rm", ["-rf", stagingDir, tarPath]);
     } catch {
       // best-effort
     }

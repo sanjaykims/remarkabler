@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased - Lean pass 3: backup, embeddings, /graph
+
+- Backup: the `cp`/`tar`/`rm` steps run async (the server no longer stalls during a backup) and the plaintext copy is freed before the upload buffers are built. Encryption and the round-trip check are unchanged.
+- Embedding backfill: after a page fails to embed, the sweep waits 1 hour before retrying (was every 5 minutes, forever).
+- /graph: the diary graph is built once; if the Dropbox overlay fails the same graph is reused (was built twice).
+
 ## Unreleased - Economy pass: Opus 5.5 floor, cheaper side jobs
 
 - OCR, second look, proofreading, profile and insights keep the main model, now never older than Opus 5.5: `floorOpus` lifts a stale `claude-opus-4-*` from `CLAUDE_MODEL` or the in-app setting (Memory tab shows the model actually used). Opus 5.5 lists at $4/$20 per million tokens vs $5/$25 for 4.x, so this alone is about 20% cheaper on transcription.
